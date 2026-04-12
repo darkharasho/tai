@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
+import { setupPtyService, destroyAllTerminals } from './services/pty';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -26,9 +27,13 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
+  setupPtyService(() => mainWindow);
+});
 
 app.on('window-all-closed', () => {
+  destroyAllTerminals();
   app.quit();
 });
 
