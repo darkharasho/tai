@@ -22,4 +22,35 @@ contextBridge.exposeInMainWorld('tai', {
     maximize: () => ipcRenderer.send('window:maximize'),
     close: () => ipcRenderer.send('window:close'),
   },
+  ai: {
+    send: (key: string, cwd: string, message: string, permMode: string, model: string) =>
+      ipcRenderer.invoke('ai:send', key, cwd, message, permMode, model),
+    cancel: (key: string) => ipcRenderer.send('ai:cancel', key),
+    stop: (key: string) => ipcRenderer.send('ai:stop', key),
+    approve: (key: string, toolUseId: string, approved: boolean) =>
+      ipcRenderer.invoke('ai:approve', key, toolUseId, approved),
+    onMessage: (key: string, callback: (msg: any) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, msgKey: string, msg: any) => {
+        if (msgKey === key) callback(msg);
+      };
+      ipcRenderer.on('ai:message', listener);
+      return () => ipcRenderer.removeListener('ai:message', listener);
+    },
+    onError: (key: string, callback: (error: string) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, errKey: string, error: string) => {
+        if (errKey === key) callback(error);
+      };
+      ipcRenderer.on('ai:error', listener);
+      return () => ipcRenderer.removeListener('ai:error', listener);
+    },
+  },
+  config: {
+    get: () => ipcRenderer.invoke('config:get'),
+    set: (key: string, value: any) => ipcRenderer.invoke('config:set', key, value),
+    onChanged: (callback: (config: any) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, config: any) => callback(config);
+      ipcRenderer.on('config:changed', listener);
+      return () => ipcRenderer.removeListener('config:changed', listener);
+    },
+  },
 });
