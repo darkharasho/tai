@@ -1,7 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { XtermPane, XtermPaneHandle } from './components/XtermPane';
+import { useState, useEffect, useCallback } from 'react';
 import { GradientBorder } from './components/GradientBorder';
 import { TabBar } from './components/TabBar';
+import { TerminalSession } from './components/TerminalSession';
+import { SettingsOverlay } from './components/SettingsOverlay';
+import { useSettings } from './hooks/useSettings';
 import type { ContextMode, TabState } from './types';
 
 let tabCounter = 0;
@@ -11,9 +13,10 @@ function createTabState(): TabState {
 }
 
 export default function App() {
+  const { config, setSetting } = useSettings();
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [tabs, setTabs] = useState<TabState[]>(() => [createTabState()]);
   const [activeTabId, setActiveTabId] = useState(tabs[0].id);
-  const xtermRefs = useRef<Map<string, XtermPaneHandle>>(new Map());
 
   const activeTab = tabs.find(t => t.id === activeTabId)!;
 
@@ -27,10 +30,6 @@ export default function App() {
     }
   }, [tabs.length]);
 
-  useEffect(() => {
-    setTimeout(() => xtermRefs.current.get(activeTabId)?.focus(), 50);
-  }, [activeTabId]);
-
   const handleNewTab = useCallback(() => {
     const tab = createTabState();
     setTabs(prev => [...prev, tab]);
@@ -39,9 +38,7 @@ export default function App() {
 
   const handleCloseTab = useCallback((id: string) => {
     const tab = tabs.find(t => t.id === id);
-    if (tab?.ptyId !== null && tab?.ptyId !== undefined) {
-      window.tai.pty.kill(tab.ptyId);
-    }
+    if (tab?.ptyId != null) window.tai.pty.kill(tab.ptyId);
     setTabs(prev => {
       const next = prev.filter(t => t.id !== id);
       if (id === activeTabId && next.length > 0) {
@@ -55,23 +52,19 @@ export default function App() {
     setTabs(prev => prev.map(t => t.id === id ? { ...t, label } : t));
   }, []);
 
+  const handleContextModeChange = useCallback((tabId: string, mode: ContextMode) => {
+    setTabs(prev => prev.map(t => t.id === tabId ? { ...t, contextMode: mode } : t));
+  }, []);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'T') {
-        e.preventDefault();
-        handleNewTab();
-      }
-      if (e.ctrlKey && e.shiftKey && e.key === 'W') {
-        e.preventDefault();
-        if (tabs.length > 1) handleCloseTab(activeTabId);
-      }
+      if (e.ctrlKey && e.shiftKey && e.key === 'T') { e.preventDefault(); handleNewTab(); }
+      if (e.ctrlKey && e.shiftKey && e.key === 'W') { e.preventDefault(); if (tabs.length > 1) handleCloseTab(activeTabId); }
       if (e.ctrlKey && !e.shiftKey && e.key >= '1' && e.key <= '9') {
         const idx = parseInt(e.key) - 1;
-        if (idx < tabs.length) {
-          e.preventDefault();
-          setActiveTabId(tabs[idx].id);
-        }
+        if (idx < tabs.length) { e.preventDefault(); setActiveTabId(tabs[idx].id); }
       }
+      if (e.ctrlKey && e.key === ',') { e.preventDefault(); setSettingsOpen(true); }
       if (e.ctrlKey && e.key === 'Tab') {
         e.preventDefault();
         const idx = tabs.findIndex(t => t.id === activeTabId);
@@ -87,12 +80,7 @@ export default function App() {
 
   return (
     <GradientBorder mode={activeTab.contextMode}>
-      <div style={{
-        height: '100%',
-        display: 'flex',
-        flexDirection: 'column',
-        background: 'var(--bg-base)',
-      }}>
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-base)' }}>
         <TabBar
           tabs={tabs}
           activeTabId={activeTabId}
@@ -110,17 +98,23 @@ export default function App() {
               flexDirection: 'column',
             }}
           >
-            <XtermPane
-              ref={el => {
-                if (el) xtermRefs.current.set(tab.id, el);
-                else xtermRefs.current.delete(tab.id);
-              }}
+            <TerminalSession
+              tabId={tab.id}
               ptyId={tab.ptyId}
+              cwd={tab.cwd}
               visible={tab.id === activeTabId}
+              trustLevel={tab.trustLevel}
+              onContextModeChange={(mode) => handleContextModeChange(tab.id, mode)}
             />
           </div>
         ))}
       </div>
+      <SettingsOverlay
+        visible={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        config={config}
+        onSet={setSetting}
+      />
     </GradientBorder>
   );
 }
