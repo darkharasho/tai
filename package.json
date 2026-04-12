@@ -1,0 +1,52 @@
+{
+  "name": "tai",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist-electron/main.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "postinstall": "electron-rebuild -w node-pty",
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "dist": "vite build && electron-builder --linux AppImage",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-web-links": "^0.11.0",
+    "@xterm/xterm": "^5.5.0",
+    "electron-updater": "^6.8.3",
+    "lucide-react": "^1.8.0",
+    "node-pty": "^1.1.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "react-markdown": "^9.1.0",
+    "remark-gfm": "^4.0.1",
+    "shell-quote": "^1.8.3",
+    "shiki": "^4.0.2"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.3",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/shell-quote": "^1.7.5",
+    "@vitejs/plugin-react": "^4.7.0",
+    "@vitest/coverage-v8": "^4.1.4",
+    "electron": "^36.9.5",
+    "electron-builder": "^26.8.1",
+    "jsdom": "^29.0.2",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.2",
+    "vite-plugin-electron": "^0.28.8",
+    "vite-plugin-electron-renderer": "^0.14.6",
+    "vitest": "^4.1.4"
+  }
+}

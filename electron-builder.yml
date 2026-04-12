@@ -1,0 +1,13 @@
+appId: com.tai.app
+productName: tai
+directories:
+  output: release
+files:
+  - dist
+  - dist-electron
+asar: true
+asarUnpack:
+  - node_modules/node-pty/**/*
+linux:
+  target: AppImage
+  category: Development
