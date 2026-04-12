@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import type { TabState, ContextMode } from '@/types';
+import { TrustBadge } from './TrustBadge';
 
 const MODE_COLORS: Record<ContextMode, string> = {
   shell: 'var(--color-shell)',
@@ -94,6 +95,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTab, o
                 {tab.label}
               </span>
             )}
+            {isActive && <TrustBadge level={tab.trustLevel} />}
             {tabs.length > 1 && (
               <X
                 size={12}
