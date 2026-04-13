@@ -54,7 +54,7 @@ export class RemoteSshManager {
       this._checkFence(session);
     });
 
-    await this._sendAndWaitReady(session);
+    await this._sendAndWaitReady(tabId, session);
   }
 
   isConnected(tabId: string): boolean {
@@ -134,14 +134,21 @@ export class RemoteSshManager {
     }
   }
 
-  private _sendAndWaitReady(session: SshSession): Promise<void> {
+  private _sendAndWaitReady(tabId: string, session: SshSession): Promise<void> {
     return new Promise((resolve, reject) => {
       const readyMarker = '__TAI_READY__';
+      let settled = false;
+
+      const settle = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        fn();
+      };
 
       const check = () => {
         if (session.buffer.includes(readyMarker)) {
           session.buffer = '';
-          resolve();
+          settle(resolve);
         }
       };
 
@@ -152,13 +159,22 @@ export class RemoteSshManager {
         this._checkFence(session);
       });
 
+      session.process.stderr!.removeAllListeners('data');
+      session.process.stderr!.on('data', (chunk: Buffer) => {
+        const text = chunk.toString();
+        settle(() => {
+          this.disconnect(tabId);
+          reject(new Error(text));
+        });
+      });
+
       session.process.stdin!.write(`echo ${readyMarker}\n`);
 
       setTimeout(() => {
-        if (!session.buffer.includes(readyMarker)) {
-          this.disconnect(session.target);
+        settle(() => {
+          this.disconnect(tabId);
           reject(new Error('SSH connection timed out'));
-        }
+        });
       }, 10000);
     });
   }
