@@ -1,0 +1,144 @@
+.blockList {
+  flex: 1;
+  min-height: 0;
+  padding: 10px 14px 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.spacer {
+  flex: 1 0 0px;
+  overflow-anchor: none;
+}
+
+.welcome {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.8;
+  margin-bottom: 16px;
+  padding-left: 8px;
+}
+
+.welcomeTitle {
+  font-family: var(--font-sans);
+  color: var(--color-shell);
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  opacity: 0.7;
+}
+
+.welcomeSection {
+  margin-bottom: 6px;
+}
+
+.welcomeRow {
+  font-family: var(--font-sans);
+  margin-bottom: 1px;
+}
+
+.welcomeKey {
+  font-family: var(--font-sans);
+  color: var(--text-secondary);
+  font-size: 12px;
+  margin-right: 8px;
+}
+
+.welcomeHint {
+  font-family: var(--font-sans);
+  color: var(--text-muted);
+  font-size: 12px;
+  margin-top: 4px;
+  opacity: 0.6;
+}
+
+.toolApproval {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  border-left: 2px solid rgba(168, 85, 247, 0.3);
+  padding: 4px 0 4px 8px;
+  margin-bottom: 4px;
+}
+
+.toolResolved {
+  opacity: 0.45;
+}
+
+.toolApprovalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 3px;
+}
+
+.toolApprovalLabel {
+  font-family: var(--font-sans);
+  color: var(--color-ai);
+  font-weight: 500;
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.toolStatus {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  opacity: 0.7;
+}
+
+.toolApproved {
+  color: var(--color-shell);
+}
+
+.toolRejected {
+  color: var(--color-error);
+}
+
+.toolApprovalCommand {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  word-break: break-all;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
+.toolApprovalActions {
+  display: flex;
+  gap: 6px;
+}
+
+.toolBtn {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 2px;
+  border: 1px solid var(--border-subtle);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.toolBtn:hover {
+  background: var(--bg-surface);
+}
+
+.toolBtnApprove {
+  border-color: rgba(0, 255, 136, 0.3);
+  color: var(--color-shell);
+}
+
+.toolBtnApprove:hover {
+  background: rgba(0, 255, 136, 0.08);
+}
+
+.toolBtnDeny {
+  border-color: rgba(239, 68, 68, 0.3);
+  color: var(--color-error);
+}
+
+.toolBtnDeny:hover {
+  background: rgba(239, 68, 68, 0.08);
+}
