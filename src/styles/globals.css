@@ -25,8 +25,8 @@
   --color-info: #11B7D4;
   --font-mono: 'Fira Code', 'Cascadia Code', 'JetBrains Mono', 'Source Code Pro', 'Symbols Nerd Font Mono', monospace;
   --font-sans: 'Geist', system-ui, sans-serif;
-  --bg-card: rgba(255, 255, 255, 0.025);
-  --border-card: rgba(255, 255, 255, 0.05);
+  --bg-card: #141719;
+  --border-card: #1e2228;
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.2);
 
   /* Card accent system */

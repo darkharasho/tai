@@ -19,8 +19,8 @@
   bottom: 16px;
   right: 16px;
   z-index: 2500;
-  background: #161a1d;
-  border: 1px solid #2a2f33;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
   border-radius: 8px;
   padding: 10px 14px;
   display: flex;
