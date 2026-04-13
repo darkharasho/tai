@@ -587,6 +587,8 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
           disabled={false}
           history={inputHistory}
           onClear={() => setDisplayItems([])}
+          remoteExecMode={remoteExecMode}
+          onRemoteExecModeChange={onRemoteExecModeChange}
         />
       )}
     </div>
