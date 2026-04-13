@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react
 import { Plus, X, Minus, Square, ChevronDown } from 'lucide-react';
 import type { TabState, ContextMode } from '@/types';
 import { TrustBadge } from './TrustBadge';
+import styles from './TabBar.module.css';
 
 const MODE_COLORS: Record<ContextMode, string> = {
   shell: 'var(--color-shell)',
@@ -38,22 +39,21 @@ function TabItem({ tab, index, isActive, modeColor, tabCount, editingId, editVal
     <div
       onClick={onSelect}
       onDoubleClick={onDoubleClick}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        padding: '6px 14px',
-        borderRadius: 6,
-        cursor: 'pointer',
-        background: isActive ? 'rgba(255,255,255,0.06)' : 'transparent',
-        borderBottom: isActive ? `2px solid ${modeColor}` : '2px solid transparent',
-        transition: 'all 0.2s ease',
-        whiteSpace: 'nowrap',
-        flexShrink: 0,
-        ...({ WebkitAppRegion: 'no-drag' } as any),
-      }}
+      className={`${styles.tab} ${isActive ? styles.tabActive : ''}`}
+      style={isActive ? {
+        background: 'rgba(255,255,255,0.06)',
+        borderBottomColor: modeColor,
+      } : undefined}
     >
-      <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{index + 1}:</span>
+      {isActive && (
+        <div
+          className={styles.tabGlow}
+          style={{
+            background: `radial-gradient(ellipse at center bottom, ${modeColor.startsWith('var(') ? modeColor : modeColor}33 0%, transparent 70%)`,
+          }}
+        />
+      )}
+      <span className={styles.tabIndex}>{index + 1}:</span>
       {editingId === tab.id ? (
         <input
           autoFocus
@@ -64,21 +64,10 @@ function TabItem({ tab, index, isActive, modeColor, tabCount, editingId, editVal
             if (e.key === 'Enter') onEditSubmit();
             if (e.key === 'Escape') onEditCancel();
           }}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            color: 'var(--text-primary)',
-            fontFamily: 'var(--font-mono)',
-            fontSize: 12,
-            outline: 'none',
-            width: 80,
-          }}
+          className={styles.editInput}
         />
       ) : (
-        <span style={{
-          color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
-          fontSize: 12,
-        }}>
+        <span className={`${styles.tabLabel} ${isActive ? styles.tabLabelActive : ''}`}>
           {tab.isRemote && tab.sshTarget ? tab.sshTarget : tab.label}
         </span>
       )}
@@ -86,11 +75,8 @@ function TabItem({ tab, index, isActive, modeColor, tabCount, editingId, editVal
       {tabCount > 1 && (
         <X
           size={12}
-          style={{
-            color: 'var(--text-muted)',
-            cursor: 'pointer',
-            opacity: isActive ? 0.8 : 0.4,
-          }}
+          className={styles.closeBtn}
+          style={{ opacity: isActive ? 0.8 : 0.4 }}
           onClick={onClose}
         />
       )}
@@ -186,27 +172,10 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTab, o
     : null;
 
   return (
-    <div ref={barRef} style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: 4,
-      padding: '6px 12px',
-      borderBottom: '1px solid var(--border-subtle)',
-      background: 'var(--bg-surface)',
-      ...({ WebkitAppRegion: 'drag' } as any),
-      userSelect: 'none',
-      minHeight: 40,
-    }}>
+    <div ref={barRef} className={styles.bar}>
       <div
         ref={tabsContainerRef}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 4,
-          flex: 1,
-          minWidth: 0,
-          overflow: 'hidden',
-        }}
+        className={styles.tabsContainer}
       >
         {tabs.slice(0, maxVisible).map((tab, i) => {
           const isActive = tab.id === activeTabId;
@@ -235,15 +204,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTab, o
       <div
         ref={measureRef}
         aria-hidden
-        style={{
-          display: 'flex',
-          gap: 4,
-          position: 'absolute',
-          visibility: 'hidden',
-          pointerEvents: 'none',
-          height: 0,
-          overflow: 'hidden',
-        }}
+        className={styles.measureContainer}
       >
         {tabs.map((tab, i) => (
           <TabItem
@@ -265,39 +226,21 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTab, o
         ))}
       </div>
 
-      {hasOverflow && <div ref={overflowRef} style={{ position: 'relative', flexShrink: 0, ...({ WebkitAppRegion: 'no-drag' } as any) }}>
+      {hasOverflow && (
+        <div ref={overflowRef} className={styles.overflowWrapper}>
           <div
             onClick={() => setOverflowOpen(v => !v)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '6px 8px',
-              borderRadius: 6,
-              cursor: 'pointer',
-              background: activeOverflowColor ? 'rgba(255,255,255,0.06)' : 'transparent',
-              borderBottom: activeOverflowColor ? `2px solid ${activeOverflowColor}` : '2px solid transparent',
-            }}
+            className={styles.overflowBtn}
+            style={activeOverflowColor ? {
+              background: 'rgba(255,255,255,0.06)',
+              borderBottomColor: activeOverflowColor,
+            } : undefined}
           >
             <ChevronDown size={14} style={{ color: activeOverflowColor || 'var(--text-muted)' }} />
             <span style={{ color: activeOverflowColor || 'var(--text-muted)', fontSize: 11 }}>+{overflowTabs.length}</span>
           </div>
           {overflowOpen && (
-            <div style={{
-              position: 'absolute',
-              top: '100%',
-              right: 0,
-              marginTop: 4,
-              background: 'var(--bg-elevated)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 8,
-              boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-              zIndex: 3000,
-              minWidth: 180,
-              padding: '4px 0',
-              maxHeight: 300,
-              overflowY: 'auto',
-            }}>
+            <div className={styles.overflowDropdown}>
               {overflowTabs.map((tab, i) => {
                 const globalIndex = maxVisible + i;
                 const isActive = tab.id === activeTabId;
@@ -306,31 +249,24 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTab, o
                   <div
                     key={tab.id}
                     onClick={() => { onSelectTab(tab.id); setOverflowOpen(false); }}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      padding: '6px 12px',
-                      cursor: 'pointer',
-                      background: isActive ? 'rgba(255,255,255,0.06)' : 'transparent',
-                      borderLeft: isActive ? `2px solid ${modeColor}` : '2px solid transparent',
-                    }}
+                    className={styles.overflowItem}
+                    style={isActive ? {
+                      background: 'rgba(255,255,255,0.06)',
+                      borderLeftColor: modeColor,
+                    } : undefined}
                   >
-                    <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>{globalIndex + 1}:</span>
-                    <span style={{
-                      color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
-                      fontSize: 12,
-                      flex: 1,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}>
+                    <span className={styles.tabIndex}>{globalIndex + 1}:</span>
+                    <span
+                      className={styles.overflowItemLabel}
+                      style={isActive ? { color: '#e8ecf0', fontWeight: 600 } : undefined}
+                    >
                       {tab.isRemote && tab.sshTarget ? tab.sshTarget : tab.label}
                     </span>
                     {tabs.length > 1 && (
                       <X
                         size={12}
-                        style={{ color: 'var(--text-muted)', cursor: 'pointer', opacity: 0.5, flexShrink: 0 }}
+                        className={styles.closeBtn}
+                        style={{ opacity: 0.5, flexShrink: 0 }}
                         onClick={(e) => { e.stopPropagation(); onCloseTab(tab.id); }}
                       />
                     )}
@@ -339,74 +275,34 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTab, o
               })}
             </div>
           )}
-        </div>}
+        </div>
+      )}
 
-      <div ref={fixedRef} style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-        <div
-          onClick={onNewTab}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            padding: '6px 10px',
-            borderRadius: 6,
-            cursor: 'pointer',
-            flexShrink: 0,
-            ...({ WebkitAppRegion: 'no-drag' } as any),
-          }}
-        >
+      <div ref={fixedRef} className={styles.fixedControls}>
+        <div onClick={onNewTab} className={styles.addBtn}>
           <Plus size={14} style={{ color: 'var(--text-muted)' }} />
         </div>
 
-        <div style={{ flex: 'none', width: 8 }} />
+        <div className={styles.separator} />
 
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 2,
-          flexShrink: 0,
-          ...({ WebkitAppRegion: 'no-drag' } as any),
-        }}>
+        <div className={styles.windowControls}>
           <button
             onClick={() => window.tai?.window?.minimize()}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              padding: '4px 8px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              borderRadius: 4,
-            }}
+            className={styles.windowBtn}
           >
-            <Minus size={14} color="var(--text-muted)" />
+            <Minus size={14} />
           </button>
           <button
             onClick={() => window.tai?.window?.maximize()}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              padding: '4px 8px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              borderRadius: 4,
-            }}
+            className={styles.windowBtn}
           >
-            <Square size={12} color="var(--text-muted)" />
+            <Square size={12} />
           </button>
           <button
             onClick={() => window.tai?.window?.close()}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              padding: '4px 8px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              borderRadius: 4,
-            }}
+            className={styles.windowBtn}
           >
-            <X size={14} color="var(--text-muted)" />
+            <X size={14} />
           </button>
         </div>
       </div>

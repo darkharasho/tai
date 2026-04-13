@@ -1,0 +1,251 @@
+/* TabBar.module.css */
+
+/* ── Bar ─────────────────────────────────────────────────── */
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: linear-gradient(
+    180deg,
+    rgba(19, 23, 32, 0.95) 0%,
+    rgba(17, 20, 24, 0.9) 100%
+  );
+  backdrop-filter: blur(8px);
+  -webkit-app-region: drag;
+  user-select: none;
+  min-height: 44px;
+  position: relative;
+}
+
+/* ── Visible tabs container ──────────────────────────────── */
+.tabsContainer {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* ── Individual tab ──────────────────────────────────────── */
+.tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  background: transparent;
+  border-bottom: 2px solid transparent;
+  transition: background 0.2s ease, border-bottom-color 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+  font-family: var(--font-sans);
+}
+
+.tab:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* Active tab — background and borderBottomColor applied inline (dynamic) */
+.tabActive {
+  /* static parts of active state */
+}
+
+/* Radial glow div rendered inside an active tab */
+.tabGlow {
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 20px;
+  pointer-events: none;
+  border-radius: 0 0 6px 6px;
+}
+
+/* ── Tab index number ─────────────────────────────────────── */
+.tabIndex {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: var(--font-sans);
+}
+
+/* ── Tab label ───────────────────────────────────────────── */
+.tabLabel {
+  color: #6a7080;
+  font-size: 12px;
+  font-family: var(--font-sans);
+  font-weight: 400;
+}
+
+.tabLabelActive {
+  color: #e8ecf0;
+  font-weight: 600;
+}
+
+/* ── Status dot (used via TrustBadge) ────────────────────── */
+/* background and boxShadow are applied inline (mode-color dynamic) */
+.statusDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── Rename edit input ───────────────────────────────────── */
+.editInput {
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  outline: none;
+  width: 80px;
+}
+
+/* ── Close button (X icon) ───────────────────────────────── */
+.closeBtn {
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+/* ── Hidden measure container ────────────────────────────── */
+.measureContainer {
+  display: flex;
+  gap: 4px;
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  height: 0;
+  overflow: hidden;
+}
+
+/* ── Overflow wrapper + button ───────────────────────────── */
+.overflowWrapper {
+  position: relative;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+}
+
+.overflowBtn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: background 0.2s ease, border-bottom-color 0.2s ease;
+  font-family: var(--font-sans);
+}
+
+.overflowBtn:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* ── Overflow dropdown ───────────────────────────────────── */
+.overflowDropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: var(--bg-elevated);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 3000;
+  min-width: 180px;
+  padding: 4px 0;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* ── Overflow dropdown item ──────────────────────────────── */
+.overflowItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: background 0.15s ease, border-left-color 0.15s ease;
+  font-family: var(--font-sans);
+}
+
+.overflowItem:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.overflowItemLabel {
+  color: var(--text-secondary);
+  font-size: 12px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-sans);
+}
+
+/* ── Fixed right-side controls ───────────────────────────── */
+.fixedControls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* ── Add (+) button ──────────────────────────────────────── */
+.addBtn {
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+  transition: background 0.2s ease;
+}
+
+.addBtn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* ── Separator between + and window controls ─────────────── */
+.separator {
+  flex: none;
+  width: 1px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 0 4px;
+}
+
+/* ── Window controls container ───────────────────────────── */
+.windowControls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+}
+
+/* ── Individual window control button ────────────────────── */
+.windowBtn {
+  background: transparent;
+  border: none;
+  padding: 4px 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+  color: #4a5060;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.windowBtn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #8a9090;
+}
