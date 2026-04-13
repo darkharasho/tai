@@ -53,4 +53,34 @@ contextBridge.exposeInMainWorld('tai', {
       return () => ipcRenderer.removeListener('config:changed', listener);
     },
   },
+  update: {
+    check: () => ipcRenderer.send('update:check'),
+    install: () => ipcRenderer.send('update:install'),
+    getVersion: () => ipcRenderer.invoke('update:getVersion'),
+    onStatus: (callback: (status: string) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, status: string) => callback(status);
+      ipcRenderer.on('update:status', listener);
+      return () => ipcRenderer.removeListener('update:status', listener);
+    },
+    onAvailable: (callback: (info: any) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, info: any) => callback(info);
+      ipcRenderer.on('update:available', listener);
+      return () => ipcRenderer.removeListener('update:available', listener);
+    },
+    onProgress: (callback: (progress: any) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, progress: any) => callback(progress);
+      ipcRenderer.on('update:progress', listener);
+      return () => ipcRenderer.removeListener('update:progress', listener);
+    },
+    onDownloaded: (callback: (info: any) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, info: any) => callback(info);
+      ipcRenderer.on('update:downloaded', listener);
+      return () => ipcRenderer.removeListener('update:downloaded', listener);
+    },
+    onError: (callback: (err: any) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, err: any) => callback(err);
+      ipcRenderer.on('update:error', listener);
+      return () => ipcRenderer.removeListener('update:error', listener);
+    },
+  },
 });

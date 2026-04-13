@@ -31,6 +31,16 @@ declare global {
         set: (key: string, value: any) => Promise<Record<string, any>>;
         onChanged: (callback: (config: any) => void) => () => void;
       };
+      update: {
+        check: () => void;
+        install: () => void;
+        getVersion: () => Promise<string>;
+        onStatus: (callback: (status: string) => void) => () => void;
+        onAvailable: (callback: (info: any) => void) => () => void;
+        onProgress: (callback: (progress: any) => void) => () => void;
+        onDownloaded: (callback: (info: any) => void) => () => void;
+        onError: (callback: (err: any) => void) => () => void;
+      };
     };
   }
 }

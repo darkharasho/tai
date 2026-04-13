@@ -42,7 +42,7 @@ export function CommandBlock({
 
   const outputLines = block.output ? block.output.split('\n') : [];
   const isLong = outputLines.length > LONG_OUTPUT_LINES;
-  const isClamped = isLong && !showAll;
+  const isClamped = isLong && !showAll && !active;
   const coloredOutput = useMemo(() => {
     const raw = block.rawOutput || block.output;
     return raw ? ansiToHtml(raw) : '';
@@ -112,7 +112,7 @@ export function CommandBlock({
             dangerouslySetInnerHTML={{ __html: coloredOutput }}
             onClick={handleOutputClick}
           />
-          {isLong && (
+          {isLong && !active && (
             <div className="cb-show-more" onClick={() => setShowAll(v => !v)}>
               {showAll ? 'less' : `${outputLines.length} lines`}
             </div>

@@ -11,12 +11,53 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "dist": "vite build && electron-builder --linux AppImage",
+    "dist:win": "vite build && electron-builder --win",
+    "dist:mac": "vite build && electron-builder --mac dmg zip",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "keywords": [],
-  "author": "",
+  "author": "darkharasho",
   "license": "ISC",
+  "build": {
+    "appId": "com.tai.app",
+    "productName": "tai",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "linux": {
+      "target": "AppImage",
+      "category": "Development",
+      "icon": "public/img/tai.png"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "public/img/tai.png"
+    },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "category": "public.app-category.developer-tools",
+      "icon": "public/img/tai.png",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "darkharasho",
+      "repo": "tai"
+    },
+    "asarUnpack": [
+      "node_modules/node-pty/**/*"
+    ]
+  },
   "dependencies": {
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-web-links": "^0.11.0",

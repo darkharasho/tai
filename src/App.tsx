@@ -2,7 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { TabBar } from './components/TabBar';
 import { TerminalSession } from './components/TerminalSession';
 import { SettingsOverlay } from './components/SettingsOverlay';
+import WhatsNewModal from './components/WhatsNewModal';
 import { useSettings } from './hooks/useSettings';
+import { useWhatsNew } from './hooks/useWhatsNew';
 import type { ContextMode, TabState } from './types';
 
 let tabCounter = 0;
@@ -13,6 +15,7 @@ function createTabState(): TabState {
 
 export default function App() {
   const { config, setSetting } = useSettings();
+  const whatsNew = useWhatsNew();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tabs, setTabs] = useState<TabState[]>(() => [createTabState()]);
   const [activeTabId, setActiveTabId] = useState(tabs[0].id);
@@ -113,6 +116,13 @@ export default function App() {
         onClose={() => setSettingsOpen(false)}
         config={config}
         onSet={setSetting}
+      />
+      <WhatsNewModal
+        isOpen={whatsNew.isOpen}
+        version={whatsNew.version}
+        releases={whatsNew.releases}
+        fetchStatus={whatsNew.fetchStatus}
+        onClose={whatsNew.closeWhatsNew}
       />
     </div>
   );

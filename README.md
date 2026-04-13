@@ -2,7 +2,7 @@
   <img src="public/img/tai.png" alt="TAI Logo" width="180" />
 </p>
 
-<h1 align="center">TAI — Terminal AI</h1>
+<h1 align="center">TAI — Terminally AI</h1>
 
 <p align="center">
   <strong>An AI-native terminal that understands what you're doing.</strong>

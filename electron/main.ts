@@ -3,6 +3,7 @@ import path from 'path';
 import * as fs from 'fs';
 import { setupPtyService, destroyAllTerminals } from './services/pty';
 import { setupClaudeService, destroyAllClaude } from './services/claude';
+import { registerUpdater } from './services/updater';
 
 app.disableHardwareAcceleration();
 if (process.platform === 'win32') app.setAppUserModelId('com.tai.app');
@@ -120,6 +121,7 @@ function createTray() {
 app.whenReady().then(() => {
   createWindow();
   createTray();
+  registerUpdater(mainWindow!);
   setupPtyService(() => mainWindow);
   setupClaudeService(() => mainWindow);
 });
