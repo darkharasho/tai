@@ -3,6 +3,7 @@ import type { SegmentedBlock } from '@/types';
 
 const PROMPT_RE = /(\S+[@:]\S+[\$#%>❯]|[\$#%❯])\s*$/;
 const SSH_TARGET_RE = /(\S+)@(\S+?)[\s:]/;
+const SSH_CMD_RE = /^ssh\s+(?:.*\s)?(?:(\S+)@)?(\S+)\s*$/;
 const ALT_SCREEN_ENTER = '\x1b[?1049h';
 const ALT_SCREEN_EXIT = '\x1b[?1049l';
 
@@ -16,6 +17,7 @@ export class BlockSegmenter {
   private _currentPrompt = '';
   private _initialPrompt = '';
   private _localHostname = '';
+  private _sshConnectionTarget: string | null = null;
   private _startTime = 0;
   private _pendingLines: string[] = [];
   private _pendingRawLines: string[] = [];
@@ -197,6 +199,13 @@ export class BlockSegmenter {
       isRemote: this._isRemotePrompt(this._currentPrompt),
     };
 
+    const sshMatch = command.match(SSH_CMD_RE);
+    if (sshMatch) {
+      const user = sshMatch[1] || '';
+      const host = sshMatch[2];
+      this._sshConnectionTarget = user ? `${user}@${host}` : host;
+    }
+
     this._blockCallbacks.forEach(cb => cb(block));
 
     this._currentPrompt = newPromptText;
@@ -231,8 +240,9 @@ export class BlockSegmenter {
 
   private _firePromptChange(prompt: string): void {
     const isRemote = this._isRemotePrompt(prompt);
-    const currentId = this._extractIdentity(prompt);
-    const sshTarget = isRemote && currentId ? currentId : null;
+    const sshTarget = isRemote
+      ? (this._sshConnectionTarget ?? this._extractIdentity(prompt))
+      : null;
     this._promptChangeCallbacks.forEach(cb => cb(prompt, isRemote, sshTarget));
   }
 
@@ -245,6 +255,7 @@ export class BlockSegmenter {
     this._pendingRawLines = [];
     this._partialLine = '';
     this._partialRawLine = '';
+    this._sshConnectionTarget = null;
     this._seenFirstPrompt = false;
     this._inAltScreen = false;
     this._blockCallbacks = [];

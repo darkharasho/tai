@@ -266,11 +266,6 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
           {isAI ? (
             <>
               <span className={styles.promptAi}>{'\u2726'}</span>
-              <span className={styles.path}>{promptPath}</span>
-            </>
-          ) : (
-            <>
-              {userName && <span className={styles.user} style={promptIsRemote ? { color: 'var(--color-agent)' } : undefined}>{userName}</span>}
               {promptIsRemote && onRemoteExecModeChange && (
                 <button
                   className={styles.remoteToggle}
@@ -283,6 +278,11 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
                   {remoteExecMode === 'auto' ? 'Remote' : 'Local'}
                 </button>
               )}
+              <span className={styles.path}>{promptPath}</span>
+            </>
+          ) : (
+            <>
+              {userName && <span className={styles.user} style={promptIsRemote ? { color: 'var(--color-agent)' } : undefined}>{userName}</span>}
               <span className={styles.path}>{promptPath}</span>
               <span className={styles.dollar}>$</span>
             </>

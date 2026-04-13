@@ -15,6 +15,7 @@ interface ClaudeState {
   busy: boolean;
   remoteTarget: string | null;
   remoteExecMode: 'auto' | 'local';
+  pendingToolUses: Map<string, { id: string; name: string; input: Record<string, any> }>;
 }
 
 const claudeStates = new Map<string, ClaudeState>();
@@ -22,7 +23,7 @@ const claudeStates = new Map<string, ClaudeState>();
 function getState(key: string): ClaudeState {
   let state = claudeStates.get(key);
   if (!state) {
-    state = { process: null, sessionId: null, buffer: '', busy: false, remoteTarget: null, remoteExecMode: 'auto' };
+    state = { process: null, sessionId: null, buffer: '', busy: false, remoteTarget: null, remoteExecMode: 'auto', pendingToolUses: new Map() };
     claudeStates.set(key, state);
   }
   return state;
@@ -113,13 +114,21 @@ function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, perm
         }
 
         const isRemoteExec = state.remoteTarget && state.remoteExecMode === 'auto';
-        if (isRemoteExec && msg.type === 'assistant' && msg.message?.content) {
-          const toolUses = (Array.isArray(msg.message.content) ? msg.message.content : [])
-            .filter((b: any) => b.type === 'tool_use');
 
-          if (toolUses.length > 0) {
-            safeSend(win, 'ai:message', key, msg);
-            handleRemoteToolCalls(win, key, state, toolUses);
+        if (isRemoteExec && msg.type === 'assistant' && msg.message?.content) {
+          const content = Array.isArray(msg.message.content) ? msg.message.content : [];
+          for (const block of content) {
+            if (block.type === 'tool_use' && block.id) {
+              state.pendingToolUses.set(block.id, { id: block.id, name: block.name, input: block.input });
+            }
+          }
+        }
+
+        if (isRemoteExec && msg.type === 'approval_needed' && msg.toolUseId) {
+          const toolInfo = state.pendingToolUses.get(msg.toolUseId);
+          if (toolInfo) {
+            state.pendingToolUses.delete(msg.toolUseId);
+            handleRemoteToolCalls(win, key, state, [toolInfo]);
             continue;
           }
         }
@@ -136,6 +145,7 @@ function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, perm
   proc.on('exit', () => {
     state.process = null;
     state.busy = false;
+    state.pendingToolUses.clear();
   });
 
   return proc;
@@ -273,6 +283,7 @@ export function setupClaudeService(getWindow: () => BrowserWindow | null) {
       state.process.kill();
       state.process = null;
       state.sessionId = null;
+      state.pendingToolUses.clear();
     }
 
     if (!target) {
