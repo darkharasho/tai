@@ -400,6 +400,20 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
         needsNewBlock = true;
       }
 
+      if (msg.type === 'remote:connection_failed') {
+        setDisplayItems(prev => [...prev, {
+          type: 'ai' as const,
+          id: nextBlockId(),
+          question: '',
+          content: `**SSH connection failed:** ${msg.error}\n\nAI commands will run locally. Use key-based SSH auth for remote AI support.`,
+          suggestedCommands: [],
+          streaming: false,
+          entries: [{ kind: 'text' as const, text: `**SSH connection failed:** ${msg.error}\n\nAI commands will run locally.` }],
+        }]);
+        onRemoteExecModeChange('local');
+        return;
+      }
+
       if (msg.type === 'result') {
         if (msg.result) {
           const text = typeof msg.result === 'string' ? msg.result : '';
