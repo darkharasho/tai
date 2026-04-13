@@ -11,6 +11,7 @@ declare global {
         isAwaitingInput: (id: number) => Promise<boolean>;
         tabComplete: (text: string, cwd: string) => Promise<string[]>;
         getShellHistory: (count: number) => Promise<string[]>;
+        getRemoteShellHistory: (target: string, count: number) => Promise<string[]>;
         onData: (callback: (id: number, data: string) => void) => () => void;
       };
       window: {

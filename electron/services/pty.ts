@@ -183,6 +183,38 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
     }
     return [];
   });
+
+  ipcMain.handle('pty:getRemoteShellHistory', async (_event, target: string, count: number) => {
+    return new Promise<string[]>((resolve) => {
+      // Sanitize target to prevent command injection - only allow user@host or host patterns
+      if (!/^[\w.-]+(@[\w.-]+)?$/.test(target)) {
+        resolve([]);
+        return;
+      }
+      const cmd = 'cat ~/.bash_history ~/.zsh_history 2>/dev/null || true';
+      execFile('ssh', ['-o', 'ConnectTimeout=3', '-o', 'BatchMode=yes', target, cmd], { timeout: 5000 }, (err, stdout) => {
+        if (err || !stdout) {
+          resolve([]);
+          return;
+        }
+        const lines = stdout.split('\n').filter(Boolean);
+        const parsed = lines.map(l => {
+          const m = l.match(/^: \d+:\d+;(.*)$/);
+          return m ? m[1] : l;
+        });
+        // Deduplicate while preserving order (most recent last)
+        const seen = new Set<string>();
+        const unique = [];
+        for (let i = parsed.length - 1; i >= 0; i--) {
+          if (!seen.has(parsed[i])) {
+            seen.add(parsed[i]);
+            unique.unshift(parsed[i]);
+          }
+        }
+        resolve(unique.slice(-count));
+      });
+    });
+  });
 }
 
 export function destroyAllTerminals() {

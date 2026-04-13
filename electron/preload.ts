@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('tai', {
     isAwaitingInput: (id: number) => ipcRenderer.invoke('pty:isAwaitingInput', id),
     tabComplete: (text: string, cwd: string) => ipcRenderer.invoke('pty:tabComplete', text, cwd),
     getShellHistory: (count: number) => ipcRenderer.invoke('pty:getShellHistory', count),
+    getRemoteShellHistory: (target: string, count: number) => ipcRenderer.invoke('pty:getRemoteShellHistory', target, count),
     onData: (callback: (id: number, data: string) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, id: number, data: string) => callback(id, data);
       ipcRenderer.on('pty:data', listener);

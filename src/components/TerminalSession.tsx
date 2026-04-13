@@ -36,6 +36,7 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
   const [cwd, setCwd] = useState(initialCwd);
   const [promptInfo, setPromptInfo] = useState<{ text: string; isRemote: boolean; sshTarget?: string } | null>(null);
   const [shellHistory, setShellHistory] = useState<string[]>([]);
+  const [remoteHistory, setRemoteHistory] = useState<string[]>([]);
   const [awaitingInput, setAwaitingInput] = useState(false);
   const [editValue, setEditValue] = useState<string | undefined>(undefined);
 
@@ -64,6 +65,16 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
       if (name) segmenterRef.current.setLocalHostname(name);
     });
   }, []);
+
+  useEffect(() => {
+    if (promptInfo?.isRemote && promptInfo.sshTarget) {
+      window.tai?.pty?.getRemoteShellHistory(promptInfo.sshTarget, 500)
+        .then((lines: string[]) => setRemoteHistory(lines))
+        .catch(() => setRemoteHistory([]));
+    } else {
+      setRemoteHistory([]);
+    }
+  }, [promptInfo?.isRemote, promptInfo?.sshTarget]);
 
   useEffect(() => {
     const target = promptInfo?.isRemote ? (promptInfo.sshTarget ?? null) : null;
@@ -198,10 +209,10 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
         command: value,
         output: '',
         rawOutput: '',
-        promptText: '',
+        promptText: promptInfo?.text ?? '',
         startTime: Date.now(),
         duration: 0,
-        isRemote: false,
+        isRemote: promptInfo?.isRemote ?? false,
       };
       pendingCommandRef.current = { command: value, startTime: Date.now() };
       setDisplayItems(prev => {
@@ -217,7 +228,7 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
     } else {
       handleAIRequest(value);
     }
-  }, [inputMode, executeCommand]);
+  }, [inputMode, executeCommand, promptInfo]);
 
   const handleAIRequest = useCallback((prompt: string) => {
     handleInputModeChange('ai');
@@ -471,15 +482,15 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
       command,
       output: '',
       rawOutput: '',
-      promptText: '',
+      promptText: promptInfo?.text ?? '',
       startTime: Date.now(),
       duration: 0,
-      isRemote: false,
+      isRemote: promptInfo?.isRemote ?? false,
     };
     pendingCommandRef.current = { command, startTime: Date.now() };
     setDisplayItems(prev => [...prev, { type: 'command' as const, block: pendingBlock, active: true }]);
     executeCommand(command);
-  }, [executeCommand]);
+  }, [executeCommand, promptInfo]);
 
   const handleToolApprove = useCallback((item: DisplayItem & { type: 'approval' }) => {
     window.tai?.ai?.approve(tabId, item.toolUseId, true);
@@ -558,10 +569,16 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
     return () => window.removeEventListener('focus', handleFocus);
   }, [visible, altScreenVisible]);
 
+  const isRemote = promptInfo?.isRemote ?? false;
   const sessionHistory = displayItems
-    .filter(item => item.type === 'command' || item.type === 'ai')
+    .filter(item => {
+      if (item.type === 'command') return item.block.isRemote === isRemote;
+      if (item.type === 'ai') return !isRemote;
+      return false;
+    })
     .map(item => item.type === 'command' ? item.block.command : (item as DisplayItem & { type: 'ai' }).question);
-  const inputHistory = [...shellHistory, ...sessionHistory];
+  const baseHistory = isRemote ? remoteHistory : shellHistory;
+  const inputHistory = [...baseHistory, ...sessionHistory];
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0, position: 'relative' }}>
