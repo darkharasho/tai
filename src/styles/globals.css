@@ -1,20 +1,21 @@
-@import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600;700&display=swap');
-
 :root {
-  --bg-base: #0a0a12;
-  --bg-surface: rgba(255, 255, 255, 0.03);
-  --bg-input: rgba(255, 255, 255, 0.05);
-  --border-subtle: rgba(255, 255, 255, 0.06);
-  --text-primary: #e0e0e0;
-  --text-secondary: #888;
-  --text-muted: #555;
-  --color-shell: #00ff88;
-  --color-ai: #a855f7;
-  --color-agent: #fb923c;
-  --color-error: #ef4444;
-  --color-warning: #facc15;
-  --color-info: #38bdf8;
-  --font-mono: 'Geist Mono', 'JetBrains Mono NF', 'Fira Code', monospace;
+  --bg-base: #0c0f11;
+  --bg-surface: #111418;
+  --bg-mid: #0e1114;
+  --bg-input: #161a1f;
+  --bg-elevated: #1c2027;
+  --bg-hover: #21292f;
+  --border-subtle: #1e2228;
+  --text-primary: #bec6d0;
+  --text-secondary: #a0acbb;
+  --text-muted: #5a6a7a;
+  --color-shell: #00a884;
+  --color-ai: #a85ff1;
+  --color-agent: #d4770c;
+  --color-error: #E35535;
+  --color-warning: #c7910c;
+  --color-info: #11B7D4;
+  --font-mono: 'Fira Code', 'Cascadia Code', 'JetBrains Mono', 'Source Code Pro', 'Symbols Nerd Font Mono', monospace;
 }
 
 *, *::before, *::after {

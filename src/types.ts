@@ -6,6 +6,7 @@ export interface SegmentedBlock {
   id: string;
   command: string;
   output: string;
+  rawOutput: string;
   promptText: string;
   startTime: number;
   duration: number;

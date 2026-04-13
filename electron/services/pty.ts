@@ -134,7 +134,7 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
     const flags = isFirstWord ? '-c -f' : '-f -d';
     const escaped = lastWord ? lastWord.replace(/'/g, "'\\''") : '';
     const cmd = escaped
-      ? `compgen ${flags} -- '${escaped}' 2>/dev/null | head -50`
+      ? `shopt -s nocaseglob nocasematch; compgen ${flags} -- '${escaped}' 2>/dev/null | head -50`
       : `compgen ${flags} 2>/dev/null | head -50`;
     return new Promise<string[]>((resolve) => {
       execFile('bash', ['-c', cmd], { cwd, timeout: 2000 }, (err, stdout) => {

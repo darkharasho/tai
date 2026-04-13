@@ -1,18 +1,17 @@
-import { Shield, ShieldCheck, ShieldOff } from 'lucide-react';
-import type { TrustLevel } from '@/types';
-
-const TRUST_CONFIG: Record<TrustLevel, { label: string; color: string; Icon: typeof Shield }> = {
-  ask: { label: 'Ask', color: 'var(--color-shell)', Icon: Shield },
-  'approve-edits': { label: 'Approve Edits', color: 'var(--color-warning)', Icon: ShieldCheck },
-  bypass: { label: 'Bypass', color: 'var(--color-error)', Icon: ShieldOff },
-};
+import { Terminal, Sparkles } from 'lucide-react';
+import type { ContextMode } from '@/types';
 
 interface TrustBadgeProps {
-  level: TrustLevel;
+  level: string;
+  modeColor?: string;
+  contextMode?: ContextMode;
 }
 
-export function TrustBadge({ level }: TrustBadgeProps) {
-  const { label, color, Icon } = TRUST_CONFIG[level];
+export function TrustBadge({ modeColor, contextMode = 'shell' }: TrustBadgeProps) {
+  const isShell = contextMode === 'shell';
+  const color = modeColor ?? (isShell ? 'var(--color-shell)' : 'var(--color-ai)');
+  const Icon = isShell ? Terminal : Sparkles;
+  const label = isShell ? 'Term' : 'AI';
 
   return (
     <div style={{

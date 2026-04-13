@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react';
-import { GradientBorder } from './components/GradientBorder';
 import { TabBar } from './components/TabBar';
 import { TerminalSession } from './components/TerminalSession';
 import { SettingsOverlay } from './components/SettingsOverlay';
@@ -9,7 +8,7 @@ import type { ContextMode, TabState } from './types';
 let tabCounter = 0;
 function createTabState(): TabState {
   const id = `tab-${++tabCounter}`;
-  return { id, ptyId: null, label: 'zsh', cwd: process.env.HOME || '/', contextMode: 'shell', trustLevel: 'ask' };
+  return { id, ptyId: null, label: 'zsh', cwd: '', contextMode: 'shell', trustLevel: 'ask' };
 }
 
 export default function App() {
@@ -21,6 +20,7 @@ export default function App() {
   const activeTab = tabs.find(t => t.id === activeTabId)!;
 
   useEffect(() => {
+    if (!window.tai?.pty) return;
     for (const tab of tabs) {
       if (tab.ptyId === null) {
         window.tai.pty.create(tab.cwd).then(ptyId => {
@@ -38,7 +38,7 @@ export default function App() {
 
   const handleCloseTab = useCallback((id: string) => {
     const tab = tabs.find(t => t.id === id);
-    if (tab?.ptyId != null) window.tai.pty.kill(tab.ptyId);
+    if (tab?.ptyId != null) window.tai?.pty?.kill(tab.ptyId);
     setTabs(prev => {
       const next = prev.filter(t => t.id !== id);
       if (id === activeTabId && next.length > 0) {
@@ -79,42 +79,41 @@ export default function App() {
   }, [tabs, activeTabId, handleNewTab, handleCloseTab]);
 
   return (
-    <GradientBorder mode={activeTab.contextMode}>
-      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-base)' }}>
-        <TabBar
-          tabs={tabs}
-          activeTabId={activeTabId}
-          onSelectTab={setActiveTabId}
-          onNewTab={handleNewTab}
-          onCloseTab={handleCloseTab}
-          onRenameTab={handleRenameTab}
-        />
-        {tabs.map(tab => (
-          <div
-            key={tab.id}
-            style={{
-              flex: 1,
-              display: tab.id === activeTabId ? 'flex' : 'none',
-              flexDirection: 'column',
-            }}
-          >
-            <TerminalSession
-              tabId={tab.id}
-              ptyId={tab.ptyId}
-              cwd={tab.cwd}
-              visible={tab.id === activeTabId}
-              trustLevel={tab.trustLevel}
-              onContextModeChange={(mode) => handleContextModeChange(tab.id, mode)}
-            />
-          </div>
-        ))}
-      </div>
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-base)', overflow: 'hidden' }}>
+      <TabBar
+        tabs={tabs}
+        activeTabId={activeTabId}
+        onSelectTab={setActiveTabId}
+        onNewTab={handleNewTab}
+        onCloseTab={handleCloseTab}
+        onRenameTab={handleRenameTab}
+      />
+      {tabs.map(tab => (
+        <div
+          key={tab.id}
+          style={{
+            flex: 1,
+            minHeight: 0,
+            display: tab.id === activeTabId ? 'flex' : 'none',
+            flexDirection: 'column',
+          }}
+        >
+          <TerminalSession
+            tabId={tab.id}
+            ptyId={tab.ptyId}
+            cwd={tab.cwd}
+            visible={tab.id === activeTabId}
+            trustLevel={tab.trustLevel}
+            onContextModeChange={(mode) => handleContextModeChange(tab.id, mode)}
+          />
+        </div>
+      ))}
       <SettingsOverlay
         visible={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         config={config}
         onSet={setSetting}
       />
-    </GradientBorder>
+    </div>
   );
 }

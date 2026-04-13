@@ -7,7 +7,7 @@ const ALT_SCREEN_ENTER = '\x1b[?1049h';
 const ALT_SCREEN_EXIT = '\x1b[?1049l';
 
 type BlockCallback = (block: SegmentedBlock) => void;
-type OutputCallback = (output: string) => void;
+type OutputCallback = (output: string, rawOutput: string) => void;
 type AltScreenCallback = (entered: boolean) => void;
 type PromptChangeCallback = (prompt: string, isRemote: boolean, sshTarget: string | null) => void;
 
@@ -17,7 +17,9 @@ export class BlockSegmenter {
   private _initialPrompt = '';
   private _startTime = 0;
   private _pendingLines: string[] = [];
+  private _pendingRawLines: string[] = [];
   private _partialLine = '';
+  private _partialRawLine = '';
   private _blockCallbacks: BlockCallback[] = [];
   private _outputCallbacks: OutputCallback[] = [];
   private _altScreenCallbacks: AltScreenCallback[] = [];
@@ -58,16 +60,25 @@ export class BlockSegmenter {
 
     const clean = stripAnsi(rawData);
     const newlineIndex = clean.lastIndexOf('\n');
+    const rawNewlineIndex = rawData.lastIndexOf('\n');
 
     if (newlineIndex === -1) {
       this._partialLine += clean;
+      this._partialRawLine += rawData;
     } else {
       const completeChunk = clean.substring(0, newlineIndex);
       const remainder = clean.substring(newlineIndex + 1);
       const newCompleteLines = (this._partialLine + completeChunk).split('\n');
       this._partialLine = remainder;
-      for (const line of newCompleteLines) {
-        this._pendingLines.push(line);
+
+      const rawCompleteChunk = rawData.substring(0, rawNewlineIndex);
+      const rawRemainder = rawData.substring(rawNewlineIndex + 1);
+      const newRawCompleteLines = (this._partialRawLine + rawCompleteChunk).split('\n');
+      this._partialRawLine = rawRemainder;
+
+      for (let i = 0; i < newCompleteLines.length; i++) {
+        this._pendingLines.push(newCompleteLines[i]);
+        this._pendingRawLines.push(newRawCompleteLines[i] ?? newCompleteLines[i]);
       }
     }
 
@@ -75,10 +86,13 @@ export class BlockSegmenter {
 
     if (this._seenFirstPrompt && this._pendingLines.length >= 1) {
       const outputLines = this._pendingLines.slice(1);
+      const rawOutputLines = this._pendingRawLines.slice(1);
       const partialSuffix = this._partialLine ? '\n' + this._partialLine : '';
+      const rawPartialSuffix = this._partialRawLine ? '\n' + this._partialRawLine : '';
       const output = outputLines.map(l => l.trimEnd()).join('\n').trim() + partialSuffix;
+      const rawOutput = rawOutputLines.join('\n').trim() + rawPartialSuffix;
       if (output) {
-        this._outputCallbacks.forEach(cb => cb(output));
+        this._outputCallbacks.forEach(cb => cb(output, rawOutput));
       }
     }
   }
@@ -92,6 +106,7 @@ export class BlockSegmenter {
       const lastLine = this._pendingLines[this._pendingLines.length - 1];
       if (PROMPT_RE.test(lastLine) && (!this._seenFirstPrompt || this._pendingLines.length > 1)) {
         this._pendingLines.pop();
+        this._pendingRawLines.pop();
         this._handlePromptDetected(lastLine);
       }
     }
@@ -104,6 +119,7 @@ export class BlockSegmenter {
       this._initialPrompt = promptText;
       this._startTime = Date.now();
       this._partialLine = '';
+      this._partialRawLine = '';
       this._firePromptChange(promptText);
       return;
     }
@@ -113,6 +129,7 @@ export class BlockSegmenter {
       this._currentPrompt = promptText;
       this._startTime = Date.now();
       this._partialLine = '';
+      this._partialRawLine = '';
       if (changed) this._firePromptChange(promptText);
       return;
     }
@@ -123,8 +140,10 @@ export class BlockSegmenter {
 
   private _finalizeBlock(newPromptText: string): void {
     const lines = this._pendingLines;
+    const rawLines = this._pendingRawLines;
     let command = '';
     let outputLines: string[] = [];
+    let rawOutputLines: string[] = [];
 
     if (lines.length > 0) {
       const firstLine = lines[0];
@@ -140,14 +159,17 @@ export class BlockSegmenter {
         }
       }
       outputLines = lines.slice(1);
+      rawOutputLines = rawLines.slice(1);
     }
 
     const output = outputLines.map(l => l.trimEnd()).join('\n').trim();
+    const rawOutput = rawOutputLines.join('\n').trim();
 
     const block: SegmentedBlock = {
       id: this._nextId(),
       command,
       output,
+      rawOutput,
       promptText: this._currentPrompt,
       startTime: this._startTime,
       duration: Date.now() - this._startTime,
@@ -159,7 +181,9 @@ export class BlockSegmenter {
     this._currentPrompt = newPromptText;
     this._startTime = Date.now();
     this._pendingLines = [];
+    this._pendingRawLines = [];
     this._partialLine = '';
+    this._partialRawLine = '';
     this._firePromptChange(newPromptText);
   }
 
@@ -189,7 +213,9 @@ export class BlockSegmenter {
     this._initialPrompt = '';
     this._startTime = 0;
     this._pendingLines = [];
+    this._pendingRawLines = [];
     this._partialLine = '';
+    this._partialRawLine = '';
     this._seenFirstPrompt = false;
     this._inAltScreen = false;
     this._blockCallbacks = [];

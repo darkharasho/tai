@@ -42,8 +42,7 @@ export function GradientBorder({ mode, children }: GradientBorderProps) {
         ref={borderRef}
         style={{
           position: 'absolute',
-          inset: -2,
-          borderRadius: 0,
+          inset: 0,
           padding: 2,
           backgroundSize: '300% 300%',
           animation: 'gradient-sweep 20s ease-in-out infinite alternate',
@@ -53,7 +52,7 @@ export function GradientBorder({ mode, children }: GradientBorderProps) {
           maskComposite: 'exclude' as any,
           pointerEvents: 'none',
           zIndex: 10,
-          opacity: 0.7,
+          opacity: 0.8,
           transition: 'background 1.5s ease',
         }}
       />
@@ -61,17 +60,17 @@ export function GradientBorder({ mode, children }: GradientBorderProps) {
         ref={glowRef}
         style={{
           position: 'absolute',
-          inset: -6,
+          inset: 0,
           backgroundSize: '300% 300%',
           animation: 'gradient-sweep 20s ease-in-out infinite alternate',
-          filter: 'blur(12px)',
+          filter: 'blur(8px)',
           pointerEvents: 'none',
           zIndex: 9,
-          opacity: 0.5,
+          opacity: 0.4,
           transition: 'background 1.5s ease',
         }}
       />
-      <div style={{ position: 'relative', zIndex: 1, height: '100%' }}>
+      <div style={{ position: 'relative', zIndex: 1, height: '100%', padding: 2, overflow: 'hidden' }}>
         {children}
       </div>
     </div>

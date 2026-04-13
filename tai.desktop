@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=tai
+Exec=tai %U
+Icon=/var/home/mstephens/Documents/GitHub/tai/public/img/tai.png
+Type=Application
+Terminal=false
+StartupWMClass=tai
+Categories=Development;Utility;

@@ -57,7 +57,7 @@ const SENTENCE_WORDS = new Set([
   'the', 'a', 'an', 'this', 'that', 'these', 'those', 'some', 'any', 'every',
   'of', 'for', 'with', 'about', 'into', 'from', 'between', 'through', 'during',
   'before', 'after', 'above', 'below', 'under', 'over',
-  'and', 'or', 'but', 'because', 'since', 'although', 'whether', 'while',
+  'and', 'or', 'but', 'because', 'since', 'although', 'whether', 'wether', 'while',
   'if', 'then', 'than', 'either', 'neither',
   'have', 'has', 'had', 'was', 'were', 'been', 'being', 'am', 'are', 'is',
   'do', 'does', 'did', 'done', 'doing',

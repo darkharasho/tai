@@ -16,6 +16,7 @@ export function useSettings() {
   const [config, setConfig] = useState<Record<string, any>>(DEFAULTS);
 
   useEffect(() => {
+    if (!window.tai?.config) return;
     window.tai.config.get().then((saved: Record<string, any>) => {
       setConfig({ ...DEFAULTS, ...saved });
     });
@@ -26,7 +27,7 @@ export function useSettings() {
   }, []);
 
   const setSetting = useCallback((key: string, value: any) => {
-    window.tai.config.set(key, value);
+    window.tai?.config?.set(key, value);
     setConfig(prev => ({ ...prev, [key]: value }));
   }, []);
 
