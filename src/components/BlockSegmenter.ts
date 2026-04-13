@@ -82,6 +82,16 @@ export class BlockSegmenter {
       }
     }
 
+    // Handle \r (carriage return) — keep only text after the last \r
+    const crIdx = this._partialLine.lastIndexOf('\r');
+    if (crIdx !== -1) {
+      this._partialLine = this._partialLine.substring(crIdx + 1);
+    }
+    const rawCrIdx = this._partialRawLine.lastIndexOf('\r');
+    if (rawCrIdx !== -1) {
+      this._partialRawLine = this._partialRawLine.substring(rawCrIdx + 1);
+    }
+
     this._checkForPrompt();
 
     if (this._seenFirstPrompt && this._pendingLines.length >= 1) {
@@ -176,7 +186,7 @@ export class BlockSegmenter {
       promptText: this._currentPrompt,
       startTime: this._startTime,
       duration: Date.now() - this._startTime,
-      isRemote: this._isRemotePrompt(newPromptText),
+      isRemote: this._isRemotePrompt(this._currentPrompt),
     };
 
     this._blockCallbacks.forEach(cb => cb(block));

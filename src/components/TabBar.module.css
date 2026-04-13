@@ -214,6 +214,22 @@
   background: rgba(255, 255, 255, 0.06);
 }
 
+/* ── Settings cog ────────────────────────────────────────── */
+.cogBtn {
+  display: flex;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+  transition: background 0.2s ease;
+}
+
+.cogBtn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
 /* ── Separator between + and window controls ─────────────── */
 .separator {
   flex: none;

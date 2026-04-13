@@ -1,6 +1,6 @@
 .block {
   position: relative;
-  font-size: 14px;
+  font-size: 13px;
   margin-bottom: 8px;
   padding: 14px 16px;
   background: var(--bg-card);
@@ -16,15 +16,35 @@
   inset: 0;
   border-radius: 10px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  border-left: 2px solid var(--accent-color);
+  border-top: 2px solid var(--accent-color);
   pointer-events: none;
+  -webkit-mask-image: var(--accent-tl-mask);
+  mask-image: var(--accent-tl-mask);
+  -webkit-mask-composite: var(--accent-tl-webkit-composite);
+  mask-composite: var(--accent-tl-composite);
+}
+
+.block::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  border-right: 2px solid var(--accent-color);
+  border-bottom: 2px solid var(--accent-color);
+  pointer-events: none;
+  opacity: var(--accent-br-opacity);
+  -webkit-mask-image: var(--accent-br-mask);
+  mask-image: var(--accent-br-mask);
+  -webkit-mask-composite: var(--accent-br-webkit-composite);
+  mask-composite: var(--accent-br-composite);
 }
 
 .active {
-  /* border-left color set via inline style */
 }
 
 .collapsed {
-  font-size: 14px;
+  font-size: 13px;
   padding: 2px 0 2px 8px;
   margin-bottom: 1px;
   opacity: 0.3;

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { TabBar } from './components/TabBar';
 import { TerminalSession } from './components/TerminalSession';
 import { SettingsOverlay } from './components/SettingsOverlay';
+import { QuickSettings } from './components/QuickSettings';
 import WhatsNewModal from './components/WhatsNewModal';
 import UpdateNotifier from './components/UpdateNotifier';
 import ConfirmModal from './components/ConfirmModal';
@@ -23,6 +24,7 @@ export default function App() {
   const whatsNew = useWhatsNew();
   const updater = useUpdateNotifier();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [quickSettingsOpen, setQuickSettingsOpen] = useState(false);
   const [tabs, setTabs] = useState<TabState[]>(() => [createTabState()]);
   const [activeTabId, setActiveTabId] = useState(tabs[0].id);
   const [closeConfirm, setCloseConfirm] = useState<{ tabId: string; process: string } | null>(null);
@@ -105,14 +107,17 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler);
   }, [tabs, activeTabId, handleNewTab, requestCloseTab]);
 
+  const colorMode = config['appearance.colorMode'] || 'high';
+
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-base)', overflow: 'hidden' }}>
+    <div data-color-mode={colorMode} style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-base)', overflow: 'hidden' }}>
       <div style={{
         height: 2,
         background: 'linear-gradient(90deg, transparent, #00a884, #8b5cf6, #ea580c, transparent)',
         backgroundSize: '200% 100%',
-        animation: 'shimmer 8s linear infinite',
+        animation: `shimmer var(--shimmer-duration) linear infinite`,
         flexShrink: 0,
+        opacity: colorMode === 'low' ? 0.75 : 1,
       }} />
       <TabBar
         tabs={tabs}
@@ -121,6 +126,7 @@ export default function App() {
         onNewTab={handleNewTab}
         onCloseTab={requestCloseTab}
         onRenameTab={handleRenameTab}
+        onOpenQuickSettings={() => setQuickSettingsOpen(true)}
       />
       {tabs.map(tab => (
         <div
@@ -148,6 +154,12 @@ export default function App() {
         onClose={() => setSettingsOpen(false)}
         config={config}
         onSet={setSetting}
+      />
+      <QuickSettings
+        visible={quickSettingsOpen}
+        onClose={() => setQuickSettingsOpen(false)}
+        colorMode={colorMode}
+        onColorModeChange={(mode) => setSetting('appearance.colorMode', mode)}
       />
       <UpdateNotifier
         state={updater.state}

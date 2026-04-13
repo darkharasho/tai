@@ -68,6 +68,22 @@ describe('BlockSegmenter', () => {
     expect(lastCall[1]).toBe(true); // isRemote
   });
 
+  it('handles carriage returns in partial lines', () => {
+    const segmenter = new BlockSegmenter();
+    const blockCb = vi.fn();
+    segmenter.onBlock(blockCb);
+
+    segmenter.feed('user@host:~$ ');
+    segmenter.feed('ls\nfile1\nfile2\n');
+    // Simulate CR before prompt (common in SSH sessions)
+    segmenter.feed('extra\ruser@host:~$ ');
+
+    expect(blockCb).toHaveBeenCalledTimes(1);
+    const block = blockCb.mock.calls[0][0];
+    expect(block.command).toBe('ls');
+    expect(block.promptText).toBe('user@host:~$ ');
+  });
+
   it('resets all state', () => {
     const segmenter = new BlockSegmenter();
     segmenter.feed('user@host:~$ ');

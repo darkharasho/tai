@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
-import { Plus, X, Minus, Square, ChevronDown } from 'lucide-react';
+import { Plus, X, Minus, Square, ChevronDown, Settings } from 'lucide-react';
 import type { TabState, ContextMode } from '@/types';
 import { TrustBadge } from './TrustBadge';
 import styles from './TabBar.module.css';
@@ -18,6 +18,7 @@ interface TabBarProps {
   onNewTab: () => void;
   onCloseTab: (id: string) => void;
   onRenameTab: (id: string, label: string) => void;
+  onOpenQuickSettings: () => void;
 }
 
 function TabItem({ tab, index, isActive, modeColor, tabCount, editingId, editValue, onSelect, onDoubleClick, onEditChange, onEditSubmit, onEditCancel, onClose }: {
@@ -84,7 +85,7 @@ function TabItem({ tab, index, isActive, modeColor, tabCount, editingId, editVal
   );
 }
 
-export function TabBar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTab, onRenameTab }: TabBarProps) {
+export function TabBar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTab, onRenameTab, onOpenQuickSettings }: TabBarProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [maxVisible, setMaxVisible] = useState(Infinity);
@@ -281,6 +282,10 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTab, o
       <div ref={fixedRef} className={styles.fixedControls}>
         <div onClick={onNewTab} className={styles.addBtn}>
           <Plus size={14} style={{ color: 'var(--text-muted)' }} />
+        </div>
+
+        <div onClick={onOpenQuickSettings} className={styles.cogBtn}>
+          <Settings size={13} style={{ color: 'var(--text-muted)' }} />
         </div>
 
         <div className={styles.separator} />

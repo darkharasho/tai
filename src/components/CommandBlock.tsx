@@ -84,7 +84,7 @@ export function CommandBlock({
     path = shortCwd;
   }
   const isRemote = block.isRemote;
-  const modeColor = isRemote ? '#f59e0b' : 'var(--color-shell)';
+  const modeColor = isRemote ? 'var(--color-agent)' : 'var(--color-shell)';
 
   if (collapsed) {
     return (
@@ -99,10 +99,7 @@ export function CommandBlock({
   }
 
   return (
-    <div
-      className={styles.block}
-      style={{ borderLeft: `2px solid ${active ? modeColor : 'transparent'}` }}
-    >
+    <div className={styles.block} style={{ '--accent-color': modeColor } as React.CSSProperties}>
       <div className={styles.promptLine} onClick={() => onToggleCollapse?.()}>
         <div className={styles.promptLeft}>
           <span className={styles.promptUser} style={{ color: modeColor }}>{user}</span>

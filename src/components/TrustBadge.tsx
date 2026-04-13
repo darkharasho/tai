@@ -38,7 +38,6 @@ export function TrustBadge({ modeColor, contextMode = 'shell', isRemote }: Trust
       }}
     >
       <Icon size={10} />
-      {label}
     </div>
   );
 }

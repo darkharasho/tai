@@ -10,6 +10,7 @@ const DEFAULTS = {
   'trust.default': 'ask',
   'appearance.gradientBorder': true,
   'appearance.animationSpeed': 20,
+  'appearance.colorMode': 'high',
 };
 
 export function useSettings() {
