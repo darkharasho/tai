@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Zap, Check, X, Loader2 } from 'lucide-react';
 import type { AgentStep } from '@/types';
+import styles from './AgentStepCard.module.css';
 
 interface AgentStepCardProps {
   id: string;
@@ -9,76 +10,54 @@ interface AgentStepCardProps {
   streaming: boolean;
 }
 
-const STATUS_ICON: Record<AgentStep['status'], React.ReactNode> = {
-  pending: <span style={{ color: '#555' }}>○</span>,
-  running: <Loader2 size={12} color="#fb923c" style={{ animation: 'spin 0.8s linear infinite' }} />,
-  complete: <Check size={12} color="#00ff88" />,
-  failed: <X size={12} color="#ef4444" />,
+const STATUS_GLOW: Record<AgentStep['status'], string | undefined> = {
+  pending:  undefined,
+  running:  '0 0 6px rgba(251, 146, 60, 0.7)',
+  complete: '0 0 6px rgba(0, 255, 136, 0.6)',
+  failed:   '0 0 6px rgba(239, 68, 68, 0.7)',
 };
+
+function StatusIcon({ status }: { status: AgentStep['status'] }) {
+  const glow = STATUS_GLOW[status];
+  const iconStyle = glow ? { boxShadow: glow, borderRadius: '50%' } : undefined;
+
+  if (status === 'pending')  return <span style={{ color: '#555' }}>○</span>;
+  if (status === 'running')  return <Loader2  size={12} color="#fb923c" style={{ animation: 'spin 0.8s linear infinite', ...iconStyle }} />;
+  if (status === 'complete') return <Check    size={12} color="#00ff88" style={iconStyle} />;
+  if (status === 'failed')   return <X        size={12} color="#ef4444" style={iconStyle} />;
+  return null;
+}
 
 export function AgentStepCard({ question, steps, streaming }: AgentStepCardProps) {
   const [collapsed, setCollapsed] = useState(false);
   const completedCount = steps.filter(s => s.status === 'complete').length;
 
   return (
-    <div style={{
-      margin: '8px 0',
-      borderLeft: '2px solid rgba(251, 146, 60, 0.4)',
-      borderRadius: '0 8px 8px 0',
-      background: 'rgba(251, 146, 60, 0.04)',
-      overflow: 'hidden',
-      animation: 'fadeIn 0.2s ease',
-    }}>
-      <div
-        onClick={() => setCollapsed(!collapsed)}
-        style={{
-          padding: '10px 14px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          cursor: 'pointer',
-        }}
-      >
-        {collapsed ? <ChevronRight size={14} color="#fb923c" /> : <ChevronDown size={14} color="#fb923c" />}
-        <Zap size={14} color="#fb923c" />
-        <span style={{ color: '#e0e0e0', fontSize: 12 }}>{question}</span>
-        <span style={{ color: '#888', fontSize: 11, marginLeft: 'auto' }}>
-          {completedCount}/{steps.length}
-        </span>
-        {streaming && (
-          <span style={{
-            width: 6, height: 6, borderRadius: '50%',
-            background: '#fb923c',
-            animation: 'pulse 1.5s infinite',
-          }} />
-        )}
+    <div className={styles.card}>
+      <div className={styles.header} onClick={() => setCollapsed(!collapsed)}>
+        {collapsed
+          ? <ChevronRight size={14} color="var(--color-agent)" />
+          : <ChevronDown  size={14} color="var(--color-agent)" />
+        }
+        <Zap size={14} color="var(--color-agent)" />
+        <span className={styles.question}>{question}</span>
+        <span className={styles.progress}>{completedCount}/{steps.length}</span>
+        {streaming && <span className={styles.streamingDot} />}
       </div>
 
       {!collapsed && (
-        <div style={{ padding: '0 14px 12px' }}>
+        <div className={styles.steps}>
           {steps.map((step, i) => (
-            <div key={i} style={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: 8,
-              padding: '4px 0',
-            }}>
-              <span style={{ marginTop: 2 }}>{STATUS_ICON[step.status]}</span>
-              <div style={{ flex: 1 }}>
-                <span style={{
-                  color: step.status === 'complete' ? '#666' : step.status === 'running' ? '#e0e0e0' : '#555',
-                  fontSize: 12,
-                  textDecoration: step.status === 'complete' ? 'line-through' : 'none',
-                }}>
+            <div key={i} className={styles.step}>
+              <span className={styles.stepIconWrap}>
+                <StatusIcon status={step.status} />
+              </span>
+              <div className={styles.stepBody}>
+                <span className={`${styles.stepLabel} ${styles[`stepLabel--${step.status}`]}`}>
                   {step.description}
                 </span>
                 {step.status === 'running' && step.output && (
-                  <div style={{
-                    marginTop: 4, padding: '6px 8px',
-                    background: 'rgba(0,0,0,0.3)', borderRadius: 4,
-                    fontSize: 11, color: '#888', maxHeight: 120, overflow: 'auto',
-                    fontFamily: 'var(--font-mono)',
-                  }}>
+                  <div className={styles.stepOutput}>
                     {step.output}
                   </div>
                 )}

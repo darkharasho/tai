@@ -1,0 +1,121 @@
+/* Card treatment */
+.card {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: 10px;
+  border-left: 2px solid var(--color-agent);
+  box-shadow: var(--shadow-card);
+  margin-bottom: 8px;
+  overflow: hidden;
+  animation: fadeIn 0.2s ease;
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  pointer-events: none;
+  z-index: 1;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Header row */
+.header {
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  position: relative;
+  z-index: 2;
+}
+
+.question {
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+
+.progress {
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  margin-left: auto;
+}
+
+.streamingDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-agent);
+  animation: agentPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes agentPulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.25; }
+}
+
+/* Steps list */
+.steps {
+  padding: 0 14px 12px;
+  position: relative;
+  z-index: 2;
+}
+
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.stepIconWrap {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.stepBody {
+  flex: 1;
+}
+
+.stepLabel {
+  font-family: var(--font-sans);
+  font-size: 12px;
+}
+
+.stepLabel--complete {
+  color: #666;
+  text-decoration: line-through;
+}
+
+.stepLabel--running {
+  color: var(--text-primary);
+}
+
+.stepLabel--pending {
+  color: #555;
+}
+
+.stepLabel--failed {
+  color: #ef4444;
+}
+
+.stepOutput {
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  max-height: 120px;
+  overflow: auto;
+}
