@@ -1,0 +1,186 @@
+.wrapper {
+  padding: 8px 14px 10px;
+  flex-shrink: 0;
+}
+
+.box {
+  position: relative;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #181c22, #161a1f);
+  overflow: visible;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.box::before {
+  content: '';
+  position: absolute;
+  inset: -1.5px;
+  border-radius: 11.5px;
+  padding: 1.5px;
+  background: linear-gradient(135deg, var(--color-shell) 0%, #007a60 30%, #005a47 50%, #007a60 70%, var(--color-shell) 100%);
+  background-size: 300% 300%;
+  animation: gradientSweep 20s ease-in-out infinite alternate;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.5;
+  transition: opacity 0.2s ease;
+}
+
+.box:focus-within::before {
+  opacity: 0.8;
+}
+
+.box::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.boxAi::before {
+  background: linear-gradient(135deg, var(--color-ai) 0%, #7048b8 30%, #5a3494 50%, #7048b8 70%, var(--color-ai) 100%);
+  background-size: 300% 300%;
+  animation: gradientSweep 20s ease-in-out infinite alternate;
+}
+
+.boxRemote::before {
+  background: linear-gradient(135deg, var(--color-agent) 0%, #c44d0a 30%, #8a3808 50%, #c44d0a 70%, var(--color-agent) 100%);
+  background-size: 300% 300%;
+  animation: gradientSweep 20s ease-in-out infinite alternate;
+}
+
+.row {
+  position: relative;
+  z-index: 2;
+  padding: 11px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.user {
+  color: var(--color-shell);
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.path {
+  color: var(--color-info);
+  flex-shrink: 0;
+  font-size: 13px;
+}
+
+.dollar {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.promptAi {
+  color: var(--color-ai);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.fieldWrap {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+}
+
+.ghost {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  color: rgba(255, 255, 255, 0.15);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  white-space: pre;
+  overflow: hidden;
+}
+
+.field {
+  position: relative;
+  width: 100%;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  min-width: 0;
+}
+
+.field::placeholder {
+  color: var(--text-muted);
+}
+
+.hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  margin-left: auto;
+  backdrop-filter: blur(4px);
+}
+
+.kbd {
+  color: var(--text-muted);
+  font-size: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(12, 15, 17, 0.6);
+  font-family: var(--font-sans);
+}
+
+.hintLabel {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+}
+
+.tabPopup {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-card);
+  border-radius: 5px;
+  padding: 4px 0;
+  margin-bottom: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+}
+
+.tabItem {
+  padding: 3px 10px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  border-radius: 3px;
+  margin: 1px 3px;
+}
+
+.tabItemActive {
+  background: var(--color-shell);
+  color: var(--bg-base);
+}
+
+@keyframes gradientSweep {
+  0% { background-position: 0% 0%; }
+  100% { background-position: 100% 100%; }
+}

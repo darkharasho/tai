@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useImperativeHandle, forwardRef, useMemo } from 'react';
 import { predictCommand } from '@/hooks/useGhostText';
 import { looksLikeShellCommand } from '@/utils/commandDetector';
+import styles from './TerminalInput.module.css';
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent);
 
@@ -248,39 +249,39 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
   }
 
   return (
-    <div className="tn-input-wrapper">
+    <div className={styles.wrapper}>
       {tabCompletions.length > 1 && (
-        <div className="tn-tab-popup">
+        <div className={styles.tabPopup}>
           {tabCompletions.map((c, i) => (
-            <div key={c} className={`tn-tab-item ${i === tabIndex ? 'tn-tab-active' : ''}`}>
+            <div key={c} className={`${styles.tabItem} ${i === tabIndex ? styles.tabItemActive : ''}`}>
               {c}
             </div>
           ))}
         </div>
       )}
-      <div className={`tn-input-box ${isAI ? 'tn-input-box-ai' : ''} ${promptIsRemote ? 'tn-input-box-remote' : ''}`}>
-        <div className="tn-input-row">
+      <div className={`${styles.box} ${isAI ? styles.boxAi : ''} ${promptIsRemote ? styles.boxRemote : ''}`}>
+        <div className={styles.row}>
           {isAI ? (
             <>
-              <span className="tn-input-prompt-ai">{'\u2726'}</span>
-              <span className="tn-input-path">{promptPath}</span>
+              <span className={styles.promptAi}>{'\u2726'}</span>
+              <span className={styles.path}>{promptPath}</span>
             </>
           ) : (
             <>
-              {userName && <span className="tn-input-user" style={promptIsRemote ? { color: '#d4770c' } : undefined}>{userName}</span>}
-              <span className="tn-input-path">{promptPath}</span>
-              <span className="tn-input-dollar">$</span>
+              {userName && <span className={styles.user} style={promptIsRemote ? { color: 'var(--color-agent)' } : undefined}>{userName}</span>}
+              <span className={styles.path}>{promptPath}</span>
+              <span className={styles.dollar}>$</span>
             </>
           )}
-          <div className="tn-input-field-wrap">
+          <div className={styles.fieldWrap}>
             {prediction && (
-              <span className="tn-input-ghost" aria-hidden="true">
+              <span className={styles.ghost} aria-hidden="true">
                 <span style={{ visibility: 'hidden' }}>{value}</span>{prediction.slice(value.length)}
               </span>
             )}
             <input
               ref={inputRef}
-              className="tn-input-field"
+              className={styles.field}
               value={value}
               onChange={handleChange}
               onKeyDown={handleKeyDown}
@@ -290,165 +291,12 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
               autoComplete="off"
             />
           </div>
-          <div className="tn-input-hint">
-            <span className="tn-input-kbd">Shift+Tab</span>
-            <span className="tn-input-hint-label">{isAI ? 'Shell' : 'AI'}</span>
+          <div className={styles.hint}>
+            <span className={styles.kbd}>Shift+Tab</span>
+            <span className={styles.hintLabel}>{isAI ? 'Shell' : 'AI'}</span>
           </div>
         </div>
       </div>
-
-      <style>{`
-        .tn-input-wrapper {
-          padding: 8px 14px 10px;
-          flex-shrink: 0;
-        }
-        .tn-input-box {
-          position: relative;
-          border-radius: 5px;
-          background: var(--bg-input);
-          overflow: visible;
-        }
-        .tn-input-box::before {
-          content: '';
-          position: absolute;
-          inset: -1.5px;
-          border-radius: 6.5px;
-          padding: 1.5px;
-          background: linear-gradient(135deg, var(--color-shell) 0%, #007a60 30%, #005a47 50%, #007a60 70%, var(--color-shell) 100%);
-          background-size: 300% 300%;
-          animation: tn-gradient-sweep 20s ease-in-out infinite alternate;
-          -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-          -webkit-mask-composite: xor;
-          mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-          mask-composite: exclude;
-          pointer-events: none;
-          z-index: 0;
-          opacity: 0.5;
-          transition: opacity 0.2s ease;
-        }
-        .tn-input-box:focus-within::before {
-          opacity: 1;
-        }
-        .tn-input-box-ai::before {
-          background: linear-gradient(135deg, var(--color-ai) 0%, #8b4dd4 30%, #6b35b0 50%, #8b4dd4 70%, var(--color-ai) 100%);
-          background-size: 300% 300%;
-          animation: tn-gradient-sweep 20s ease-in-out infinite alternate;
-        }
-        .tn-input-box-remote::before {
-          background: linear-gradient(135deg, var(--color-agent) 0%, #b5650a 30%, #8a4d08 50%, #b5650a 70%, var(--color-agent) 100%);
-          background-size: 300% 300%;
-          animation: tn-gradient-sweep 20s ease-in-out infinite alternate;
-        }
-        .tn-input-row {
-          position: relative;
-          z-index: 1;
-          padding: 8px 12px;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-family: var(--font-mono);
-          font-size: 13px;
-        }
-        .tn-input-user {
-          color: var(--color-shell);
-          flex-shrink: 0;
-          font-size: 13px;
-          font-weight: 500;
-        }
-        .tn-input-path {
-          color: var(--color-info);
-          flex-shrink: 0;
-          font-size: 13px;
-        }
-        .tn-input-dollar {
-          color: var(--text-muted);
-          flex-shrink: 0;
-        }
-        .tn-input-prompt-ai {
-          color: var(--color-ai);
-          font-size: 14px;
-          flex-shrink: 0;
-        }
-        .tn-input-field-wrap {
-          flex: 1;
-          position: relative;
-          min-width: 0;
-        }
-        .tn-input-ghost {
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          pointer-events: none;
-          color: rgba(255, 255, 255, 0.15);
-          font-family: var(--font-mono);
-          font-size: 13px;
-          white-space: pre;
-          overflow: hidden;
-        }
-        .tn-input-field {
-          position: relative;
-          width: 100%;
-          background: none;
-          border: none;
-          outline: none;
-          color: var(--text-primary);
-          font-family: var(--font-mono);
-          font-size: 13px;
-          min-width: 0;
-        }
-        .tn-input-field::placeholder {
-          color: var(--text-muted);
-        }
-        .tn-input-hint {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          flex-shrink: 0;
-          margin-left: auto;
-        }
-        .tn-input-kbd {
-          color: var(--text-muted);
-          font-size: 10px;
-          border: 1px solid var(--border-subtle);
-          padding: 1px 5px;
-          border-radius: 3px;
-          background: var(--bg-base);
-        }
-        .tn-input-hint-label {
-          color: var(--text-muted);
-          font-size: 10px;
-        }
-        .tn-tab-popup {
-          background: var(--bg-elevated);
-          border: 1px solid var(--border-subtle);
-          border-radius: 5px;
-          padding: 4px 0;
-          margin-bottom: 4px;
-          max-height: 200px;
-          overflow-y: auto;
-          font-family: var(--font-mono);
-          font-size: 12px;
-          display: flex;
-          flex-wrap: wrap;
-          gap: 0;
-        }
-        .tn-tab-item {
-          padding: 3px 10px;
-          color: var(--text-secondary);
-          white-space: nowrap;
-          border-radius: 3px;
-          margin: 1px 3px;
-        }
-        .tn-tab-active {
-          background: var(--color-shell);
-          color: var(--bg-base);
-        }
-        @keyframes tn-gradient-sweep {
-          0% { background-position: 0% 0%; }
-          100% { background-position: 100% 100%; }
-        }
-      `}</style>
     </div>
   );
 });
