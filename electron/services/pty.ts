@@ -109,6 +109,18 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
         return fs.readlinkSync(`/proc/${term.pid}/cwd`);
       } catch {}
     }
+    if (process.platform === 'darwin') {
+      return new Promise<string | null>((resolve) => {
+        execFile('lsof', ['-a', '-d', 'cwd', '-p', String(term.pid), '-Fn'],
+          { timeout: 2000 },
+          (_err, stdout) => {
+            if (!stdout) { resolve(null); return; }
+            const nLine = stdout.split('\n').find(l => l.startsWith('n') && l.length > 1);
+            resolve(nLine ? nLine.slice(1) : null);
+          }
+        );
+      });
+    }
     return null;
   });
 

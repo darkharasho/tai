@@ -264,9 +264,10 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
     const isRemoteExec = promptInfo?.isRemote && remoteExecMode === 'auto';
 
     let fullPrompt = prompt;
+    const lines: string[] = [];
     if (!preambleSentRef.current) {
       preambleSentRef.current = true;
-      const lines = [
+      lines.push(
         'You are a general-purpose AI terminal assistant.',
         '',
         'Your default mode is as a system-wide helper:',
@@ -281,8 +282,7 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
         '- Be concise and direct. Lead with the answer or action.',
         '- When showing commands, use ```bash code blocks.',
         '- Skip pleasantries and unnecessary explanation.',
-        `- Working directory: ${cwd}`,
-      ];
+      );
 
       if (isRemoteExec && promptInfo?.sshTarget) {
         lines.push(
@@ -294,9 +294,10 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
           'The Glob tool uses find on the remote host.',
         );
       }
-
-      const preamble = lines.join('\n');
-      fullPrompt = `<system>\n${preamble}\n</system>\n\n${prompt}`;
+    }
+    lines.push(`Working directory: ${cwd}`);
+    if (lines.length > 0) {
+      fullPrompt = `<system>\n${lines.join('\n')}\n</system>\n\n${prompt}`;
     }
 
     const cleanup = providerRef.current.onMessage((msg: any) => {
