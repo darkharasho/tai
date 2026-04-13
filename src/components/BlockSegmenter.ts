@@ -15,6 +15,7 @@ export class BlockSegmenter {
   private _idCounter = 0;
   private _currentPrompt = '';
   private _initialPrompt = '';
+  private _localHostname = '';
   private _startTime = 0;
   private _pendingLines: string[] = [];
   private _pendingRawLines: string[] = [];
@@ -38,6 +39,13 @@ export class BlockSegmenter {
 
   get currentPrompt(): string { return this._currentPrompt; }
   get seenFirstPrompt(): boolean { return this._seenFirstPrompt; }
+
+  setLocalHostname(hostname: string): void {
+    this._localHostname = hostname.toLowerCase();
+    if (this._currentPrompt) {
+      this._firePromptChange(this._currentPrompt);
+    }
+  }
 
   bootstrapPrompt(): void {
     if (!this._seenFirstPrompt) {
@@ -206,11 +214,18 @@ export class BlockSegmenter {
   }
 
   private _isRemotePrompt(prompt: string): boolean {
-    const initId = this._extractIdentity(this._initialPrompt);
     const newId = this._extractIdentity(prompt);
+    if (!newId) return false;
+
+    if (this._localHostname) {
+      const hostPart = newId.split('@')[1]?.toLowerCase() ?? '';
+      return hostPart !== this._localHostname;
+    }
+
+    const initId = this._extractIdentity(this._initialPrompt);
     return this._initialPrompt !== '' && (
-      (initId !== null && newId !== null && newId !== initId) ||
-      (initId === null && newId !== null && prompt !== this._initialPrompt)
+      (initId !== null && newId !== initId) ||
+      (initId === null && prompt !== this._initialPrompt)
     );
   }
 
@@ -224,6 +239,7 @@ export class BlockSegmenter {
   reset(): void {
     this._currentPrompt = '';
     this._initialPrompt = '';
+    this._localHostname = '';
     this._startTime = 0;
     this._pendingLines = [];
     this._pendingRawLines = [];

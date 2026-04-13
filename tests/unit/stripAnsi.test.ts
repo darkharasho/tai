@@ -14,8 +14,12 @@ describe('stripAnsi', () => {
     expect(stripAnsi('\x1b[2Jhello\x1b[H')).toBe('hello');
   });
 
-  it('strips carriage returns', () => {
+  it('strips carriage returns before newlines', () => {
     expect(stripAnsi('line1\r\nline2')).toBe('line1\nline2');
+  });
+
+  it('preserves bare carriage returns for line overwriting', () => {
+    expect(stripAnsi('old text\rnew prompt$ ')).toBe('old text\rnew prompt$ ');
   });
 
   it('preserves plain text', () => {

@@ -84,6 +84,46 @@ describe('BlockSegmenter', () => {
     expect(block.promptText).toBe('user@host:~$ ');
   });
 
+  it('detects remote when already SSHed at session start via local hostname', () => {
+    const segmenter = new BlockSegmenter();
+    segmenter.setLocalHostname('bazziie');
+    const promptCb = vi.fn();
+    const blockCb = vi.fn();
+    segmenter.onPromptChange(promptCb);
+    segmenter.onBlock(blockCb);
+
+    segmenter.feed('user@piclock:~$ ');
+    expect(promptCb).toHaveBeenCalledWith('user@piclock:~$ ', true, 'user@piclock');
+
+    segmenter.feed('hostname\npiclock\n');
+    segmenter.feed('user@piclock:~$ ');
+    expect(blockCb).toHaveBeenCalledTimes(1);
+    expect(blockCb.mock.calls[0][0].isRemote).toBe(true);
+  });
+
+  it('cleans junk from prompt when bare CR precedes it', () => {
+    const segmenter = new BlockSegmenter();
+    const promptCb = vi.fn();
+    segmenter.onPromptChange(promptCb);
+
+    segmenter.feed('user@host:~$ ');
+    segmenter.feed('hostname\noutput\n');
+    segmenter.feed('junk\ruser@host:~$ ');
+
+    const lastCall = promptCb.mock.calls[promptCb.mock.calls.length - 1];
+    expect(lastCall[0]).toBe('user@host:~$ ');
+  });
+
+  it('does not flag local prompt as remote when hostname matches', () => {
+    const segmenter = new BlockSegmenter();
+    segmenter.setLocalHostname('machine');
+    const promptCb = vi.fn();
+    segmenter.onPromptChange(promptCb);
+
+    segmenter.feed('local@machine:~$ ');
+    expect(promptCb).toHaveBeenCalledWith('local@machine:~$ ', false, null);
+  });
+
   it('resets all state', () => {
     const segmenter = new BlockSegmenter();
     segmenter.feed('user@host:~$ ');

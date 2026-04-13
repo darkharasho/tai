@@ -58,6 +58,12 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
   }, []);
 
   useEffect(() => {
+    window.tai?.system?.getHostname().then((name: string) => {
+      if (name) segmenterRef.current.setLocalHostname(name);
+    });
+  }, []);
+
+  useEffect(() => {
     if (visible) {
       requestAnimationFrame(() => inputRef.current?.focus());
     }

@@ -26,6 +26,9 @@ declare global {
         onMessage: (key: string, callback: (msg: any) => void) => () => void;
         onError: (key: string, callback: (error: string) => void) => () => void;
       };
+      system: {
+        getHostname: () => Promise<string>;
+      };
       config: {
         get: () => Promise<Record<string, any>>;
         set: (key: string, value: any) => Promise<Record<string, any>>;

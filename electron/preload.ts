@@ -44,6 +44,9 @@ contextBridge.exposeInMainWorld('tai', {
       return () => ipcRenderer.removeListener('ai:error', listener);
     },
   },
+  system: {
+    getHostname: () => ipcRenderer.invoke('system:hostname'),
+  },
   config: {
     get: () => ipcRenderer.invoke('config:get'),
     set: (key: string, value: any) => ipcRenderer.invoke('config:set', key, value),

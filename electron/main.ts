@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import { setupPtyService, destroyAllTerminals } from './services/pty';
 import { setupClaudeService, destroyAllClaude } from './services/claude';
 import { registerUpdater } from './services/updater';
@@ -116,6 +117,8 @@ function writeConfig(config: Record<string, any>) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 }
+
+ipcMain.handle('system:hostname', () => os.hostname());
 
 ipcMain.handle('config:get', () => readConfig());
 ipcMain.handle('config:set', (_event, key: string, value: any) => {
