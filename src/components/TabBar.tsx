@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { Plus, X, Minus, Square, ChevronDown, Settings } from 'lucide-react';
+
+const isMac = window.tai?.system?.platform === 'darwin';
 import type { TabState, ContextMode } from '@/types';
 import { TrustBadge } from './TrustBadge';
 import styles from './TabBar.module.css';
@@ -173,7 +175,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTab, o
     : null;
 
   return (
-    <div ref={barRef} className={styles.bar}>
+    <div ref={barRef} className={`${styles.bar}${isMac ? ` ${styles.barMac}` : ''}`}>
       <div
         ref={tabsContainerRef}
         className={styles.tabsContainer}
@@ -288,28 +290,31 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTab, o
           <Settings size={13} style={{ color: 'var(--text-muted)' }} />
         </div>
 
-        <div className={styles.separator} />
-
-        <div className={styles.windowControls}>
-          <button
-            onClick={() => window.tai?.window?.minimize()}
-            className={styles.windowBtn}
-          >
-            <Minus size={14} />
-          </button>
-          <button
-            onClick={() => window.tai?.window?.maximize()}
-            className={styles.windowBtn}
-          >
-            <Square size={12} />
-          </button>
-          <button
-            onClick={() => window.tai?.window?.close()}
-            className={styles.windowBtn}
-          >
-            <X size={14} />
-          </button>
-        </div>
+        {!isMac && (
+          <>
+            <div className={styles.separator} />
+            <div className={styles.windowControls}>
+              <button
+                onClick={() => window.tai?.window?.minimize()}
+                className={styles.windowBtn}
+              >
+                <Minus size={14} />
+              </button>
+              <button
+                onClick={() => window.tai?.window?.maximize()}
+                className={styles.windowBtn}
+              >
+                <Square size={12} />
+              </button>
+              <button
+                onClick={() => window.tai?.window?.close()}
+                className={styles.windowBtn}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

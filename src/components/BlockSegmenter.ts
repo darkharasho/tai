@@ -228,7 +228,10 @@ export class BlockSegmenter {
 
     if (this._localHostname) {
       const hostPart = newId.split('@')[1]?.toLowerCase() ?? '';
-      return hostPart !== this._localHostname;
+      // os.hostname() on macOS often returns FQDN (e.g. "host.local")
+      // while shell prompts show the short name (e.g. "host")
+      const localShort = this._localHostname.replace(/\.local$/, '');
+      return hostPart !== this._localHostname && hostPart !== localShort;
     }
 
     const initId = this._extractIdentity(this._initialPrompt);

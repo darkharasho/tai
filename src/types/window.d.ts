@@ -29,6 +29,7 @@ declare global {
       };
       system: {
         getHostname: () => Promise<string>;
+        platform: string;
       };
       config: {
         get: () => Promise<Record<string, any>>;

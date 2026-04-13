@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld('tai', {
   },
   system: {
     getHostname: () => ipcRenderer.invoke('system:hostname'),
+    platform: process.platform,
   },
   config: {
     get: () => ipcRenderer.invoke('config:get'),

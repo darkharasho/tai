@@ -19,6 +19,11 @@
   position: relative;
 }
 
+/* ── macOS native traffic lights padding ─────────────────── */
+.barMac {
+  padding-left: 78px;
+}
+
 /* ── Visible tabs container ──────────────────────────────── */
 .tabsContainer {
   display: flex;

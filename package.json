@@ -43,7 +43,7 @@
         "zip"
       ],
       "category": "public.app-category.developer-tools",
-      "icon": "public/img/tai.png",
+      "icon": "public/img/tai.icns",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",

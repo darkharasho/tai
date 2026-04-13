@@ -52,10 +52,13 @@ function createWindow() {
     y: state.y,
     minWidth: 600,
     minHeight: 400,
-    frame: false,
+    ...(process.platform === 'darwin'
+      ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 12, y: 14 } }
+      : { frame: false }),
     transparent: false,
     backgroundColor: '#0c0f11',
-    icon: path.join(__dirname, '..', process.env.VITE_DEV_SERVER_URL ? 'public' : 'dist', 'img', 'tai.png'),
+    icon: path.join(__dirname, '..', process.env.VITE_DEV_SERVER_URL ? 'public' : 'dist', 'img',
+      process.platform === 'darwin' ? 'tai.icns' : 'tai.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
