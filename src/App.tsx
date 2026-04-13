@@ -3,8 +3,10 @@ import { TabBar } from './components/TabBar';
 import { TerminalSession } from './components/TerminalSession';
 import { SettingsOverlay } from './components/SettingsOverlay';
 import WhatsNewModal from './components/WhatsNewModal';
+import UpdateNotifier from './components/UpdateNotifier';
 import { useSettings } from './hooks/useSettings';
 import { useWhatsNew } from './hooks/useWhatsNew';
+import { useUpdateNotifier } from './hooks/useUpdateNotifier';
 import type { ContextMode, TabState } from './types';
 
 let tabCounter = 0;
@@ -16,6 +18,7 @@ function createTabState(): TabState {
 export default function App() {
   const { config, setSetting } = useSettings();
   const whatsNew = useWhatsNew();
+  const updater = useUpdateNotifier();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tabs, setTabs] = useState<TabState[]>(() => [createTabState()]);
   const [activeTabId, setActiveTabId] = useState(tabs[0].id);
@@ -121,6 +124,12 @@ export default function App() {
         onClose={() => setSettingsOpen(false)}
         config={config}
         onSet={setSetting}
+      />
+      <UpdateNotifier
+        state={updater.state}
+        dismissed={updater.dismissed}
+        onInstall={updater.install}
+        onDismiss={updater.dismiss}
       />
       <WhatsNewModal
         isOpen={whatsNew.isOpen}
