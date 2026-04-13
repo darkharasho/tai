@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Settings, X, ChevronDown, Check } from 'lucide-react';
+import { Settings, X, ChevronDown, Check, RefreshCw } from 'lucide-react';
 import styles from './QuickSettings.module.css';
 
 interface QuickSettingsProps {
@@ -66,6 +66,30 @@ function CustomDropdown({ value, options, onChange }: {
 
 export function QuickSettings({ visible, onClose, colorMode, onColorModeChange }: QuickSettingsProps) {
   const [category, setCategory] = useState<Category>('general');
+  const [version, setVersion] = useState('');
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'up-to-date' | 'available' | 'error'>('idle');
+
+  useEffect(() => {
+    if (visible) {
+      window.tai?.update?.getVersion().then(v => setVersion(v));
+      setUpdateStatus('idle');
+    }
+  }, [visible]);
+
+  const handleCheckUpdate = () => {
+    setUpdateStatus('checking');
+    const cleanups: (() => void)[] = [];
+    cleanups.push(window.tai?.update?.onStatus((status: string) => {
+      if (status === 'up-to-date') { setUpdateStatus('up-to-date'); cleanups.forEach(c => c()); }
+    }));
+    cleanups.push(window.tai?.update?.onAvailable(() => {
+      setUpdateStatus('available'); cleanups.forEach(c => c());
+    }));
+    cleanups.push(window.tai?.update?.onError(() => {
+      setUpdateStatus('error'); cleanups.forEach(c => c());
+    }));
+    window.tai?.update?.check();
+  };
 
   if (!visible) return null;
 
@@ -97,14 +121,35 @@ export function QuickSettings({ visible, onClose, colorMode, onColorModeChange }
 
           <div className={styles.content}>
             {category === 'general' && (
-              <div className={styles.settingRow}>
-                <span className={styles.settingLabel}>Color Mode</span>
-                <CustomDropdown
-                  value={colorMode}
-                  options={COLOR_MODE_OPTIONS}
-                  onChange={onColorModeChange}
-                />
-              </div>
+              <>
+                <div className={styles.settingRow}>
+                  <span className={styles.settingLabel}>Color Mode</span>
+                  <CustomDropdown
+                    value={colorMode}
+                    options={COLOR_MODE_OPTIONS}
+                    onChange={onColorModeChange}
+                  />
+                </div>
+
+                <div className={styles.settingRow}>
+                  <span className={styles.settingLabel}>Version</span>
+                  <div className={styles.versionRow}>
+                    <span className={styles.versionValue}>{version || '…'}</span>
+                    <button
+                      className={styles.updateBtn}
+                      onClick={handleCheckUpdate}
+                      disabled={updateStatus === 'checking'}
+                    >
+                      <RefreshCw size={11} className={updateStatus === 'checking' ? styles.spinning : ''} />
+                      {updateStatus === 'idle' && 'Check for Updates'}
+                      {updateStatus === 'checking' && 'Checking…'}
+                      {updateStatus === 'up-to-date' && 'Up to Date'}
+                      {updateStatus === 'available' && 'Update Available!'}
+                      {updateStatus === 'error' && 'Check Failed'}
+                    </button>
+                  </div>
+                </div>
+              </>
             )}
           </div>
         </div>
