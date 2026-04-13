@@ -43,8 +43,8 @@ export class RemoteToolProxy {
   private async _execRead(tabId: string, input: Record<string, any>): Promise<ToolResult> {
     const filePath = this._escapePath(input.file_path as string);
     let cmd = `cat -n ${filePath}`;
-    if (input.offset) cmd += ` | tail -n +${input.offset}`;
-    if (input.limit) cmd += ` | head -n ${input.limit}`;
+    if (input.offset != null) cmd += ` | tail -n +${input.offset}`;
+    if (input.limit != null) cmd += ` | head -n ${input.limit}`;
     const { output, exitCode } = await this.ssh.execute(tabId, cmd, COMMAND_TIMEOUT);
     return { output, isError: exitCode !== 0 };
   }
@@ -53,7 +53,7 @@ export class RemoteToolProxy {
     const filePath = this._escapePath(input.file_path as string);
     const content = input.content as string;
     const delimiter = `TAI_EOF_${Math.random().toString(36).slice(2, 10)}`;
-    const cmd = `mkdir -p $(dirname ${filePath}) && cat << '${delimiter}' > ${filePath}\n${content}\n${delimiter}`;
+    const cmd = `mkdir -p "$(dirname ${filePath})" && cat << '${delimiter}' > ${filePath}\n${content}\n${delimiter}`;
     const { output, exitCode } = await this.ssh.execute(tabId, cmd, COMMAND_TIMEOUT);
     return { output: output || 'File written successfully.', isError: exitCode !== 0 };
   }
