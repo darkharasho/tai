@@ -32,7 +32,7 @@ function loadWindowState(): { x?: number; y?: number; width: number; height: num
 }
 
 function saveWindowState() {
-  if (!mainWindow) return;
+  if (!mainWindow || mainWindow.isDestroyed()) return;
   const maximized = mainWindow.isMaximized();
   const bounds = maximized ? mainWindow.getNormalBounds() : mainWindow.getBounds();
   const state = { ...bounds, maximized };
@@ -128,6 +128,6 @@ ipcMain.handle('config:set', (_event, key: string, value: any) => {
   const config = readConfig();
   config[key] = value;
   writeConfig(config);
-  mainWindow?.webContents.send('config:changed', config);
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('config:changed', config);
   return config;
 });
