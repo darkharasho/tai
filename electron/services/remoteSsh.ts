@@ -22,7 +22,13 @@ export class RemoteSshManager {
       'bash', '--norc', '--noprofile',
     ], {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: process.env,
+      env: {
+        HOME: process.env.HOME,
+        PATH: process.env.PATH,
+        SSH_AUTH_SOCK: process.env.SSH_AUTH_SOCK,
+        SSH_AGENT_PID: process.env.SSH_AGENT_PID,
+        TERM: process.env.TERM,
+      },
     });
 
     const session: SshSession = {
@@ -40,21 +46,16 @@ export class RemoteSshManager {
       this.sessions.delete(tabId);
     });
 
+    await this._sendAndWaitReady(tabId, session);
+
+    proc.stderr!.removeAllListeners('data');
     proc.stderr!.on('data', (chunk: Buffer) => {
-      const text = chunk.toString();
       if (session.pendingReject) {
-        session.pendingReject(new Error(text));
+        session.pendingReject(new Error(chunk.toString()));
         session.pendingResolve = null;
         session.pendingReject = null;
       }
     });
-
-    proc.stdout!.on('data', (chunk: Buffer) => {
-      session.buffer += chunk.toString();
-      this._checkFence(session);
-    });
-
-    await this._sendAndWaitReady(tabId, session);
   }
 
   isConnected(tabId: string): boolean {
@@ -68,6 +69,10 @@ export class RemoteSshManager {
       throw new Error('No SSH connection for this tab');
     }
 
+    if (session.pendingResolve) {
+      throw new Error('A command is already in progress for this tab');
+    }
+
     const fenceId = `tai_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     session.fenceId = fenceId;
     session.buffer = '';
@@ -76,7 +81,10 @@ export class RemoteSshManager {
     session.process.stdin!.write(fencedCommand);
 
     return new Promise((resolve, reject) => {
+      let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
       session.pendingResolve = (raw: string) => {
+        if (timeoutHandle) clearTimeout(timeoutHandle);
         const endMarkerRe = new RegExp(`__TAI_END_${fenceId}__ (\\d+)`);
         const endMatch = raw.match(endMarkerRe);
         const exitCode = endMatch ? parseInt(endMatch[1], 10) : 1;
@@ -88,7 +96,7 @@ export class RemoteSshManager {
       };
       session.pendingReject = reject;
 
-      setTimeout(() => {
+      timeoutHandle = setTimeout(() => {
         if (session.pendingResolve) {
           session.pendingResolve = null;
           session.pendingReject = null;
