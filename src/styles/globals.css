@@ -30,10 +30,10 @@
   --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.2);
 
   /* Card accent system */
-  --accent-tl-mask: linear-gradient(180deg, black 0%, black 55%, transparent 60%), linear-gradient(90deg, black 0%, black 12%, transparent 15%);
+  --accent-tl-mask: linear-gradient(180deg, black 0px, black 140px, transparent 160px), linear-gradient(90deg, black 0%, black 12%, transparent 15%);
   --accent-tl-composite: intersect;
   --accent-tl-webkit-composite: source-in;
-  --accent-br-mask: linear-gradient(0deg, black 0%, black 55%, transparent 60%), linear-gradient(270deg, black 0%, black 12%, transparent 15%);
+  --accent-br-mask: linear-gradient(0deg, black 0px, black 140px, transparent 160px), linear-gradient(270deg, black 0%, black 12%, transparent 15%);
   --accent-br-composite: intersect;
   --accent-br-webkit-composite: source-in;
   --accent-br-opacity: 1;
@@ -41,7 +41,7 @@
 }
 
 [data-color-mode="low"] {
-  --accent-tl-mask: linear-gradient(180deg, black 0%, black 55%, transparent 60%), linear-gradient(90deg, black 0%, transparent 8%);
+  --accent-tl-mask: linear-gradient(180deg, black 0px, black 140px, transparent 160px), linear-gradient(90deg, black 0%, transparent 2%);
   --accent-br-opacity: 0;
   --shimmer-duration: 30s;
 }
@@ -108,5 +108,5 @@ html, body, #root {
 
 @keyframes shimmer {
   0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  100% { background-position: 0% 0; }
 }

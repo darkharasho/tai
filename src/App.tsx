@@ -113,11 +113,11 @@ export default function App() {
     <div data-color-mode={colorMode} style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-base)', overflow: 'hidden' }}>
       <div style={{
         height: 2,
-        background: 'linear-gradient(90deg, transparent, #00a884, #8b5cf6, #ea580c, transparent)',
+        background: 'linear-gradient(90deg, #00a884, #8b5cf6, #ea580c, #00a884)',
         backgroundSize: '200% 100%',
         animation: `shimmer var(--shimmer-duration) linear infinite`,
         flexShrink: 0,
-        opacity: colorMode === 'low' ? 0.75 : 1,
+        opacity: colorMode === 'low' ? 0.9 : 1,
       }} />
       <TabBar
         tabs={tabs}
