@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeTheme, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
 import * as fs from 'fs';
 import { setupPtyService, destroyAllTerminals } from './services/pty';
@@ -6,6 +6,9 @@ import { setupClaudeService, destroyAllClaude } from './services/claude';
 import { registerUpdater } from './services/updater';
 
 app.disableHardwareAcceleration();
+if (process.env.VITE_DEV_SERVER_URL) {
+  app.commandLine.appendSwitch('remote-debugging-port', '9222');
+}
 if (process.platform === 'win32') app.setAppUserModelId('com.tai.app');
 if (process.platform === 'linux') {
   app.commandLine.appendSwitch('class', 'tai');
@@ -15,8 +18,6 @@ if (process.platform === 'linux') {
 app.name = 'tai';
 
 let mainWindow: BrowserWindow | null = null;
-let tray: Tray | null = null;
-let isQuitting = false;
 
 const windowStatePath = path.join(process.env.HOME || '/', '.config', 'tai', 'window-state.json');
 
@@ -63,12 +64,8 @@ function createWindow() {
 
   if (state.maximized) mainWindow.maximize();
 
-  mainWindow.on('close', (e) => {
+  mainWindow.on('close', () => {
     saveWindowState();
-    if (!isQuitting) {
-      e.preventDefault();
-      mainWindow?.hide();
-    }
   });
   mainWindow.on('resize', saveWindowState);
   mainWindow.on('move', saveWindowState);
@@ -80,60 +77,20 @@ function createWindow() {
   }
 }
 
-function getTrayIconPath(): string {
-  const isDark = process.platform === 'linux' || nativeTheme.shouldUseDarkColors;
-  const file = isDark ? 'tai-white.png' : 'tai-black.png';
-  if (process.env.VITE_DEV_SERVER_URL) {
-    return path.join(__dirname, '..', 'public', 'img', file);
-  }
-  return path.join(__dirname, '..', 'dist', 'img', file);
-}
-
-function createTray() {
-  const icon = nativeImage.createFromPath(getTrayIconPath()).resize({ width: 22, height: 22 });
-  tray = new Tray(icon);
-  tray.setToolTip('tai');
-
-  const contextMenu = Menu.buildFromTemplate([
-    { label: 'Show', click: () => { mainWindow?.show(); mainWindow?.focus(); } },
-    { type: 'separator' },
-    { label: 'Quit', click: () => { isQuitting = true; destroyAllTerminals(); destroyAllClaude(); app.quit(); } },
-  ]);
-  tray.setContextMenu(contextMenu);
-
-  tray.on('click', () => {
-    if (mainWindow) {
-      if (mainWindow.isVisible()) { mainWindow.focus(); }
-      else { mainWindow.show(); mainWindow.focus(); }
-    } else {
-      createWindow();
-    }
-  });
-
-  if (process.platform !== 'linux') {
-    nativeTheme.on('updated', () => {
-      const newIcon = nativeImage.createFromPath(getTrayIconPath()).resize({ width: 22, height: 22 });
-      tray?.setImage(newIcon);
-    });
-  }
-}
-
 app.whenReady().then(() => {
   createWindow();
-  createTray();
   registerUpdater(mainWindow!);
   setupPtyService(() => mainWindow);
   setupClaudeService(() => mainWindow);
 });
 
 app.on('before-quit', () => {
-  isQuitting = true;
   destroyAllTerminals();
   destroyAllClaude();
 });
 
 app.on('window-all-closed', () => {
-  // Keep running in tray
+  app.quit();
 });
 
 ipcMain.on('window:minimize', () => mainWindow?.minimize());

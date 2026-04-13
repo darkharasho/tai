@@ -4,10 +4,13 @@ import { TerminalSession } from './components/TerminalSession';
 import { SettingsOverlay } from './components/SettingsOverlay';
 import WhatsNewModal from './components/WhatsNewModal';
 import UpdateNotifier from './components/UpdateNotifier';
+import ConfirmModal from './components/ConfirmModal';
 import { useSettings } from './hooks/useSettings';
 import { useWhatsNew } from './hooks/useWhatsNew';
 import { useUpdateNotifier } from './hooks/useUpdateNotifier';
 import type { ContextMode, TabState } from './types';
+
+const SHELL_NAMES = new Set(['bash', 'zsh', 'sh', 'fish', 'dash', 'ksh', 'csh', 'tcsh', 'nu', 'pwsh', 'powershell', 'cmd']);
 
 let tabCounter = 0;
 function createTabState(): TabState {
@@ -22,6 +25,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tabs, setTabs] = useState<TabState[]>(() => [createTabState()]);
   const [activeTabId, setActiveTabId] = useState(tabs[0].id);
+  const [closeConfirm, setCloseConfirm] = useState<{ tabId: string; process: string } | null>(null);
 
   const activeTab = tabs.find(t => t.id === activeTabId)!;
 
@@ -54,6 +58,19 @@ export default function App() {
     });
   }, [tabs, activeTabId]);
 
+  const requestCloseTab = useCallback(async (id: string) => {
+    if (tabs.length <= 1) return;
+    const tab = tabs.find(t => t.id === id);
+    if (tab?.ptyId != null) {
+      const proc = await window.tai?.pty?.getProcess(tab.ptyId);
+      if (proc && !SHELL_NAMES.has(proc)) {
+        setCloseConfirm({ tabId: id, process: proc });
+        return;
+      }
+    }
+    handleCloseTab(id);
+  }, [tabs, handleCloseTab]);
+
   const handleRenameTab = useCallback((id: string, label: string) => {
     setTabs(prev => prev.map(t => t.id === id ? { ...t, label } : t));
   }, []);
@@ -69,7 +86,7 @@ export default function App() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'T') { e.preventDefault(); handleNewTab(); }
-      if (e.ctrlKey && e.shiftKey && e.key === 'W') { e.preventDefault(); if (tabs.length > 1) handleCloseTab(activeTabId); }
+      if (e.ctrlKey && e.key.toLowerCase() === 'w') { e.preventDefault(); requestCloseTab(activeTabId); }
       if (e.ctrlKey && !e.shiftKey && e.key >= '1' && e.key <= '9') {
         const idx = parseInt(e.key) - 1;
         if (idx < tabs.length) { e.preventDefault(); setActiveTabId(tabs[idx].id); }
@@ -86,7 +103,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [tabs, activeTabId, handleNewTab, handleCloseTab]);
+  }, [tabs, activeTabId, handleNewTab, requestCloseTab]);
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-base)', overflow: 'hidden' }}>
@@ -95,7 +112,7 @@ export default function App() {
         activeTabId={activeTabId}
         onSelectTab={setActiveTabId}
         onNewTab={handleNewTab}
-        onCloseTab={handleCloseTab}
+        onCloseTab={requestCloseTab}
         onRenameTab={handleRenameTab}
       />
       {tabs.map(tab => (
@@ -137,6 +154,14 @@ export default function App() {
         releases={whatsNew.releases}
         fetchStatus={whatsNew.fetchStatus}
         onClose={whatsNew.closeWhatsNew}
+      />
+      <ConfirmModal
+        isOpen={closeConfirm !== null}
+        title="Close tab?"
+        message={`"${closeConfirm?.process}" is still running. Closing this tab will terminate it.`}
+        confirmLabel="Close Tab"
+        onConfirm={() => { if (closeConfirm) handleCloseTab(closeConfirm.tabId); setCloseConfirm(null); }}
+        onCancel={() => setCloseConfirm(null)}
       />
     </div>
   );
