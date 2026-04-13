@@ -16,7 +16,7 @@ const SHELL_NAMES = new Set(['bash', 'zsh', 'sh', 'fish', 'dash', 'ksh', 'csh', 
 let tabCounter = 0;
 function createTabState(): TabState {
   const id = `tab-${++tabCounter}`;
-  return { id, ptyId: null, label: 'zsh', cwd: '', contextMode: 'shell', trustLevel: 'ask', isRemote: false, sshTarget: null };
+  return { id, ptyId: null, label: 'zsh', cwd: '', contextMode: 'shell', trustLevel: 'ask', isRemote: false, sshTarget: null, remoteExecMode: 'auto' as const };
 }
 
 export default function App() {
@@ -83,6 +83,10 @@ export default function App() {
 
   const handleRemoteChange = useCallback((tabId: string, isRemote: boolean, sshTarget: string | null) => {
     setTabs(prev => prev.map(t => t.id === tabId ? { ...t, isRemote, sshTarget } : t));
+  }, []);
+
+  const handleRemoteExecModeChange = useCallback((tabId: string, mode: 'auto' | 'local') => {
+    setTabs(prev => prev.map(t => t.id === tabId ? { ...t, remoteExecMode: mode } : t));
   }, []);
 
   useEffect(() => {

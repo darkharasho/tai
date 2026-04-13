@@ -49,4 +49,5 @@ export interface TabState {
   trustLevel: TrustLevel;
   isRemote: boolean;
   sshTarget: string | null;
+  remoteExecMode: 'auto' | 'local';
 }
