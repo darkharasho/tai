@@ -107,6 +107,13 @@ export default function App() {
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-base)', overflow: 'hidden' }}>
+      <div style={{
+        height: 2,
+        background: 'linear-gradient(90deg, transparent, #00a884, #8b5cf6, #ea580c, transparent)',
+        backgroundSize: '200% 100%',
+        animation: 'shimmer 8s linear infinite',
+        flexShrink: 0,
+      }} />
       <TabBar
         tabs={tabs}
         activeTabId={activeTabId}
