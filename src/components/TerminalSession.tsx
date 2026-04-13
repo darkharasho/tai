@@ -17,13 +17,15 @@ interface TerminalSessionProps {
   trustLevel: TrustLevel;
   onContextModeChange: (mode: ContextMode) => void;
   onRemoteChange: (isRemote: boolean, sshTarget: string | null) => void;
+  remoteExecMode: 'auto' | 'local';
+  onRemoteExecModeChange: (mode: 'auto' | 'local') => void;
 }
 
 function nextBlockId(): string {
   return `tm-${crypto.randomUUID()}`;
 }
 
-export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustLevel, onContextModeChange, onRemoteChange }: TerminalSessionProps) {
+export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustLevel, onContextModeChange, onRemoteChange, remoteExecMode, onRemoteExecModeChange }: TerminalSessionProps) {
   const [displayItems, setDisplayItems] = useState<DisplayItem[]>([]);
   const [altScreenVisible, setAltScreenVisible] = useState(false);
   const [inputMode, setInputMode] = useState<'shell' | 'ai'>('shell');
@@ -62,6 +64,11 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
       if (name) segmenterRef.current.setLocalHostname(name);
     });
   }, []);
+
+  useEffect(() => {
+    const target = promptInfo?.isRemote ? (promptInfo.sshTarget ?? null) : null;
+    window.tai?.ai?.setRemoteTarget(tabId, target, remoteExecMode);
+  }, [tabId, promptInfo?.isRemote, promptInfo?.sshTarget, remoteExecMode]);
 
   useEffect(() => {
     if (visible) {
@@ -254,10 +261,12 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
       ));
     };
 
+    const isRemoteExec = promptInfo?.isRemote && remoteExecMode === 'auto';
+
     let fullPrompt = prompt;
     if (!preambleSentRef.current) {
       preambleSentRef.current = true;
-      const preamble = [
+      const lines = [
         'You are a general-purpose AI terminal assistant.',
         '',
         'Your default mode is as a system-wide helper:',

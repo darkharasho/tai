@@ -25,6 +25,7 @@ declare global {
         approve: (key: string, toolUseId: string, approved: boolean) => Promise<boolean>;
         onMessage: (key: string, callback: (msg: any) => void) => () => void;
         onError: (key: string, callback: (error: string) => void) => () => void;
+        setRemoteTarget: (key: string, target: string | null, mode: string) => Promise<boolean>;
       };
       system: {
         getHostname: () => Promise<string>;

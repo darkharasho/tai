@@ -43,6 +43,8 @@ contextBridge.exposeInMainWorld('tai', {
       ipcRenderer.on('ai:error', listener);
       return () => ipcRenderer.removeListener('ai:error', listener);
     },
+    setRemoteTarget: (key: string, target: string | null, mode: string) =>
+      ipcRenderer.invoke('ai:setRemoteTarget', key, target, mode),
   },
   system: {
     getHostname: () => ipcRenderer.invoke('system:hostname'),

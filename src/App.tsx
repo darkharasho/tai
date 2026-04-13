@@ -82,7 +82,12 @@ export default function App() {
   }, []);
 
   const handleRemoteChange = useCallback((tabId: string, isRemote: boolean, sshTarget: string | null) => {
-    setTabs(prev => prev.map(t => t.id === tabId ? { ...t, isRemote, sshTarget } : t));
+    setTabs(prev => prev.map(t => {
+      if (t.id !== tabId) return t;
+      const updates: Partial<TabState> = { isRemote, sshTarget };
+      if (!isRemote) updates.remoteExecMode = 'auto';
+      return { ...t, ...updates };
+    }));
   }, []);
 
   const handleRemoteExecModeChange = useCallback((tabId: string, mode: 'auto' | 'local') => {
@@ -150,6 +155,8 @@ export default function App() {
             trustLevel={tab.trustLevel}
             onContextModeChange={(mode) => handleContextModeChange(tab.id, mode)}
             onRemoteChange={(isRemote, sshTarget) => handleRemoteChange(tab.id, isRemote, sshTarget)}
+            remoteExecMode={tab.remoteExecMode}
+            onRemoteExecModeChange={(mode) => handleRemoteExecModeChange(tab.id, mode)}
           />
         </div>
       ))}
