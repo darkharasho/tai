@@ -1,0 +1,18 @@
+.container {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(139, 92, 246, 0.08);
+  border: 1px solid rgba(139, 92, 246, 0.15);
+  cursor: pointer;
+  transition: background 0.15s;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--color-ai);
+}
+
+.container:hover {
+  background: rgba(139, 92, 246, 0.12);
+}

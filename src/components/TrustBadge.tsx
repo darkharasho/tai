@@ -1,5 +1,6 @@
 import { Terminal, Sparkles, Globe } from 'lucide-react';
 import type { ContextMode } from '@/types';
+import styles from './TrustBadge.module.css';
 
 interface TrustBadgeProps {
   level: string;
@@ -28,16 +29,14 @@ export function TrustBadge({ modeColor, contextMode = 'shell', isRemote }: Trust
   }
 
   return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: 4,
-      padding: '2px 8px',
-      borderRadius: 4,
-      border: `1px solid ${color}33`,
-      fontSize: 10,
-      color,
-    }}>
+    <div
+      className={styles.badge}
+      style={{
+        border: `1px solid ${color}33`,
+        color,
+        background: `${color}11`,
+      }}
+    >
       <Icon size={10} />
       {label}
     </div>

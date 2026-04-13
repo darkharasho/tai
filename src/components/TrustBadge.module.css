@@ -1,0 +1,11 @@
+.badge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  letter-spacing: 0.3px;
+}
