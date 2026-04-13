@@ -20,10 +20,12 @@ export function createClaudeProvider(tabId: string): Provider {
     },
 
     onMessage(callback: (msg: any) => void): () => void {
-      messageCleanup = window.tai.ai.onMessage(tabId, callback);
+      messageCleanup?.();
+      const thisCleanup = window.tai.ai.onMessage(tabId, callback);
+      messageCleanup = thisCleanup;
       return () => {
-        messageCleanup?.();
-        messageCleanup = null;
+        thisCleanup();
+        if (messageCleanup === thisCleanup) messageCleanup = null;
       };
     },
 

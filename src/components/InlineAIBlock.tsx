@@ -74,59 +74,61 @@ export function InlineAIBlock({
           <span className={styles.promptText}>{question}</span>
         </div>
       )}
-      <div className={styles.block}>
-        <div className={styles.accent} />
-        <div className={styles.inner}>
-          <div className={styles.header}>
-            <div className={styles.headerLeft}>
-              <span className={styles.label}>Claude</span>
-              {streaming && <span className={styles.streamingDot} />}
-            </div>
-            {!streaming && duration != null && (
-              <span className={styles.duration}>{formatDuration(duration)}</span>
-            )}
-          </div>
-
-          <div className={styles.body}>
-            {entries && entries.length > 0 ? (
-              entries.map((entry, i) => {
-                if (entry.kind === 'text') {
-                  return (
-                    <div key={`text-${i}`} className="ai-content">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                        {entry.text}
-                      </ReactMarkdown>
-                    </div>
-                  );
-                }
-                if (entry.kind === 'tool') {
-                  const call = entry.call;
-                  if (!call) return null;
-                  const hasOutput = call.output != null;
-                  return (
-                    <div
-                      key={call.id || `tool-${i}`}
-                      className={`${styles.tool}${hasOutput ? '' : ` ${styles.toolActive}`}`}
-                    >
-                      <span className={styles.toolIcon}>{hasOutput ? (call.error ? '\u2717' : '\u2713') : '\u25CB'}</span>
-                      <span className={styles.toolName}>{call.name}</span>
-                      <span className={styles.toolInput}>{call.input}</span>
-                      {!hasOutput && streaming && <span className={styles.toolSpin} />}
-                    </div>
-                  );
-                }
-                return null;
-              })
-            ) : content ? (
-              <div className="ai-content">
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                  {content}
-                </ReactMarkdown>
+      {(streaming || content || (entries && entries.length > 0)) && (
+        <div className={styles.block}>
+          <div className={styles.accent} />
+          <div className={styles.inner}>
+            <div className={styles.header}>
+              <div className={styles.headerLeft}>
+                <span className={styles.label}>Claude</span>
+                {streaming && <span className={styles.streamingDot} />}
               </div>
-            ) : null}
+              {!streaming && duration != null && (
+                <span className={styles.duration}>{formatDuration(duration)}</span>
+              )}
+            </div>
+
+            <div className={styles.body}>
+              {entries && entries.length > 0 ? (
+                entries.map((entry, i) => {
+                  if (entry.kind === 'text') {
+                    return (
+                      <div key={`text-${i}`} className="ai-content">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                          {entry.text}
+                        </ReactMarkdown>
+                      </div>
+                    );
+                  }
+                  if (entry.kind === 'tool') {
+                    const call = entry.call;
+                    if (!call) return null;
+                    const hasOutput = call.output != null;
+                    return (
+                      <div
+                        key={call.id || `tool-${i}`}
+                        className={`${styles.tool}${hasOutput ? '' : ` ${styles.toolActive}`}`}
+                      >
+                        <span className={styles.toolIcon}>{hasOutput ? (call.error ? '\u2717' : '\u2713') : '\u25CB'}</span>
+                        <span className={styles.toolName}>{call.name}</span>
+                        <span className={styles.toolInput}>{call.input}</span>
+                        {!hasOutput && streaming && <span className={styles.toolSpin} />}
+                      </div>
+                    );
+                  }
+                  return null;
+                })
+              ) : content ? (
+                <div className="ai-content">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                    {content}
+                  </ReactMarkdown>
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

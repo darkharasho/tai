@@ -231,6 +231,21 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
   }, [inputMode, executeCommand, promptInfo]);
 
   const handleAIRequest = useCallback((prompt: string) => {
+    if (aiCleanupRef.current) {
+      providerRef.current.stop();
+      aiCleanupRef.current();
+      const staleBlockId = aiBlockIdRef.current;
+      if (staleBlockId) {
+        setDisplayItems(prev => prev.map(item =>
+          item.type === 'ai' && item.id === staleBlockId
+            ? { ...item, streaming: false }
+            : item
+        ));
+      }
+      aiCleanupRef.current = null;
+      aiBlockIdRef.current = null;
+    }
+
     handleInputModeChange('ai');
     const aiId = nextBlockId();
     const aiStartTime = Date.now();
@@ -446,7 +461,18 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
       }
 
       if (msg.type === 'done') {
-        if (!gotContent) return;
+        if (!gotContent) {
+          setDisplayItems(prev => prev.map(item =>
+            item.type === 'ai' && item.id === currentAiId
+              ? { ...item, streaming: false }
+              : item
+          ));
+          aiCleanupRef.current = null;
+          aiBlockIdRef.current = null;
+          handleInputModeChange('shell');
+          cleanup();
+          return;
+        }
         setDisplayItems(prev => prev.map(item =>
           item.type === 'ai' && item.id === currentAiId
             ? { ...item, streaming: false, duration: Date.now() - aiStartTime }
