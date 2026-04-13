@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { Plus, X, Minus, Square, ChevronDown } from 'lucide-react';
 import type { TabState, ContextMode } from '@/types';
 import { TrustBadge } from './TrustBadge';
@@ -101,9 +101,12 @@ function TabItem({ tab, index, isActive, modeColor, tabCount, editingId, editVal
 export function TabBar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTab, onRenameTab }: TabBarProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
-  const [maxVisible, setMaxVisible] = useState(tabs.length);
+  const [maxVisible, setMaxVisible] = useState(Infinity);
   const [overflowOpen, setOverflowOpen] = useState(false);
+  const barRef = useRef<HTMLDivElement>(null);
   const tabsContainerRef = useRef<HTMLDivElement>(null);
+  const measureRef = useRef<HTMLDivElement>(null);
+  const fixedRef = useRef<HTMLDivElement>(null);
   const overflowRef = useRef<HTMLDivElement>(null);
 
   const handleDoubleClick = (tab: TabState) => {
@@ -117,34 +120,52 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTab, o
   };
 
   const recalculate = useCallback(() => {
-    const container = tabsContainerRef.current;
-    if (!container) return;
-    const children = Array.from(container.children) as HTMLElement[];
+    const bar = barRef.current;
+    const measure = measureRef.current;
+    const fixed = fixedRef.current;
+    if (!bar || !measure || !fixed) return;
+    const children = Array.from(measure.children) as HTMLElement[];
     if (children.length === 0) return;
 
-    const containerRight = container.getBoundingClientRect().right;
-    let visible = children.length;
+    const barPadding = 24;
+    const gap = 4;
+    const barWidth = bar.clientWidth - barPadding;
+    const fixedWidth = fixed.offsetWidth + gap;
+    const overflowBtnReserve = 54;
+
+    let usedWidth = 0;
     for (let i = 0; i < children.length; i++) {
-      const childRight = children[i].getBoundingClientRect().right;
-      if (childRight > containerRight + 1) {
-        visible = i;
+      usedWidth += children[i].offsetWidth + (i > 0 ? gap : 0);
+    }
+    if (usedWidth + fixedWidth <= barWidth) {
+      setMaxVisible(children.length);
+      return;
+    }
+
+    const available = barWidth - fixedWidth - overflowBtnReserve;
+    usedWidth = 0;
+    let fits = children.length;
+    for (let i = 0; i < children.length; i++) {
+      usedWidth += children[i].offsetWidth + (i > 0 ? gap : 0);
+      if (usedWidth > available) {
+        fits = i;
         break;
       }
     }
-    setMaxVisible(Math.max(1, visible));
+    setMaxVisible(Math.max(1, fits));
   }, []);
 
-  useEffect(() => {
-    const container = tabsContainerRef.current;
-    if (!container) return;
-    const ro = new ResizeObserver(recalculate);
-    ro.observe(container);
-    return () => ro.disconnect();
-  }, [recalculate]);
-
-  useEffect(() => {
+  useLayoutEffect(() => {
     recalculate();
   }, [tabs.length, recalculate]);
+
+  useEffect(() => {
+    const bar = barRef.current;
+    if (!bar) return;
+    const ro = new ResizeObserver(recalculate);
+    ro.observe(bar);
+    return () => ro.disconnect();
+  }, [recalculate]);
 
   useEffect(() => {
     if (!overflowOpen) return;
@@ -158,12 +179,14 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTab, o
   }, [overflowOpen]);
 
   const hasOverflow = tabs.length > maxVisible;
-  const visibleTabs = tabs.slice(0, maxVisible);
-  const overflowTabs = tabs.slice(maxVisible);
-  const activeInOverflow = overflowTabs.some(t => t.id === activeTabId);
+  const overflowTabs = hasOverflow ? tabs.slice(maxVisible) : [];
+  const activeOverflowTab = overflowTabs.find(t => t.id === activeTabId);
+  const activeOverflowColor = activeOverflowTab
+    ? (activeOverflowTab.isRemote ? 'var(--color-agent)' : MODE_COLORS[activeOverflowTab.contextMode])
+    : null;
 
   return (
-    <div style={{
+    <div ref={barRef} style={{
       display: 'flex',
       alignItems: 'center',
       gap: 4,
@@ -185,7 +208,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTab, o
           overflow: 'hidden',
         }}
       >
-        {visibleTabs.map((tab, i) => {
+        {tabs.slice(0, maxVisible).map((tab, i) => {
           const isActive = tab.id === activeTabId;
           const modeColor = tab.isRemote ? 'var(--color-agent)' : MODE_COLORS[tab.contextMode];
           return (
@@ -209,8 +232,40 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTab, o
         })}
       </div>
 
-      {hasOverflow && (
-        <div ref={overflowRef} style={{ position: 'relative', flexShrink: 0, ...({ WebkitAppRegion: 'no-drag' } as any) }}>
+      <div
+        ref={measureRef}
+        aria-hidden
+        style={{
+          display: 'flex',
+          gap: 4,
+          position: 'absolute',
+          visibility: 'hidden',
+          pointerEvents: 'none',
+          height: 0,
+          overflow: 'hidden',
+        }}
+      >
+        {tabs.map((tab, i) => (
+          <TabItem
+            key={tab.id}
+            tab={tab}
+            index={i}
+            isActive={false}
+            modeColor="transparent"
+            tabCount={tabs.length}
+            editingId={null}
+            editValue=""
+            onSelect={() => {}}
+            onDoubleClick={() => {}}
+            onEditChange={() => {}}
+            onEditSubmit={() => {}}
+            onEditCancel={() => {}}
+            onClose={() => {}}
+          />
+        ))}
+      </div>
+
+      {hasOverflow && <div ref={overflowRef} style={{ position: 'relative', flexShrink: 0, ...({ WebkitAppRegion: 'no-drag' } as any) }}>
           <div
             onClick={() => setOverflowOpen(v => !v)}
             style={{
@@ -220,11 +275,12 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTab, o
               padding: '6px 8px',
               borderRadius: 6,
               cursor: 'pointer',
-              background: activeInOverflow ? 'rgba(255,255,255,0.06)' : 'transparent',
+              background: activeOverflowColor ? 'rgba(255,255,255,0.06)' : 'transparent',
+              borderBottom: activeOverflowColor ? `2px solid ${activeOverflowColor}` : '2px solid transparent',
             }}
           >
-            <ChevronDown size={14} style={{ color: 'var(--text-muted)' }} />
-            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>+{overflowTabs.length}</span>
+            <ChevronDown size={14} style={{ color: activeOverflowColor || 'var(--text-muted)' }} />
+            <span style={{ color: activeOverflowColor || 'var(--text-muted)', fontSize: 11 }}>+{overflowTabs.length}</span>
           </div>
           {overflowOpen && (
             <div style={{
@@ -283,75 +339,76 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTab, o
               })}
             </div>
           )}
-        </div>
-      )}
+        </div>}
 
-      <div
-        onClick={onNewTab}
-        style={{
+      <div ref={fixedRef} style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+        <div
+          onClick={onNewTab}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            padding: '6px 10px',
+            borderRadius: 6,
+            cursor: 'pointer',
+            flexShrink: 0,
+            ...({ WebkitAppRegion: 'no-drag' } as any),
+          }}
+        >
+          <Plus size={14} style={{ color: 'var(--text-muted)' }} />
+        </div>
+
+        <div style={{ flex: 'none', width: 8 }} />
+
+        <div style={{
           display: 'flex',
           alignItems: 'center',
-          padding: '6px 10px',
-          borderRadius: 6,
-          cursor: 'pointer',
+          gap: 2,
           flexShrink: 0,
           ...({ WebkitAppRegion: 'no-drag' } as any),
-        }}
-      >
-        <Plus size={14} style={{ color: 'var(--text-muted)' }} />
-      </div>
-
-      <div style={{ flex: 'none', width: 8 }} />
-
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 2,
-        flexShrink: 0,
-        ...({ WebkitAppRegion: 'no-drag' } as any),
-      }}>
-        <button
-          onClick={() => window.tai?.window?.minimize()}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            padding: '4px 8px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            borderRadius: 4,
-          }}
-        >
-          <Minus size={14} color="var(--text-muted)" />
-        </button>
-        <button
-          onClick={() => window.tai?.window?.maximize()}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            padding: '4px 8px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            borderRadius: 4,
-          }}
-        >
-          <Square size={12} color="var(--text-muted)" />
-        </button>
-        <button
-          onClick={() => window.tai?.window?.close()}
-          style={{
-            background: 'transparent',
-            border: 'none',
-            padding: '4px 8px',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            borderRadius: 4,
-          }}
-        >
-          <X size={14} color="var(--text-muted)" />
-        </button>
+        }}>
+          <button
+            onClick={() => window.tai?.window?.minimize()}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              padding: '4px 8px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              borderRadius: 4,
+            }}
+          >
+            <Minus size={14} color="var(--text-muted)" />
+          </button>
+          <button
+            onClick={() => window.tai?.window?.maximize()}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              padding: '4px 8px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              borderRadius: 4,
+            }}
+          >
+            <Square size={12} color="var(--text-muted)" />
+          </button>
+          <button
+            onClick={() => window.tai?.window?.close()}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              padding: '4px 8px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              borderRadius: 4,
+            }}
+          >
+            <X size={14} color="var(--text-muted)" />
+          </button>
+        </div>
       </div>
     </div>
   );
