@@ -1,17 +1,31 @@
-import { Terminal, Sparkles } from 'lucide-react';
+import { Terminal, Sparkles, Globe } from 'lucide-react';
 import type { ContextMode } from '@/types';
 
 interface TrustBadgeProps {
   level: string;
   modeColor?: string;
   contextMode?: ContextMode;
+  isRemote?: boolean;
 }
 
-export function TrustBadge({ modeColor, contextMode = 'shell' }: TrustBadgeProps) {
-  const isShell = contextMode === 'shell';
-  const color = modeColor ?? (isShell ? 'var(--color-shell)' : 'var(--color-ai)');
-  const Icon = isShell ? Terminal : Sparkles;
-  const label = isShell ? 'Term' : 'AI';
+export function TrustBadge({ modeColor, contextMode = 'shell', isRemote }: TrustBadgeProps) {
+  let color: string;
+  let Icon: typeof Terminal;
+  let label: string;
+
+  if (isRemote) {
+    color = modeColor ?? 'var(--color-agent)';
+    Icon = Globe;
+    label = 'SSH';
+  } else if (contextMode === 'shell') {
+    color = modeColor ?? 'var(--color-shell)';
+    Icon = Terminal;
+    label = 'Term';
+  } else {
+    color = modeColor ?? 'var(--color-ai)';
+    Icon = Sparkles;
+    label = 'AI';
+  }
 
   return (
     <div style={{

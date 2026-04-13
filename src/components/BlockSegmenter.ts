@@ -134,6 +134,9 @@ export class BlockSegmenter {
       return;
     }
 
+    if (!this._seenFirstPrompt) {
+      this._initialPrompt = promptText;
+    }
     this._seenFirstPrompt = true;
     this._finalizeBlock(promptText);
   }

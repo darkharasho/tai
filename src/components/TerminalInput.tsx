@@ -19,8 +19,18 @@ function stripPromptGlyphs(text: string): string {
 
 function extractPromptParts(promptText: string): { user: string; path: string } {
   const cleaned = stripPromptGlyphs(promptText);
-  const match = cleaned.match(/^(\S+?)[@:]?\s*(~[^\s$#%]*|\/[^\s$#%]*)/);
-  if (match) return { user: match[1], path: match[2] };
+  const userHostMatch = cleaned.match(/(\w[\w.-]*)@(\w[\w.-]*)/);
+  if (userHostMatch) {
+    const userHost = `${userHostMatch[1]}@${userHostMatch[2]}`;
+    const afterHost = cleaned.slice(cleaned.indexOf(userHostMatch[0]) + userHostMatch[0].length);
+    const pathMatch = afterHost.match(/\s*(~[^\s$#%]*|\/[^\s$#%]*)/);
+    return { user: userHost, path: pathMatch ? pathMatch[1] : '' };
+  }
+  const match = cleaned.match(/(~[^\s$#%]*|\/[^\s$#%]*)/);
+  if (match) {
+    const before = cleaned.slice(0, cleaned.indexOf(match[0])).replace(/[\$#%>@:\s]+$/, '').trim();
+    return { user: before, path: match[1] };
+  }
   const clean = cleaned.replace(/[\$#%>\s]+$/, '').trim();
   return { user: clean, path: '' };
 }
@@ -248,7 +258,7 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
           ))}
         </div>
       )}
-      <div className={`tn-input-box ${isAI ? 'tn-input-box-ai' : ''}`}>
+      <div className={`tn-input-box ${isAI ? 'tn-input-box-ai' : ''} ${promptIsRemote ? 'tn-input-box-remote' : ''}`}>
         <div className="tn-input-row">
           {isAI ? (
             <>
@@ -321,6 +331,11 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
         }
         .tn-input-box-ai::before {
           background: linear-gradient(135deg, var(--color-ai) 0%, #8b4dd4 30%, #6b35b0 50%, #8b4dd4 70%, var(--color-ai) 100%);
+          background-size: 300% 300%;
+          animation: tn-gradient-sweep 20s ease-in-out infinite alternate;
+        }
+        .tn-input-box-remote::before {
+          background: linear-gradient(135deg, var(--color-agent) 0%, #b5650a 30%, #8a4d08 50%, #b5650a 70%, var(--color-agent) 100%);
           background-size: 300% 300%;
           animation: tn-gradient-sweep 20s ease-in-out infinite alternate;
         }

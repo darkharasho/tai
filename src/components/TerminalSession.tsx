@@ -16,13 +16,14 @@ interface TerminalSessionProps {
   visible: boolean;
   trustLevel: TrustLevel;
   onContextModeChange: (mode: ContextMode) => void;
+  onRemoteChange: (isRemote: boolean, sshTarget: string | null) => void;
 }
 
 function nextBlockId(): string {
   return `tm-${crypto.randomUUID()}`;
 }
 
-export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustLevel, onContextModeChange }: TerminalSessionProps) {
+export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustLevel, onContextModeChange, onRemoteChange }: TerminalSessionProps) {
   const [displayItems, setDisplayItems] = useState<DisplayItem[]>([]);
   const [altScreenVisible, setAltScreenVisible] = useState(false);
   const [inputMode, setInputMode] = useState<'shell' | 'ai'>('shell');
@@ -150,6 +151,7 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
     segmenter.onPromptChange((prompt, isRemote, sshTarget) => {
       if (cancelled) return;
       setPromptInfo({ text: prompt, isRemote, sshTarget: sshTarget ?? undefined });
+      onRemoteChange(isRemote, sshTarget);
     });
 
     const cleanupData = window.tai?.pty?.onData((id: number, data: string) => {

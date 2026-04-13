@@ -9,10 +9,29 @@ function formatDuration(ms: number): string {
   return `${Math.floor(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s`;
 }
 
+function stripPromptGlyphs(text: string): string {
+  return text
+    .replace(/[\uE0A0-\uE0D4\uE200-\uE2A9\uE5FA-\uE6B5\uE700-\uE7C5\uF000-\uFD46\uDB80-\uDBFF][\uDC00-\uDFFF]?/g, '')
+    .replace(/[^\x20-\x7E\u00A0-\u00FF\u0100-\u024F\u2000-\u206F\u276F]/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 function extractPromptParts(promptText: string): { user: string; path: string } {
-  const match = promptText.match(/^(\S+?)[@:]?\s*(~[^\s$#%]*|\/[^\s$#%]*)/);
-  if (match) return { user: match[1], path: match[2] };
-  const clean = promptText.replace(/[\$#%>\s]+$/, '').trim();
+  const cleaned = stripPromptGlyphs(promptText);
+  const userHostMatch = cleaned.match(/(\w[\w.-]*)@(\w[\w.-]*)/);
+  if (userHostMatch) {
+    const userHost = `${userHostMatch[1]}@${userHostMatch[2]}`;
+    const afterHost = cleaned.slice(cleaned.indexOf(userHostMatch[0]) + userHostMatch[0].length);
+    const pathMatch = afterHost.match(/\s*(~[^\s$#%]*|\/[^\s$#%]*)/);
+    return { user: userHost, path: pathMatch ? pathMatch[1] : '' };
+  }
+  const match = cleaned.match(/(~[^\s$#%]*|\/[^\s$#%]*)/);
+  if (match) {
+    const before = cleaned.slice(0, cleaned.indexOf(match[0])).replace(/[\$#%>@:\s]+$/, '').trim();
+    return { user: before, path: match[1] };
+  }
+  const clean = cleaned.replace(/[\$#%>\s]+$/, '').trim();
   return { user: clean, path: '' };
 }
 

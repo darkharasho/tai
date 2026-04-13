@@ -10,7 +10,7 @@ import type { ContextMode, TabState } from './types';
 let tabCounter = 0;
 function createTabState(): TabState {
   const id = `tab-${++tabCounter}`;
-  return { id, ptyId: null, label: 'zsh', cwd: '', contextMode: 'shell', trustLevel: 'ask' };
+  return { id, ptyId: null, label: 'zsh', cwd: '', contextMode: 'shell', trustLevel: 'ask', isRemote: false, sshTarget: null };
 }
 
 export default function App() {
@@ -57,6 +57,10 @@ export default function App() {
 
   const handleContextModeChange = useCallback((tabId: string, mode: ContextMode) => {
     setTabs(prev => prev.map(t => t.id === tabId ? { ...t, contextMode: mode } : t));
+  }, []);
+
+  const handleRemoteChange = useCallback((tabId: string, isRemote: boolean, sshTarget: string | null) => {
+    setTabs(prev => prev.map(t => t.id === tabId ? { ...t, isRemote, sshTarget } : t));
   }, []);
 
   useEffect(() => {
@@ -108,6 +112,7 @@ export default function App() {
             visible={tab.id === activeTabId}
             trustLevel={tab.trustLevel}
             onContextModeChange={(mode) => handleContextModeChange(tab.id, mode)}
+            onRemoteChange={(isRemote, sshTarget) => handleRemoteChange(tab.id, isRemote, sshTarget)}
           />
         </div>
       ))}

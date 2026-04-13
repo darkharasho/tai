@@ -47,4 +47,6 @@ export interface TabState {
   cwd: string;
   contextMode: ContextMode;
   trustLevel: TrustLevel;
+  isRemote: boolean;
+  sshTarget: string | null;
 }

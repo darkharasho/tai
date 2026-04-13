@@ -47,7 +47,7 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTab, o
     }}>
       {tabs.map((tab, i) => {
         const isActive = tab.id === activeTabId;
-        const modeColor = MODE_COLORS[tab.contextMode];
+        const modeColor = tab.isRemote ? 'var(--color-agent)' : MODE_COLORS[tab.contextMode];
 
         return (
           <div
@@ -93,10 +93,10 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTab, o
                 color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
                 fontSize: 12,
               }}>
-                {tab.label}
+                {tab.isRemote && tab.sshTarget ? tab.sshTarget : tab.label}
               </span>
             )}
-            {isActive && <TrustBadge level={tab.trustLevel} modeColor={modeColor} contextMode={tab.contextMode} />}
+            {isActive && <TrustBadge level={tab.trustLevel} modeColor={modeColor} contextMode={tab.contextMode} isRemote={tab.isRemote} />}
             {tabs.length > 1 && (
               <X
                 size={12}
