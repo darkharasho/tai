@@ -38,7 +38,10 @@
       "icon": "public/img/tai.png"
     },
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "category": "public.app-category.developer-tools",
       "icon": "public/img/tai.png",
       "hardenedRuntime": true,
@@ -60,6 +63,7 @@
     "@xterm/addon-web-links": "^0.11.0",
     "@xterm/xterm": "^5.5.0",
     "electron-updater": "^6.8.3",
+    "geist": "^1.7.0",
     "lucide-react": "^1.8.0",
     "node-pty": "^1.1.0",
     "react": "^19.2.5",
