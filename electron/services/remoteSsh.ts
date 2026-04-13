@@ -22,13 +22,7 @@ export class RemoteSshManager {
       'bash', '--norc', '--noprofile',
     ], {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: {
-        HOME: process.env.HOME,
-        PATH: process.env.PATH,
-        SSH_AUTH_SOCK: process.env.SSH_AUTH_SOCK,
-        SSH_AGENT_PID: process.env.SSH_AGENT_PID,
-        TERM: process.env.TERM,
-      },
+      env: process.env as Record<string, string>,
     });
 
     const session: SshSession = {
