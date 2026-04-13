@@ -1,0 +1,280 @@
+.wrapper {
+  margin: 6px 0 10px;
+}
+
+.prompt {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  margin-bottom: 4px;
+}
+
+.promptIcon {
+  color: var(--color-ai);
+  flex-shrink: 0;
+  margin-top: 2px;
+  opacity: 0.7;
+}
+
+.promptText {
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+/* Card treatment */
+.block {
+  position: relative;
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  border-radius: 10px;
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.block::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Left accent with vertical gradient fade */
+.accent {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(
+    180deg,
+    var(--color-ai) 0%,
+    rgba(139, 92, 246, 0.4) 50%,
+    transparent 100%
+  );
+  z-index: 2;
+}
+
+.inner {
+  padding: 12px 14px;
+  position: relative;
+  z-index: 3;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  gap: 12px;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.label {
+  color: var(--color-ai);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.streamingDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-ai);
+  animation: aiPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes aiPulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+.duration {
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.body {
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text-primary);
+}
+
+/* Content (dangerouslySetInnerHTML output uses global classes via ReactMarkdown) */
+:global(.ai-content) p {
+  margin: 0 0 8px;
+}
+
+:global(.ai-content) p:last-child {
+  margin-bottom: 0;
+}
+
+:global(.ai-content) strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+:global(.ai-content) code {
+  font-family: var(--font-mono);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: 12.5px;
+}
+
+:global(.ai-content) ul,
+:global(.ai-content) ol {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+
+:global(.ai-content) li {
+  margin-bottom: 3px;
+}
+
+:global(.ai-content) a {
+  color: #58a6ff;
+  text-decoration: none;
+}
+
+:global(.ai-content) a:hover {
+  text-decoration: underline;
+}
+
+/* Code blocks — elevated sub-surface */
+:global(.ai-code-wrap) {
+  border-radius: 6px;
+  overflow: hidden;
+  margin: 8px 0;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.015);
+}
+
+:global(.ai-code-bar) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+:global(.ai-code-lang) {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+:global(.ai-code-bar-actions) {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+:global(.ai-code-bar-btn) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+:global(.ai-code-bar-btn):hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+:global(.ai-code-wrap) pre {
+  background: rgba(255, 255, 255, 0.015);
+  margin: 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+}
+
+:global(.ai-code-wrap) pre code {
+  font-family: var(--font-mono);
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+/* Tool call rows */
+.tool {
+  font-size: 12px;
+  margin-bottom: 3px;
+  padding: 2px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+.toolActive {
+  color: var(--text-secondary);
+}
+
+.toolIcon {
+  font-size: 10px;
+  width: 14px;
+  text-align: center;
+  flex-shrink: 0;
+  color: var(--color-ai);
+}
+
+.toolName {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.toolActive .toolName {
+  color: var(--color-ai);
+}
+
+.toolInput {
+  font-family: var(--font-mono);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+  opacity: 0.5;
+}
+
+.toolSpin {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-ai);
+  animation: aiPulse 1.2s ease-in-out infinite;
+  flex-shrink: 0;
+}
