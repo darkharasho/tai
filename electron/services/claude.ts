@@ -2,12 +2,19 @@ import { ipcMain, BrowserWindow } from 'electron';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
+import { RemoteSshManager } from './remoteSsh';
+import { RemoteToolProxy } from './remoteToolProxy';
+
+const sshManager = new RemoteSshManager();
+const toolProxy = new RemoteToolProxy(sshManager);
 
 interface ClaudeState {
   process: ChildProcess | null;
   sessionId: string | null;
   buffer: string;
   busy: boolean;
+  remoteTarget: string | null;
+  remoteExecMode: 'auto' | 'local';
 }
 
 const claudeStates = new Map<string, ClaudeState>();
@@ -15,7 +22,7 @@ const claudeStates = new Map<string, ClaudeState>();
 function getState(key: string): ClaudeState {
   let state = claudeStates.get(key);
   if (!state) {
-    state = { process: null, sessionId: null, buffer: '', busy: false };
+    state = { process: null, sessionId: null, buffer: '', busy: false, remoteTarget: null, remoteExecMode: 'auto' };
     claudeStates.set(key, state);
   }
   return state;
@@ -56,7 +63,11 @@ function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, perm
     '--include-partial-messages',
   ];
 
-  if (permMode === 'bypass') {
+  const isRemoteExec = state.remoteTarget && state.remoteExecMode === 'auto';
+
+  if (isRemoteExec) {
+    args.push('--permission-mode', 'acceptEdits');
+  } else if (permMode === 'bypass') {
     args.push('--permission-mode', 'bypassPermissions');
   } else if (permMode === 'approve-edits') {
     args.push('--permission-mode', 'acceptEdits');
@@ -101,6 +112,18 @@ function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, perm
           continue;
         }
 
+        const isRemoteExec = state.remoteTarget && state.remoteExecMode === 'auto';
+        if (isRemoteExec && msg.type === 'assistant' && msg.message?.content) {
+          const toolUses = (Array.isArray(msg.message.content) ? msg.message.content : [])
+            .filter((b: any) => b.type === 'tool_use');
+
+          if (toolUses.length > 0) {
+            safeSend(win, 'ai:message', key, msg);
+            handleRemoteToolCalls(win, key, state, toolUses);
+            continue;
+          }
+        }
+
         safeSend(win, 'ai:message', key, msg);
       } catch {}
     }
@@ -116,6 +139,77 @@ function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, perm
   });
 
   return proc;
+}
+
+async function handleRemoteToolCalls(
+  win: BrowserWindow | null,
+  key: string,
+  state: ClaudeState,
+  toolUses: Array<{ id: string; name: string; input: Record<string, any> }>,
+) {
+  if (!sshManager.isConnected(key) && state.remoteTarget) {
+    try {
+      await sshManager.connect(key, state.remoteTarget);
+    } catch (err: any) {
+      for (const tool of toolUses) {
+        const errorResult = JSON.stringify({
+          type: 'user',
+          message: {
+            role: 'user',
+            content: [{
+              type: 'tool_result',
+              tool_use_id: tool.id,
+              content: `SSH connection failed: ${err.message}. AI commands will run locally.`,
+              is_error: true,
+            }],
+          },
+        });
+        state.process?.stdin!.write(errorResult + '\n');
+      }
+      safeSend(win, 'ai:message', key, {
+        type: 'remote:connection_failed',
+        error: err.message,
+      });
+      return;
+    }
+  }
+
+  for (const tool of toolUses) {
+    const result = await toolProxy.executeRemoteTool(key, tool.name, tool.input);
+
+    let output = result.output;
+    const MAX_OUTPUT = 100 * 1024;
+    if (output.length > MAX_OUTPUT) {
+      output = output.slice(0, MAX_OUTPUT) + '\n[output truncated at 100KB]';
+    }
+
+    const toolResult = JSON.stringify({
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [{
+          type: 'tool_result',
+          tool_use_id: tool.id,
+          content: output,
+          is_error: result.isError,
+        }],
+      },
+    });
+    state.process?.stdin!.write(toolResult + '\n');
+
+    safeSend(win, 'ai:message', key, {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [{
+          type: 'tool_result',
+          tool_use_id: tool.id,
+          content: output,
+          is_error: result.isError,
+        }],
+      },
+    });
+  }
 }
 
 export function setupClaudeService(getWindow: () => BrowserWindow | null) {
@@ -167,6 +261,25 @@ export function setupClaudeService(getWindow: () => BrowserWindow | null) {
     }
     return true;
   });
+
+  ipcMain.handle('ai:setRemoteTarget', (_event, key: string, target: string | null, mode: string) => {
+    const state = getState(key);
+    const wasRemote = state.remoteTarget && state.remoteExecMode === 'auto';
+    state.remoteTarget = target;
+    state.remoteExecMode = mode as 'auto' | 'local';
+    const isRemote = state.remoteTarget && state.remoteExecMode === 'auto';
+
+    if (wasRemote !== isRemote && state.process && !state.process.killed) {
+      state.process.kill();
+      state.process = null;
+      state.sessionId = null;
+    }
+
+    if (!target) {
+      sshManager.disconnect(key);
+    }
+    return true;
+  });
 }
 
 export function destroyAllClaude() {
@@ -174,4 +287,5 @@ export function destroyAllClaude() {
     if (state.process) state.process.kill();
   }
   claudeStates.clear();
+  sshManager.destroyAll();
 }
