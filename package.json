@@ -1,11 +1,8 @@
 {
   "name": "tai",
   "version": "1.0.1",
-  "description": "",
+  "description": "An AI-native terminal that understands what you're doing.",
   "main": "dist-electron/main.js",
-  "directories": {
-    "doc": "docs"
-  },
   "scripts": {
     "postinstall": "electron-rebuild -w node-pty",
     "dev": "vite",
