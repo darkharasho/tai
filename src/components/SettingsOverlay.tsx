@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { X, Settings } from 'lucide-react';
+import styles from './SettingsOverlay.module.css';
 
 interface SettingsOverlayProps {
   visible: boolean;
@@ -24,62 +25,40 @@ export function SettingsOverlay({ visible, onClose, config, onSet }: SettingsOve
   ];
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 100,
-      background: 'rgba(0,0,0,0.6)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }} onClick={onClose}>
+    <div className={styles.overlay} onClick={onClose}>
       <div
+        className={styles.modal}
         onClick={e => e.stopPropagation()}
-        style={{
-          width: 600, maxHeight: '80vh', background: '#0e0e1a',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: 12, overflow: 'hidden',
-          display: 'flex', flexDirection: 'column',
-          animation: 'fadeIn 0.15s ease',
-        }}
       >
-        <div style={{
-          padding: '14px 16px',
-          display: 'flex', alignItems: 'center', gap: 8,
-          borderBottom: '1px solid var(--border-subtle)',
-        }}>
+        <div className={styles.header}>
           <Settings size={16} color="var(--text-secondary)" />
-          <span style={{ fontSize: 14, color: 'var(--text-primary)', flex: 1 }}>Settings</span>
-          <X size={16} color="var(--text-muted)" style={{ cursor: 'pointer' }} onClick={onClose} />
+          <span className={styles.headerTitle}>Settings</span>
+          <X size={16} color="var(--text-muted)" className={styles.closeButton} onClick={onClose} />
         </div>
 
-        <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-          <div style={{
-            width: 160, borderRight: '1px solid var(--border-subtle)',
-            padding: '8px 0',
-          }}>
+        <div className={styles.body}>
+          <div className={styles.sidebar}>
             {categories.map(cat => (
               <div
                 key={cat.id}
                 onClick={() => setCategory(cat.id)}
-                style={{
-                  padding: '8px 16px', cursor: 'pointer',
-                  fontSize: 12,
-                  color: category === cat.id ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  background: category === cat.id ? 'rgba(255,255,255,0.05)' : 'transparent',
-                }}
+                className={`${styles.sidebarItem} ${category === cat.id ? styles.sidebarItemActive : ''}`}
               >
                 {cat.label}
               </div>
             ))}
           </div>
 
-          <div style={{ flex: 1, padding: 16, overflow: 'auto' }}>
+          <div className={styles.content}>
             {category === 'general' && (
               <SettingsGroup>
                 <SettingRow label="Font Size" value={
                   <input type="number" value={config['general.fontSize']} onChange={e => onSet('general.fontSize', parseInt(e.target.value))}
-                    style={inputStyle} />
+                    className={styles.input} />
                 } />
                 <SettingRow label="Cursor Style" value={
                   <select value={config['general.cursorStyle']} onChange={e => onSet('general.cursorStyle', e.target.value)}
-                    style={inputStyle}>
+                    className={styles.input}>
                     <option value="bar">Bar</option>
                     <option value="block">Block</option>
                     <option value="underline">Underline</option>
@@ -91,13 +70,13 @@ export function SettingsOverlay({ visible, onClose, config, onSet }: SettingsOve
               <SettingsGroup>
                 <SettingRow label="Provider" value={
                   <select value={config['ai.provider']} onChange={e => onSet('ai.provider', e.target.value)}
-                    style={inputStyle}>
+                    className={styles.input}>
                     <option value="claude">Claude</option>
                   </select>
                 } />
                 <SettingRow label="Model" value={
                   <input type="text" value={config['ai.model']} onChange={e => onSet('ai.model', e.target.value)}
-                    style={inputStyle} />
+                    className={styles.input} />
                 } />
               </SettingsGroup>
             )}
@@ -105,7 +84,7 @@ export function SettingsOverlay({ visible, onClose, config, onSet }: SettingsOve
               <SettingsGroup>
                 <SettingRow label="Default Trust Level" value={
                   <select value={config['trust.default']} onChange={e => onSet('trust.default', e.target.value)}
-                    style={inputStyle}>
+                    className={styles.input}>
                     <option value="ask">Ask (approve everything)</option>
                     <option value="approve-edits">Approve Edits (read-only is free)</option>
                     <option value="bypass">Bypass (full autonomy)</option>
@@ -122,12 +101,12 @@ export function SettingsOverlay({ visible, onClose, config, onSet }: SettingsOve
                 <SettingRow label="Animation Speed (seconds)" value={
                   <input type="number" value={config['appearance.animationSpeed']}
                     onChange={e => onSet('appearance.animationSpeed', parseInt(e.target.value))}
-                    style={inputStyle} />
+                    className={styles.input} />
                 } />
               </SettingsGroup>
             )}
             {category === 'keybindings' && (
-              <div style={{ color: 'var(--text-secondary)', fontSize: 12, padding: 16 }}>
+              <div className={styles.keybindingsPlaceholder}>
                 Keybinding customization coming soon.
               </div>
             )}
@@ -139,26 +118,14 @@ export function SettingsOverlay({ visible, onClose, config, onSet }: SettingsOve
 }
 
 function SettingsGroup({ children }: { children: React.ReactNode }) {
-  return <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>{children}</div>;
+  return <div className={styles.settingsGroup}>{children}</div>;
 }
 
 function SettingRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-      <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{label}</span>
+    <div className={styles.settingRow}>
+      <span className={styles.settingLabel}>{label}</span>
       {value}
     </div>
   );
 }
-
-const inputStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.05)',
-  border: '1px solid var(--border-subtle)',
-  borderRadius: 6,
-  padding: '4px 8px',
-  color: 'var(--text-primary)',
-  fontFamily: 'var(--font-mono)',
-  fontSize: 12,
-  outline: 'none',
-  width: 160,
-};
