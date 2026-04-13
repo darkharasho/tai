@@ -282,7 +282,20 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
         '- When showing commands, use ```bash code blocks.',
         '- Skip pleasantries and unnecessary explanation.',
         `- Working directory: ${cwd}`,
-      ].join('\n');
+      ];
+
+      if (isRemoteExec && promptInfo?.sshTarget) {
+        lines.push(
+          '',
+          `REMOTE EXECUTION: You are connected to remote host: ${promptInfo.sshTarget}`,
+          'All Bash commands execute on the remote host, not locally.',
+          'Available tools: Bash, Read (via cat), Write (via heredoc), Grep (via grep).',
+          'The Edit tool is NOT available remotely. Use sed or write the full file with a heredoc instead.',
+          'The Glob tool uses find on the remote host.',
+        );
+      }
+
+      const preamble = lines.join('\n');
       fullPrompt = `<system>\n${preamble}\n</system>\n\n${prompt}`;
     }
 
@@ -425,7 +438,7 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
     aiBlockIdRef.current = aiId;
 
     providerRef.current.send(fullPrompt, cwd, trustLevel);
-  }, [cwd, trustLevel, handleInputModeChange]);
+  }, [cwd, trustLevel, handleInputModeChange, promptInfo, remoteExecMode]);
 
   const handleAskAI = useCallback((block: import('@/types').SegmentedBlock) => {
     const prompt = `The following command ran:\n\n\`\`\`\n$ ${block.command}\n${block.output}\n\`\`\`\n\nAnalyze this and suggest a fix if needed. If you suggest a command, put it in a \`\`\`bash code block.`;
