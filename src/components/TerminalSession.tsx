@@ -22,6 +22,7 @@ interface TerminalSessionProps {
   onRemoteChange: (isRemote: boolean, sshTarget: string | null) => void;
   remoteExecMode: 'auto' | 'local';
   onRemoteExecModeChange: (mode: 'auto' | 'local') => void;
+  onTrustLevelChange: (level: TrustLevel) => void;
 }
 
 function createProvider(provider: AIProvider, tabId: string) {
@@ -36,7 +37,7 @@ function nextBlockId(): string {
   return `tm-${crypto.randomUUID()}`;
 }
 
-export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustLevel, aiProvider, onContextModeChange, onRemoteChange, remoteExecMode, onRemoteExecModeChange }: TerminalSessionProps) {
+export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustLevel, aiProvider, onContextModeChange, onRemoteChange, remoteExecMode, onRemoteExecModeChange, onTrustLevelChange }: TerminalSessionProps) {
   const [displayItems, setDisplayItems] = useState<DisplayItem[]>([]);
   const [altScreenVisible, setAltScreenVisible] = useState(false);
   const [inputMode, setInputMode] = useState<'shell' | 'ai'>('shell');
@@ -673,6 +674,9 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
           onClear={() => setDisplayItems([])}
           remoteExecMode={remoteExecMode}
           onRemoteExecModeChange={onRemoteExecModeChange}
+          aiProvider={aiProvider}
+          trustLevel={trustLevel}
+          onTrustLevelChange={onTrustLevelChange}
         />
       )}
     </div>

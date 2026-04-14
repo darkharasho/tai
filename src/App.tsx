@@ -162,6 +162,9 @@ export default function App() {
             onRemoteChange={(isRemote, sshTarget) => handleRemoteChange(tab.id, isRemote, sshTarget)}
             remoteExecMode={tab.remoteExecMode}
             onRemoteExecModeChange={(mode) => handleRemoteExecModeChange(tab.id, mode)}
+            onTrustLevelChange={(level) => {
+              setTabs(prev => prev.map(t => t.id === tab.id ? { ...t, trustLevel: level } : t));
+            }}
           />
         </div>
       ))}

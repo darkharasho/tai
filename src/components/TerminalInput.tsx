@@ -2,6 +2,14 @@ import { useState, useRef, useEffect, useImperativeHandle, forwardRef, useMemo }
 import { predictCommand } from '@/hooks/useGhostText';
 import { looksLikeShellCommand } from '@/utils/commandDetector';
 import styles from './TerminalInput.module.css';
+import { ShieldCheck, ShieldOff } from 'lucide-react';
+import type { AIProvider, TrustLevel } from '@/types';
+
+const PERM_LABELS: Record<AIProvider, Record<TrustLevel, string>> = {
+  claude: { 'ask': 'Default', 'approve-edits': 'Auto Edits', 'bypass': 'Bypass' },
+  codex: { 'ask': 'Auto', 'approve-edits': 'Read-only', 'bypass': 'Full Access' },
+  gemini: { 'ask': 'Default', 'approve-edits': 'Auto Edit', 'bypass': 'Yolo' },
+};
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent);
 
@@ -50,9 +58,12 @@ interface TerminalInputProps {
   initialValue?: string;
   remoteExecMode?: 'auto' | 'local';
   onRemoteExecModeChange?: (mode: 'auto' | 'local') => void;
+  aiProvider?: AIProvider;
+  trustLevel?: TrustLevel;
+  onTrustLevelChange?: (level: TrustLevel) => void;
 }
 
-export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>(function TerminalInput({ onSubmit, mode, onModeChange, disabled, cwd, promptInfo, history = [], onClear, initialValue, remoteExecMode, onRemoteExecModeChange }, ref) {
+export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>(function TerminalInput({ onSubmit, mode, onModeChange, disabled, cwd, promptInfo, history = [], onClear, initialValue, remoteExecMode, onRemoteExecModeChange, aiProvider, trustLevel, onTrustLevelChange }, ref) {
   const [value, setValue] = useState(initialValue || '');
   const inputRef = useRef<HTMLInputElement>(null);
   const historyIndexRef = useRef(-1);
@@ -305,6 +316,24 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
               autoComplete="off"
             />
           </div>
+          {isAI && aiProvider && trustLevel && onTrustLevelChange && (
+            <button
+              className={`${styles.permBadge} ${trustLevel === 'bypass' ? styles.permDanger : ''}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                const levels: TrustLevel[] = ['ask', 'approve-edits', 'bypass'];
+                const idx = levels.indexOf(trustLevel);
+                onTrustLevelChange(levels[(idx + 1) % levels.length]);
+              }}
+              title={`Permissions: ${PERM_LABELS[aiProvider][trustLevel]}`}
+            >
+              {trustLevel === 'bypass'
+                ? <ShieldOff size={12} />
+                : <ShieldCheck size={12} />
+              }
+              <span className={styles.permLabel}>{PERM_LABELS[aiProvider][trustLevel]}</span>
+            </button>
+          )}
           <div className={styles.hint}>
             <span className={styles.kbd}>Shift+Tab</span>
             <span className={styles.hintLabel}>{isAI ? 'Shell' : 'AI'}</span>

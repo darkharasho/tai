@@ -204,3 +204,40 @@
   0% { background-position: 0% 0%; }
   100% { background-position: 100% 100%; }
 }
+
+.permBadge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.permBadge:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+}
+
+.permDanger {
+  color: #e35535;
+  border-color: #e35535;
+  background: rgba(227, 85, 53, 0.1);
+}
+
+.permDanger:hover {
+  background: rgba(227, 85, 53, 0.2);
+}
+
+.permLabel {
+  font-size: 11px;
+}
