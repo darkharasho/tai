@@ -1,2 +1,125 @@
-/* src/components/ToolCallBody.module.css */
-/* Styles added in Task 4 */
+.body {
+  margin: 4px 0 6px;
+  border: 1px solid var(--border-card);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.highlighted {
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.highlighted :global(pre) {
+  margin: 0;
+  padding: 8px 10px;
+  background: transparent !important;
+  border-radius: 0;
+}
+
+.highlighted :global(code) {
+  font-family: var(--font-mono);
+  font-size: inherit;
+  background: none;
+  padding: 0;
+}
+
+.plainCode {
+  margin: 0;
+  padding: 8px 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  background: transparent;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.diffBlock {
+  margin: 0;
+  padding: 6px 0;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.diffBlock code {
+  font-size: inherit;
+  background: none;
+  padding: 0;
+}
+
+.diffAdd {
+  display: flex;
+  padding: 0 10px;
+  white-space: pre-wrap;
+  background: rgba(72, 100, 40, 0.35);
+}
+
+.diffDel {
+  display: flex;
+  padding: 0 10px;
+  white-space: pre-wrap;
+  background: rgba(180, 60, 40, 0.25);
+}
+
+.diffMarker {
+  flex-shrink: 0;
+  width: 1.5ch;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.showMore {
+  display: block;
+  width: 100%;
+  padding: 5px 10px;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--border-card);
+  color: var(--color-ai);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.showMore:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.errorDisplay {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: var(--color-error);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.errorDisplay svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.outputSection {
+  border-top: 1px dashed var(--border-card);
+}
+
+.outputHeader {
+  padding: 6px 10px 0;
+}
+
+.outputLabel {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+}
