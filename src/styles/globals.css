@@ -38,6 +38,7 @@
   --accent-br-webkit-composite: source-in;
   --accent-br-opacity: 1;
   --shimmer-duration: 8s;
+  --window-radius: 10px;
 }
 
 [data-color-mode="low"] {
@@ -52,9 +53,9 @@
   padding: 0;
 }
 
-html, body, #root {
+html, body {
   height: 100%;
-  background: var(--bg-base);
+  background: transparent;
   color: var(--text-primary);
   font-family: var(--font-sans);
   overflow: hidden;
@@ -62,6 +63,13 @@ html, body, #root {
 }
 
 #root {
+  height: 100%;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  border-radius: var(--window-radius);
   position: relative;
 }
 
@@ -73,6 +81,7 @@ html, body, #root {
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   pointer-events: none;
   z-index: 9999;
+  border-radius: inherit;
 }
 
 ::selection {
@@ -90,6 +99,23 @@ html, body, #root {
 ::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.1);
   border-radius: 3px;
+}
+
+.window-frame::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px 0 0 0;
+  background: linear-gradient(90deg, #00a884, #8b5cf6, #ea580c, #00a884);
+  background-size: 200% 100%;
+  animation: shimmer var(--shimmer-duration) linear infinite;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  -webkit-mask-composite: xor;
+  pointer-events: none;
+  z-index: 10000;
 }
 
 @keyframes fadeIn {

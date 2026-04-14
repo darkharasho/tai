@@ -18,6 +18,7 @@ declare global {
         minimize: () => void;
         maximize: () => void;
         close: () => void;
+        onMaximizedChange: (callback: (maximized: boolean) => void) => () => void;
       };
       ai: {
         send: (key: string, cwd: string, message: string, permMode: string, model: string) => Promise<boolean>;

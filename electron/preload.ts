@@ -22,6 +22,11 @@ contextBridge.exposeInMainWorld('tai', {
     minimize: () => ipcRenderer.send('window:minimize'),
     maximize: () => ipcRenderer.send('window:maximize'),
     close: () => ipcRenderer.send('window:close'),
+    onMaximizedChange: (callback: (maximized: boolean) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, maximized: boolean) => callback(maximized);
+      ipcRenderer.on('window:maximized-change', listener);
+      return () => ipcRenderer.removeListener('window:maximized-change', listener);
+    },
   },
   ai: {
     send: (key: string, cwd: string, message: string, permMode: string, model: string) =>

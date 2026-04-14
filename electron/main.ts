@@ -8,7 +8,6 @@ import { setupCodexService, destroyAllCodex } from './services/codex';
 import { setupGeminiService, destroyAllGemini } from './services/gemini';
 import { registerUpdater } from './services/updater';
 
-app.disableHardwareAcceleration();
 if (process.env.VITE_DEV_SERVER_URL) {
   app.commandLine.appendSwitch('remote-debugging-port', '9222');
 }
@@ -57,8 +56,9 @@ function createWindow() {
     ...(process.platform === 'darwin'
       ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 12, y: 14 } }
       : { frame: false }),
-    transparent: false,
-    backgroundColor: '#0c0f11',
+    ...(process.platform === 'darwin'
+      ? { transparent: false, backgroundColor: '#0c0f11' }
+      : { transparent: true, backgroundColor: '#00000000' }),
     icon: path.join(__dirname, '..', process.env.VITE_DEV_SERVER_URL ? 'public' : 'dist', 'img',
       process.platform === 'darwin' ? 'tai.icns' : 'tai.png'),
     webPreferences: {
@@ -69,6 +69,9 @@ function createWindow() {
   });
 
   if (state.maximized) mainWindow.maximize();
+
+  mainWindow.on('maximize', () => mainWindow?.webContents.send('window:maximized-change', true));
+  mainWindow.on('unmaximize', () => mainWindow?.webContents.send('window:maximized-change', false));
 
   mainWindow.on('close', () => {
     saveWindowState();

@@ -32,7 +32,12 @@ export default function App() {
   const [closeConfirm, setCloseConfirm] = useState<{ tabId: string; process: string } | null>(null);
   const configApplied = useRef(false);
 
+  const [maximized, setMaximized] = useState(false);
   const activeTab = tabs.find(t => t.id === activeTabId)!;
+
+  useEffect(() => {
+    return window.tai?.window?.onMaximizedChange?.((m: boolean) => setMaximized(m));
+  }, []);
 
   useEffect(() => {
     if (!configLoaded || configApplied.current) return;
@@ -142,15 +147,14 @@ export default function App() {
   const colorMode = config['appearance.colorMode'] || 'high';
 
   return (
-    <div data-color-mode={colorMode} style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-base)', overflow: 'hidden' }}>
-      <div style={{
-        height: 2,
-        background: 'linear-gradient(90deg, #00a884, #8b5cf6, #ea580c, #00a884)',
-        backgroundSize: '200% 100%',
-        animation: `shimmer var(--shimmer-duration) linear infinite`,
-        flexShrink: 0,
-        opacity: colorMode === 'low' ? 0.9 : 1,
-      }} />
+    <div data-color-mode={colorMode} className={maximized ? undefined : 'window-frame'} style={{
+      height: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      background: 'var(--bg-base)',
+      overflow: 'hidden',
+      borderRadius: maximized ? 0 : 'var(--window-radius)',
+    }}>
       <TabBar
         tabs={tabs}
         activeTabId={activeTabId}
