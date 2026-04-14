@@ -394,9 +394,7 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
           if (block.type === 'tool_use' && block.id && !knownToolIds.has(block.id)) {
             knownToolIds.add(block.id);
             const name = block.name || 'unknown';
-            const input = block.input?.command
-              || block.input?.file_path
-              || (block.input ? JSON.stringify(block.input) : '');
+            const input = block.input ? JSON.stringify(block.input) : '';
             entries.push({
               kind: 'tool',
               call: { id: block.id, name, input },
