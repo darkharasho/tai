@@ -16,7 +16,7 @@ const SHELL_NAMES = new Set(['bash', 'zsh', 'sh', 'fish', 'dash', 'ksh', 'csh', 
 let tabCounter = 0;
 function createTabState(): TabState {
   const id = `tab-${++tabCounter}`;
-  return { id, ptyId: null, label: 'zsh', cwd: '', contextMode: 'shell', trustLevel: 'ask', isRemote: false, sshTarget: null, remoteExecMode: 'auto' as const };
+  return { id, ptyId: null, label: 'zsh', cwd: '', contextMode: 'shell', trustLevel: 'ask', isRemote: false, sshTarget: null, remoteExecMode: 'auto' as const, aiProvider: 'claude' as const };
 }
 
 export default function App() {

@@ -2,6 +2,8 @@ export type ContextMode = 'shell' | 'ai' | 'agent' | 'error';
 
 export type TrustLevel = 'ask' | 'approve-edits' | 'bypass';
 
+export type AIProvider = 'claude' | 'codex' | 'gemini';
+
 export interface SegmentedBlock {
   id: string;
   command: string;
@@ -50,4 +52,5 @@ export interface TabState {
   isRemote: boolean;
   sshTarget: string | null;
   remoteExecMode: 'auto' | 'local';
+  aiProvider: AIProvider;
 }
