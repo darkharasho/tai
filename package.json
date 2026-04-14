@@ -35,7 +35,8 @@
     },
     "win": {
       "target": "nsis",
-      "icon": "public/img/tai.png"
+      "icon": "public/img/tai.png",
+      "artifactName": "tai-Setup-${version}.${ext}"
     },
     "mac": {
       "target": [
