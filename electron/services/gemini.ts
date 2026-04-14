@@ -132,10 +132,16 @@ function mapGeminiToolName(kind: string | undefined, title: string | undefined):
   }
 }
 
+function extractLocationPath(loc: unknown): string {
+  if (typeof loc === 'string') return loc;
+  if (loc && typeof loc === 'object' && 'path' in loc) return String((loc as any).path);
+  return '';
+}
+
 function buildGeminiToolInput(update: any): Record<string, any> {
   const kind = update.kind;
-  const locations: string[] = Array.isArray(update.locations) ? update.locations : [];
-  const loc = locations[0] || '';
+  const rawLocations: unknown[] = Array.isArray(update.locations) ? update.locations : [];
+  const loc = extractLocationPath(rawLocations[0]);
 
   switch (kind) {
     case 'shell':
@@ -148,8 +154,10 @@ function buildGeminiToolInput(update: any): Record<string, any> {
       return { pattern: update.title || '', ...(loc ? { path: loc } : {}) };
     case 'glob':
       return { pattern: loc || update.title || '' };
-    default:
-      return { kind, locations };
+    default: {
+      const locations = rawLocations.map(l => extractLocationPath(l)).filter(Boolean);
+      return { kind, ...(locations.length ? { locations } : {}) };
+    }
   }
 }
 
