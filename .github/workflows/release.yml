@@ -104,8 +104,10 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+      - name: List artifacts
+        run: find artifacts -type f
       - name: Upload to GitHub Release
-        run: gh release upload ${{ github.ref_name }} artifacts/release/* --clobber
+        run: gh release upload ${{ github.ref_name }} $(find artifacts -type f) --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Undraft release
