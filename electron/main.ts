@@ -4,6 +4,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { setupPtyService, destroyAllTerminals } from './services/pty';
 import { setupClaudeService, destroyAllClaude } from './services/claude';
+import { setupCodexService, destroyAllCodex } from './services/codex';
+import { setupGeminiService, destroyAllGemini } from './services/gemini';
 import { registerUpdater } from './services/updater';
 
 app.disableHardwareAcceleration();
@@ -86,11 +88,15 @@ app.whenReady().then(() => {
   registerUpdater(mainWindow!);
   setupPtyService(() => mainWindow);
   setupClaudeService(() => mainWindow);
+  setupCodexService(() => mainWindow);
+  setupGeminiService(() => mainWindow);
 });
 
 app.on('before-quit', () => {
   destroyAllTerminals();
   destroyAllClaude();
+  destroyAllCodex();
+  destroyAllGemini();
 });
 
 app.on('window-all-closed', () => {
