@@ -246,7 +246,7 @@ export function setupCodexService(getWindow: () => BrowserWindow | null) {
       if (state.process !== proc) return;
       const text = data.toString().trim();
       if (text) {
-        safeSend(win, 'ai:error', key, text);
+        safeSend(win, 'ai:message', key, { type: 'error', text });
       }
     });
 

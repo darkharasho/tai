@@ -457,6 +457,21 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
         return;
       }
 
+      if (msg.type === 'error' && msg.text) {
+        gotContent = true;
+        const errorText = `**Error:** ${msg.text}`;
+        const lastIdx = entries.length - 1;
+        const lastEntry = lastIdx >= 0 ? entries[lastIdx] : null;
+        if (lastEntry && lastEntry.kind === 'text') {
+          lastEntry.text += '\n\n' + errorText;
+        } else {
+          entries.push({ kind: 'text', text: errorText });
+        }
+        lastTextEntry = errorText;
+        updateItem();
+        return;
+      }
+
       if (msg.type === 'result') {
         if (msg.result) {
           const text = typeof msg.result === 'string' ? msg.result : '';
