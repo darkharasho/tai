@@ -2,9 +2,21 @@ import React, { useCallback, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Terminal, Copy, Sparkles, Square, Check, X, Circle, FileText, Pencil, FolderSearch, Search, Globe, ChevronRight, ChevronDown, type LucideIcon } from 'lucide-react';
-import type { AIEntry } from '@/types';
+import type { AIEntry, AIProvider } from '@/types';
 import styles from './InlineAIBlock.module.css';
 import ToolCallBody, { formatToolLabel } from './ToolCallBody';
+
+const PROVIDER_NAMES: Record<AIProvider, string> = {
+  claude: 'Claude',
+  codex: 'Codex',
+  gemini: 'Gemini',
+};
+
+const PROVIDER_ICONS: Record<AIProvider, string> = {
+  claude: '/svg/claude.svg',
+  codex: '/svg/openai.svg',
+  gemini: '/svg/Google-gemini-icon.svg',
+};
 
 function formatDuration(ms: number): string {
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
@@ -21,6 +33,7 @@ interface InlineAIBlockProps {
   onRunCommand: (cmd: string) => void;
   onCopy?: (text: string) => void;
   onStop?: () => void;
+  aiProvider?: AIProvider;
 }
 
 const TOOL_ICONS: Record<string, LucideIcon> = {
@@ -49,6 +62,7 @@ export function InlineAIBlock({
   onRunCommand,
   onCopy,
   onStop,
+  aiProvider = 'claude',
 }: InlineAIBlockProps) {
   const runnableCommands = new Set(suggestedCommands ?? []);
 
@@ -110,7 +124,11 @@ export function InlineAIBlock({
           <div className={styles.inner}>
             <div className={styles.header}>
               <div className={styles.headerLeft}>
-                <span className={styles.label}>Claude</span>
+                <span
+                  className={styles.providerIcon}
+                  style={{ maskImage: `url(${PROVIDER_ICONS[aiProvider]})`, WebkitMaskImage: `url(${PROVIDER_ICONS[aiProvider]})` }}
+                />
+                <span className={styles.label}>{PROVIDER_NAMES[aiProvider]}</span>
                 {streaming && <span className={styles.streamingDot} />}
               </div>
               {streaming && onStop && (

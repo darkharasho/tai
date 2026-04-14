@@ -673,6 +673,7 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
           onToolApprove={handleToolApprove}
           onToolReject={handleToolReject}
           onStopAI={handleStopAI}
+          aiProvider={aiProvider}
         />
       )}
       {!altScreenVisible && (

@@ -3,7 +3,7 @@ import { Wrench, Check, X } from 'lucide-react';
 import { CommandBlock } from './CommandBlock';
 import { InlineAIBlock } from './InlineAIBlock';
 import { ApprovalPrompt } from './ApprovalPrompt';
-import type { SegmentedBlock, AIEntry } from '@/types';
+import type { SegmentedBlock, AIEntry, AIProvider } from '@/types';
 import styles from './BlockList.module.css';
 
 export type DisplayItem =
@@ -23,6 +23,7 @@ interface BlockListProps {
   onToolApprove: (item: DisplayItem & { type: 'approval' }) => void;
   onToolReject: (item: DisplayItem & { type: 'approval' }) => void;
   onStopAI?: () => void;
+  aiProvider?: AIProvider;
 }
 
 const AUTO_COLLAPSE_THRESHOLD = 10;
@@ -39,6 +40,7 @@ export function BlockList({
   onToolApprove,
   onToolReject,
   onStopAI,
+  aiProvider,
 }: BlockListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [manualExpanded, setManualExpanded] = useState<Set<string>>(new Set());
@@ -135,6 +137,7 @@ export function BlockList({
                 onRunCommand={onRunSuggested}
                 onCopy={onCopy}
                 onStop={item.streaming ? onStopAI : undefined}
+                aiProvider={aiProvider}
               />
             </div>
           );

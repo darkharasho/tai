@@ -92,6 +92,16 @@
   flex-shrink: 0;
 }
 
+.providerIcon {
+  width: 14px;
+  height: 14px;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  background-color: var(--color-ai);
+  flex-shrink: 0;
+}
+
 .label {
   color: var(--color-ai);
   font-family: var(--font-sans);
