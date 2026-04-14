@@ -208,8 +208,9 @@ export function setupCodexService(getWindow: () => BrowserWindow | null) {
     const proc = spawn('codex', args, {
       cwd,
       env: enrichedEnv(),
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'],
     });
+    proc.stdin?.end();
 
     state.process = proc;
     state.busy = true;
@@ -245,9 +246,9 @@ export function setupCodexService(getWindow: () => BrowserWindow | null) {
     proc.stderr?.on('data', (data: Buffer) => {
       if (state.process !== proc) return;
       const text = data.toString().trim();
-      if (text) {
-        safeSend(win, 'ai:message', key, { type: 'error', text });
-      }
+      if (!text) return;
+      if (/^Reading .* from stdin/i.test(text)) return;
+      safeSend(win, 'ai:message', key, { type: 'error', text });
     });
 
     proc.on('exit', () => {
