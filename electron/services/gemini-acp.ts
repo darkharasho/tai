@@ -14,6 +14,7 @@ export interface GeminiAcpClient {
   request<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T>;
   notify(method: string, params?: Record<string, unknown>): void;
   onEvent(listener: (event: unknown) => void): () => void;
+  onStderr(listener: (text: string) => void): void;
   dispose(): void;
 }
 
@@ -33,6 +34,7 @@ export function createGeminiAcpClient(options: GeminiAcpClientOptions): GeminiAc
   let started = false;
   const pending = new Map<number, PendingRequest>();
   const eventListeners = new Set<(event: unknown) => void>();
+  let onStderrCallback: ((text: string) => void) | null = null;
 
   function rejectAllPending(error: Error) {
     for (const entry of pending.values()) {
@@ -122,6 +124,11 @@ export function createGeminiAcpClient(options: GeminiAcpClientOptions): GeminiAc
         }
       });
 
+      proc.stderr?.on('data', (chunk: Buffer) => {
+        const text = chunk.toString().trim();
+        if (text && onStderrCallback) onStderrCallback(text);
+      });
+
       proc.on('error', (error) => {
         processHandle = null;
         started = false;
@@ -175,6 +182,10 @@ export function createGeminiAcpClient(options: GeminiAcpClientOptions): GeminiAc
       return () => {
         eventListeners.delete(listener);
       };
+    },
+
+    onStderr(listener: (text: string) => void) {
+      onStderrCallback = listener;
     },
 
     dispose() {

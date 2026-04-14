@@ -323,6 +323,10 @@ async function ensureTransport(win: BrowserWindow | null, key: string, state: Ge
     clientInfo: { name: 'tai', version: '1.0' },
   });
 
+  client.onStderr((text) => {
+    safeSend(win, 'ai:message', key, { type: 'error', text: `Gemini: ${text}` });
+  });
+
   client.onEvent((event: any) => {
     if (event?.method === 'tool.approvalRequired' || event?.method === 'tool/approvalRequired') {
       const input = event.params?.input || {};
@@ -343,9 +347,14 @@ async function ensureTransport(win: BrowserWindow | null, key: string, state: Ge
       return;
     }
 
-    const translated = translateGeminiEvent(event, state.cwd);
-    if (translated) {
-      safeSend(win, 'ai:message', key, translated);
+    try {
+      const translated = translateGeminiEvent(event, state.cwd);
+      if (translated) {
+        safeSend(win, 'ai:message', key, translated);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown error';
+      safeSend(win, 'ai:message', key, { type: 'error', text: `Event translation error: ${msg}` });
     }
   });
 
