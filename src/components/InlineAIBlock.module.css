@@ -260,10 +260,25 @@
 .tool {
   font-size: 12px;
   margin-bottom: 3px;
-  padding: 2px 0;
+  padding: 2px 4px;
   display: flex;
   align-items: center;
   gap: 6px;
+  color: var(--text-muted);
+  border-radius: 4px;
+}
+
+.toolClickable {
+  cursor: pointer;
+}
+
+.toolClickable:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.toolChevron {
+  display: inline-flex;
+  flex-shrink: 0;
   color: var(--text-muted);
 }
 
@@ -290,15 +305,13 @@
   color: var(--color-ai);
 }
 
-.toolInput {
+.toolLabel {
   font-family: var(--font-mono);
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  direction: rtl;
-  text-align: left;
   opacity: 0.5;
 }
 

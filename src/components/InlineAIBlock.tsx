@@ -1,9 +1,10 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Terminal, Copy, Sparkles, Square, Check, X, Circle, FileText, Pencil, FolderSearch, Search, Globe, type LucideIcon } from 'lucide-react';
+import { Terminal, Copy, Sparkles, Square, Check, X, Circle, FileText, Pencil, FolderSearch, Search, Globe, ChevronRight, ChevronDown, type LucideIcon } from 'lucide-react';
 import type { AIEntry } from '@/types';
 import styles from './InlineAIBlock.module.css';
+import ToolCallBody, { formatToolLabel } from './ToolCallBody';
 
 function formatDuration(ms: number): string {
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
@@ -50,6 +51,17 @@ export function InlineAIBlock({
   onStop,
 }: InlineAIBlockProps) {
   const runnableCommands = new Set(suggestedCommands ?? []);
+
+  const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
+
+  const toggleTool = useCallback((id: string) => {
+    setExpandedTools(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   const handleCopyCode = useCallback((text: string) => {
     if (onCopy) onCopy(text);
@@ -128,20 +140,32 @@ export function InlineAIBlock({
                     const call = entry.call;
                     if (!call) return null;
                     const hasOutput = call.output != null;
+                    const toolId = call.id || `tool-${i}`;
+                    const isExpanded = expandedTools.has(toolId);
+                    const hasExpandableContent = hasOutput || (call.name === 'Edit' && call.input);
+                    const label = formatToolLabel(call.name, call.input);
                     return (
-                      <div
-                        key={call.id || `tool-${i}`}
-                        className={`${styles.tool}${hasOutput ? '' : ` ${styles.toolActive}`}`}
-                      >
-                        <span className={styles.toolIcon}><ToolIcon name={call.name} /></span>
-                        <span className={styles.toolName}>{call.name}</span>
-                        <span className={styles.toolInput}>{call.input}</span>
-                        {!hasOutput && streaming && <span className={styles.toolSpin} />}
-                        {hasOutput && (
-                          <span className={call.error ? styles.toolStatusError : styles.toolStatusOk}>
-                            {call.error ? <X size={10} /> : <Check size={10} />}
-                          </span>
-                        )}
+                      <div key={toolId}>
+                        <div
+                          className={`${styles.tool}${hasOutput ? '' : ` ${styles.toolActive}`}${hasExpandableContent ? ` ${styles.toolClickable}` : ''}`}
+                          onClick={hasExpandableContent ? () => toggleTool(toolId) : undefined}
+                        >
+                          {hasExpandableContent && (
+                            <span className={styles.toolChevron}>
+                              {isExpanded ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+                            </span>
+                          )}
+                          <span className={styles.toolIcon}><ToolIcon name={call.name} /></span>
+                          <span className={styles.toolName}>{call.name}</span>
+                          <span className={styles.toolLabel}>{label}</span>
+                          {!hasOutput && streaming && <span className={styles.toolSpin} />}
+                          {hasOutput && (
+                            <span className={call.error ? styles.toolStatusError : styles.toolStatusOk}>
+                              {call.error ? <X size={10} /> : <Check size={10} />}
+                            </span>
+                          )}
+                        </div>
+                        {isExpanded && <ToolCallBody call={call} />}
                       </div>
                     );
                   }
