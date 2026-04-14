@@ -28,6 +28,17 @@ declare global {
         onError: (key: string, callback: (error: string) => void) => () => void;
         setRemoteTarget: (key: string, target: string | null, mode: string) => Promise<boolean>;
       };
+      codex: {
+        send: (key: string, cwd: string, message: string, permMode: string, model: string) => Promise<boolean>;
+        stop: (key: string) => void;
+        setSessionId: (key: string, sessionId: string | undefined) => void;
+      };
+      gemini: {
+        send: (key: string, cwd: string, message: string, approvalMode: string, model: string) => Promise<boolean>;
+        stop: (key: string) => void;
+        approve: (key: string, toolUseId: string, approved: boolean) => Promise<boolean>;
+        setSessionId: (key: string, sessionId: string | undefined) => void;
+      };
       system: {
         getHostname: () => Promise<string>;
         platform: string;

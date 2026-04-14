@@ -9,7 +9,7 @@ import ConfirmModal from './components/ConfirmModal';
 import { useSettings } from './hooks/useSettings';
 import { useWhatsNew } from './hooks/useWhatsNew';
 import { useUpdateNotifier } from './hooks/useUpdateNotifier';
-import type { ContextMode, TabState, TrustLevel } from './types';
+import type { AIProvider, ContextMode, TabState, TrustLevel } from './types';
 
 const SHELL_NAMES = new Set(['bash', 'zsh', 'sh', 'fish', 'dash', 'ksh', 'csh', 'tcsh', 'nu', 'pwsh', 'powershell', 'cmd']);
 
@@ -98,6 +98,10 @@ export default function App() {
     setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, trustLevel: level } : t));
   }, [activeTabId]);
 
+  const handleAIProviderChange = useCallback((provider: AIProvider) => {
+    setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, aiProvider: provider } : t));
+  }, [activeTabId]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.shiftKey && e.key === 'T') { e.preventDefault(); handleNewTab(); }
@@ -181,6 +185,8 @@ export default function App() {
         onColorModeChange={(mode) => setSetting('appearance.colorMode', mode)}
         trustLevel={activeTab.trustLevel}
         onTrustLevelChange={handleTrustLevelChange}
+        aiProvider={activeTab.aiProvider}
+        onAIProviderChange={handleAIProviderChange}
       />
       <UpdateNotifier
         state={updater.state}
