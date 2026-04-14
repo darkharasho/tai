@@ -15,11 +15,13 @@ const DEFAULTS = {
 
 export function useSettings() {
   const [config, setConfig] = useState<Record<string, any>>(DEFAULTS);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     if (!window.tai?.config) return;
     window.tai.config.get().then((saved: Record<string, any>) => {
       setConfig({ ...DEFAULTS, ...saved });
+      setLoaded(true);
     });
     const cleanup = window.tai.config.onChanged((updated: Record<string, any>) => {
       setConfig({ ...DEFAULTS, ...updated });
@@ -32,5 +34,5 @@ export function useSettings() {
     setConfig(prev => ({ ...prev, [key]: value }));
   }, []);
 
-  return { config, setSetting };
+  return { config, loaded, setSetting };
 }

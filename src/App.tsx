@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { TabBar } from './components/TabBar';
 import { TerminalSession } from './components/TerminalSession';
 import { SettingsOverlay } from './components/SettingsOverlay';
@@ -14,22 +14,35 @@ import type { AIProvider, ContextMode, TabState, TrustLevel } from './types';
 const SHELL_NAMES = new Set(['bash', 'zsh', 'sh', 'fish', 'dash', 'ksh', 'csh', 'tcsh', 'nu', 'pwsh', 'powershell', 'cmd']);
 
 let tabCounter = 0;
-function createTabState(): TabState {
+function createTabState(defaults?: { trustLevel?: TrustLevel; aiProvider?: AIProvider }): TabState {
   const id = `tab-${++tabCounter}`;
-  return { id, ptyId: null, label: 'zsh', cwd: '', contextMode: 'shell', trustLevel: 'ask', isRemote: false, sshTarget: null, remoteExecMode: 'auto' as const, aiProvider: 'claude' as const };
+  return { id, ptyId: null, label: 'zsh', cwd: '', contextMode: 'shell', trustLevel: defaults?.trustLevel || 'ask', isRemote: false, sshTarget: null, remoteExecMode: 'auto' as const, aiProvider: defaults?.aiProvider || 'claude' as const };
 }
 
 export default function App() {
-  const { config, setSetting } = useSettings();
+  const { config, loaded: configLoaded, setSetting } = useSettings();
   const whatsNew = useWhatsNew();
   const updater = useUpdateNotifier();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [quickSettingsOpen, setQuickSettingsOpen] = useState(false);
+  const persistedProvider = (config['ai.provider'] || 'claude') as AIProvider;
+  const persistedTrust = (config['ai.trustLevel'] || 'ask') as TrustLevel;
   const [tabs, setTabs] = useState<TabState[]>(() => [createTabState()]);
   const [activeTabId, setActiveTabId] = useState(tabs[0].id);
   const [closeConfirm, setCloseConfirm] = useState<{ tabId: string; process: string } | null>(null);
+  const configApplied = useRef(false);
 
   const activeTab = tabs.find(t => t.id === activeTabId)!;
+
+  useEffect(() => {
+    if (!configLoaded || configApplied.current) return;
+    configApplied.current = true;
+    setTabs(prev => prev.map(t => ({
+      ...t,
+      aiProvider: persistedProvider,
+      trustLevel: persistedTrust,
+    })));
+  }, [configLoaded, persistedProvider, persistedTrust]);
 
   useEffect(() => {
     if (!window.tai?.pty) return;
@@ -43,10 +56,10 @@ export default function App() {
   }, [tabs.length]);
 
   const handleNewTab = useCallback(() => {
-    const tab = createTabState();
+    const tab = createTabState({ trustLevel: persistedTrust, aiProvider: persistedProvider });
     setTabs(prev => [...prev, tab]);
     setActiveTabId(tab.id);
-  }, []);
+  }, [persistedTrust, persistedProvider]);
 
   const handleCloseTab = useCallback((id: string) => {
     const tab = tabs.find(t => t.id === id);
@@ -96,11 +109,13 @@ export default function App() {
 
   const handleTrustLevelChange = useCallback((level: TrustLevel) => {
     setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, trustLevel: level } : t));
-  }, [activeTabId]);
+    setSetting('ai.trustLevel', level);
+  }, [activeTabId, setSetting]);
 
   const handleAIProviderChange = useCallback((provider: AIProvider) => {
     setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, aiProvider: provider } : t));
-  }, [activeTabId]);
+    setSetting('ai.provider', provider);
+  }, [activeTabId, setSetting]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
