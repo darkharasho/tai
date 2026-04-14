@@ -118,6 +118,15 @@ function renderToolContent(content: any[] | undefined): string {
   }).filter(Boolean).join('\n');
 }
 
+function sanitizeInput(input: Record<string, any>): Record<string, any> {
+  const result: Record<string, any> = {};
+  for (const [k, v] of Object.entries(input)) {
+    if (v == null) continue;
+    result[k] = typeof v === 'object' ? JSON.stringify(v) : v;
+  }
+  return result;
+}
+
 function mapGeminiToolName(kind: string | undefined, title: string | undefined): string {
   switch (kind) {
     case 'shell': return 'Bash';
@@ -228,6 +237,7 @@ export function translateGeminiEvent(msg: any, projectPath: string): any | null 
   }
 
   if (msg?.method === 'tool/call') {
+    const input = msg.params?.input || {};
     return {
       type: 'assistant',
       projectPath,
@@ -236,7 +246,7 @@ export function translateGeminiEvent(msg: any, projectPath: string): any | null 
           id: msg.params?.id,
           type: 'tool_use',
           name: msg.params?.name || 'tool',
-          input: msg.params?.input || {},
+          input: sanitizeInput(input),
         }],
       },
     };
@@ -316,16 +326,17 @@ async function ensureTransport(win: BrowserWindow | null, key: string, state: Ge
   client.onEvent((event: any) => {
     if (event?.method === 'tool.approvalRequired' || event?.method === 'tool/approvalRequired') {
       const input = event.params?.input || {};
+      const safe = sanitizeInput(input);
       state.pendingApproval = {
         toolUseId: event.params?.id || '',
         toolName: event.params?.name || 'tool',
-        input,
+        input: safe,
       };
       safeSend(win, 'ai:message', key, {
         type: 'approval_needed',
         toolUseId: event.params?.id || '',
         toolName: event.params?.name || 'tool',
-        command: input.command || input.file_path || JSON.stringify(input),
+        command: String(input.command || input.file_path || JSON.stringify(input)),
         description: event.params?.description || '',
         input,
       });
@@ -366,9 +377,8 @@ export function setupGeminiService(getWindow: () => BrowserWindow | null) {
     state.cwd = cwd;
 
     if (state.availability === 'disabled') {
-      safeSend(win, 'ai:message', key, { type: 'error', text: `Gemini unavailable: ${state.lastError || 'retry to continue'}` });
-      safeSend(win, 'ai:message', key, { type: 'done' });
-      return false;
+      state.availability = 'available';
+      state.lastError = undefined;
     }
 
     try {
