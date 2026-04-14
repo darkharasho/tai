@@ -157,6 +157,7 @@ export default function App() {
             cwd={tab.cwd}
             visible={tab.id === activeTabId}
             trustLevel={tab.trustLevel}
+            aiProvider={tab.aiProvider}
             onContextModeChange={(mode) => handleContextModeChange(tab.id, mode)}
             onRemoteChange={(isRemote, sshTarget) => handleRemoteChange(tab.id, isRemote, sshTarget)}
             remoteExecMode={tab.remoteExecMode}

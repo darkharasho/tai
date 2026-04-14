@@ -7,7 +7,9 @@ import { TerminalInput } from './TerminalInput';
 import type { TerminalInputHandle } from './TerminalInput';
 import { BlockSegmenter } from './BlockSegmenter';
 import { createClaudeProvider } from '@/providers/claude';
-import type { ContextMode, TrustLevel, AIEntry } from '@/types';
+import { createCodexProvider } from '@/providers/codex';
+import { createGeminiProvider } from '@/providers/gemini';
+import type { AIProvider, ContextMode, TrustLevel, AIEntry } from '@/types';
 
 interface TerminalSessionProps {
   tabId: string;
@@ -15,17 +17,26 @@ interface TerminalSessionProps {
   cwd: string;
   visible: boolean;
   trustLevel: TrustLevel;
+  aiProvider: AIProvider;
   onContextModeChange: (mode: ContextMode) => void;
   onRemoteChange: (isRemote: boolean, sshTarget: string | null) => void;
   remoteExecMode: 'auto' | 'local';
   onRemoteExecModeChange: (mode: 'auto' | 'local') => void;
 }
 
+function createProvider(provider: AIProvider, tabId: string) {
+  switch (provider) {
+    case 'codex': return createCodexProvider(tabId);
+    case 'gemini': return createGeminiProvider(tabId);
+    default: return createClaudeProvider(tabId);
+  }
+}
+
 function nextBlockId(): string {
   return `tm-${crypto.randomUUID()}`;
 }
 
-export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustLevel, onContextModeChange, onRemoteChange, remoteExecMode, onRemoteExecModeChange }: TerminalSessionProps) {
+export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustLevel, aiProvider, onContextModeChange, onRemoteChange, remoteExecMode, onRemoteExecModeChange }: TerminalSessionProps) {
   const [displayItems, setDisplayItems] = useState<DisplayItem[]>([]);
   const [altScreenVisible, setAltScreenVisible] = useState(false);
   const [inputMode, setInputMode] = useState<'shell' | 'ai'>('shell');
@@ -43,7 +54,7 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
   const segmenterRef = useRef(new BlockSegmenter());
   const hiddenXtermRef = useRef<HiddenXtermHandle>(null);
   const inputRef = useRef<TerminalInputHandle>(null);
-  const providerRef = useRef(createClaudeProvider(tabId));
+  const providerRef = useRef(createProvider(aiProvider, tabId));
   const aiCleanupRef = useRef<(() => void) | null>(null);
   const aiBlockIdRef = useRef<string | null>(null);
   const aiSuggestedCommands = useRef<Set<string>>(new Set());
@@ -51,6 +62,12 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
   const altScreenRef = useRef(false);
   const preambleSentRef = useRef(false);
   altScreenRef.current = altScreenVisible;
+
+  useEffect(() => {
+    providerRef.current.stop();
+    providerRef.current = createProvider(aiProvider, tabId);
+    preambleSentRef.current = false;
+  }, [aiProvider, tabId]);
 
   useEffect(() => {
     if (initialCwd) setCwd(initialCwd);
@@ -535,7 +552,11 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
   }, [handleInputModeChange]);
 
   const handleToolApprove = useCallback((item: DisplayItem & { type: 'approval' }) => {
-    window.tai?.ai?.approve(tabId, item.toolUseId, true);
+    if (providerRef.current.id === 'gemini') {
+      window.tai.gemini.approve(tabId, item.toolUseId, true);
+    } else {
+      window.tai?.ai?.approve(tabId, item.toolUseId, true);
+    }
     setDisplayItems(prev => prev.map(di =>
       di.type === 'approval' && di.id === item.id
         ? { ...di, status: 'approved' as const }
@@ -544,7 +565,11 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
   }, [tabId]);
 
   const handleToolReject = useCallback((item: DisplayItem & { type: 'approval' }) => {
-    window.tai?.ai?.approve(tabId, item.toolUseId, false);
+    if (providerRef.current.id === 'gemini') {
+      window.tai.gemini.approve(tabId, item.toolUseId, false);
+    } else {
+      window.tai?.ai?.approve(tabId, item.toolUseId, false);
+    }
     setDisplayItems(prev => prev.map(di =>
       di.type === 'approval' && di.id === item.id
         ? { ...di, status: 'rejected' as const }
