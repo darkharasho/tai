@@ -186,9 +186,9 @@ export function setupCodexService(getWindow: () => BrowserWindow | null) {
 
     const args: string[] = [];
     if (state.sessionId) {
-      args.push('exec', 'resume', '--json', state.sessionId);
+      args.push('exec', 'resume', '--json', '--skip-git-repo-check', state.sessionId);
     } else {
-      args.push('exec', '--json');
+      args.push('exec', '--json', '--skip-git-repo-check');
     }
 
     if (model) {
