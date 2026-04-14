@@ -12,6 +12,7 @@ export interface GeminiAcpClientOptions {
 export interface GeminiAcpClient {
   start(): Promise<void>;
   request<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T>;
+  respond(id: number, result: unknown): void;
   notify(method: string, params?: Record<string, unknown>): void;
   onEvent(listener: (event: unknown) => void): () => void;
   onStderr(listener: (text: string) => void): void;
@@ -58,6 +59,12 @@ export function createGeminiAcpClient(options: GeminiAcpClientOptions): GeminiAc
   }
 
   function handleMessage(message: any) {
+    // Server-initiated requests have both id and method — route to event listeners
+    if (typeof message?.method === 'string' && typeof message?.id !== 'undefined') {
+      eventListeners.forEach(listener => listener(message));
+      return;
+    }
+
     if (typeof message?.id === 'number') {
       if (message.id === 0 && startResolve) {
         if (message.error) {
@@ -83,6 +90,7 @@ export function createGeminiAcpClient(options: GeminiAcpClientOptions): GeminiAc
       return;
     }
 
+    // Notifications (no id) go to event listeners
     eventListeners.forEach(listener => listener(message));
   }
 
@@ -166,6 +174,11 @@ export function createGeminiAcpClient(options: GeminiAcpClientOptions): GeminiAc
           params,
         });
       });
+    },
+
+    respond(id: number, result: unknown) {
+      ensureStarted();
+      writeMessage({ jsonrpc: '2.0', id, result });
     },
 
     notify(method: string, params: Record<string, unknown> = {}) {

@@ -270,6 +270,13 @@ export function translateGeminiEvent(msg: any, projectPath: string): any | null 
   return null;
 }
 
+interface PendingPermission {
+  requestId: number;
+  toolName: string;
+  command: string;
+  options: Array<{ optionId: string; name: string; kind: string }>;
+}
+
 interface GeminiState {
   transport: GeminiAcpClient | null;
   sessionId: string | null;
@@ -278,6 +285,7 @@ interface GeminiState {
   availability: 'available' | 'disabled';
   lastError: string | undefined;
   pendingApproval: { toolUseId: string; toolName: string; input: any } | null;
+  pendingPermission: PendingPermission | null;
   bootstrapped: boolean;
 }
 
@@ -294,6 +302,7 @@ function getState(key: string): GeminiState {
       availability: 'available',
       lastError: undefined,
       pendingApproval: null,
+      pendingPermission: null,
       bootstrapped: false,
     };
     geminiStates.set(key, state);
@@ -309,6 +318,7 @@ function disableGemini(win: BrowserWindow | null, key: string, state: GeminiStat
   state.lastError = reason;
   state.busy = false;
   state.pendingApproval = null;
+  state.pendingPermission = null;
   state.bootstrapped = false;
   safeSend(win, 'ai:message', key, { type: 'error', text: `Gemini unavailable: ${reason}` });
   safeSend(win, 'ai:message', key, { type: 'done' });
@@ -328,6 +338,26 @@ async function ensureTransport(win: BrowserWindow | null, key: string, state: Ge
   });
 
   client.onEvent((event: any) => {
+    if (event?.method === 'session/request_permission') {
+      const params = event.params || {};
+      const options: Array<{ optionId: string; name: string; kind: string }> = Array.isArray(params.options) ? params.options : [];
+      const firstOption = options[0];
+      const toolName = firstOption?.name || 'Permission Request';
+      const command = firstOption?.name || 'Gemini needs permission to proceed';
+      const requestId = typeof event.id === 'number' ? event.id : -1;
+
+      state.pendingPermission = { requestId, toolName, command, options };
+
+      const approvalId = `perm-${requestId}`;
+      safeSend(win, 'ai:message', key, {
+        type: 'approval_needed',
+        toolUseId: approvalId,
+        toolName,
+        command,
+      });
+      return;
+    }
+
     if (event?.method === 'tool.approvalRequired' || event?.method === 'tool/approvalRequired') {
       const input = event.params?.input || {};
       const safe = sanitizeInput(input);
@@ -444,8 +474,24 @@ export function setupGeminiService(getWindow: () => BrowserWindow | null) {
 
   ipcMain.handle('gemini:approve', async (_event, key: string, toolUseId: string, approved: boolean) => {
     const state = getState(key);
-    if (!state.transport || !state.pendingApproval) return false;
+    if (!state.transport) return false;
 
+    // Handle session/request_permission responses
+    if (state.pendingPermission && toolUseId.startsWith('perm-')) {
+      const perm = state.pendingPermission;
+      state.pendingPermission = null;
+      if (approved && perm.options.length > 0) {
+        const chosen = perm.options.find(o => o.kind === 'allow_once') || perm.options[0];
+        state.transport.respond(perm.requestId, { optionId: chosen.optionId });
+      } else {
+        const deny = perm.options.find(o => o.kind === 'deny' || o.kind === 'deny_once');
+        state.transport.respond(perm.requestId, { optionId: deny?.optionId || 'deny' });
+      }
+      return true;
+    }
+
+    // Handle tool.approvalRequired responses
+    if (!state.pendingApproval) return false;
     try {
       await state.transport.request('tool/approve', {
         id: toolUseId,
