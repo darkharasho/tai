@@ -51,13 +51,16 @@ export function registerUpdater(mainWindow: BrowserWindow) {
   });
 
   autoUpdater.on('error', (err: any) => {
+    console.error('[updater] Update error:', err?.message ?? 'Unknown update error', err?.stack);
     mainWindow.webContents.send('update:error', {
       message: err?.message ?? 'Unknown update error',
     });
   });
 
   ipcMain.on('update:check', () => {
-    autoUpdater.checkForUpdates().catch(() => {});
+    autoUpdater.checkForUpdates().catch((err) => {
+      console.error('[updater] Check for updates failed:', err?.message, err?.stack);
+    });
   });
 
   ipcMain.on('update:install', () => {
@@ -65,6 +68,8 @@ export function registerUpdater(mainWindow: BrowserWindow) {
   });
 
   setTimeout(() => {
-    autoUpdater.checkForUpdates().catch(() => {});
+    autoUpdater.checkForUpdates().catch((err) => {
+      console.error('[updater] Initial update check failed:', err?.message, err?.stack);
+    });
   }, 3000);
 }

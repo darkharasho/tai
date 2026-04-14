@@ -33,9 +33,14 @@ jobs:
       - run: npm ci
       - run: npm run build
       - name: Build Linux
-        run: npx electron-builder --linux AppImage --publish always
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --linux AppImage --publish never
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-artifacts
+          path: |
+            release/*.AppImage
+            release/latest-linux.yml
 
   build-windows:
     needs: test
@@ -49,9 +54,15 @@ jobs:
       - run: npm ci
       - run: npm run build
       - name: Build Windows
-        run: npx electron-builder --win --publish always
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --win --publish never
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artifacts
+          path: |
+            release/*.exe
+            release/*.exe.blockmap
+            release/latest.yml
 
   build-mac:
     needs: test
@@ -65,20 +76,38 @@ jobs:
       - run: npm ci
       - run: npm run build
       - name: Build macOS
-        run: npx electron-builder --mac dmg zip --publish always
+        run: npx electron-builder --mac dmg zip --publish never
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-artifacts
+          path: |
+            release/*.dmg
+            release/*.dmg.blockmap
+            release/*.zip
+            release/*.zip.blockmap
+            release/latest-mac.yml
 
   finalize:
     needs: [build-linux, build-windows, build-mac]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Upload to GitHub Release
+        run: gh release upload ${{ github.ref_name }} artifacts/release/* --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Undraft release
         run: gh release edit ${{ github.ref_name }} --draft=false
         env:
