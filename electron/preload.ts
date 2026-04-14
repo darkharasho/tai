@@ -47,6 +47,22 @@ contextBridge.exposeInMainWorld('tai', {
     setRemoteTarget: (key: string, target: string | null, mode: string) =>
       ipcRenderer.invoke('ai:setRemoteTarget', key, target, mode),
   },
+  codex: {
+    send: (key: string, cwd: string, message: string, permMode: string, model: string) =>
+      ipcRenderer.invoke('codex:send', key, cwd, message, permMode, model),
+    stop: (key: string) => ipcRenderer.send('codex:stop', key),
+    setSessionId: (key: string, sessionId: string | undefined) =>
+      ipcRenderer.send('codex:setSessionId', key, sessionId),
+  },
+  gemini: {
+    send: (key: string, cwd: string, message: string, approvalMode: string, model: string) =>
+      ipcRenderer.invoke('gemini:send', key, cwd, message, approvalMode, model),
+    stop: (key: string) => ipcRenderer.send('gemini:stop', key),
+    approve: (key: string, toolUseId: string, approved: boolean) =>
+      ipcRenderer.invoke('gemini:approve', key, toolUseId, approved),
+    setSessionId: (key: string, sessionId: string | undefined) =>
+      ipcRenderer.send('gemini:setSessionId', key, sessionId),
+  },
   system: {
     getHostname: () => ipcRenderer.invoke('system:hostname'),
     platform: process.platform,
