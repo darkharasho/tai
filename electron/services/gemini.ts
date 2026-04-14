@@ -118,6 +118,41 @@ function renderToolContent(content: any[] | undefined): string {
   }).filter(Boolean).join('\n');
 }
 
+function mapGeminiToolName(kind: string | undefined, title: string | undefined): string {
+  switch (kind) {
+    case 'shell': return 'Bash';
+    case 'edit': case 'file_edit': return 'Edit';
+    case 'read': case 'file_read': return 'Read';
+    case 'write': case 'file_write': return 'Write';
+    case 'search': return 'Grep';
+    case 'glob': return 'Glob';
+    case 'web_fetch': return 'WebFetch';
+    case 'web_search': return 'WebSearch';
+    default: return title || kind || 'tool';
+  }
+}
+
+function buildGeminiToolInput(update: any): Record<string, any> {
+  const kind = update.kind;
+  const locations: string[] = Array.isArray(update.locations) ? update.locations : [];
+  const loc = locations[0] || '';
+
+  switch (kind) {
+    case 'shell':
+      return { command: update.title || loc || '' };
+    case 'edit': case 'file_edit':
+    case 'read': case 'file_read':
+    case 'write': case 'file_write':
+      return { file_path: loc || update.title || '' };
+    case 'search':
+      return { pattern: update.title || '', ...(loc ? { path: loc } : {}) };
+    case 'glob':
+      return { pattern: loc || update.title || '' };
+    default:
+      return { kind, locations };
+  }
+}
+
 export function translateGeminiEvent(msg: any, projectPath: string): any | null {
   if (msg?.method === 'session/update') {
     const update = msg.params?.update;
@@ -136,6 +171,8 @@ export function translateGeminiEvent(msg: any, projectPath: string): any | null 
     }
 
     if (update?.sessionUpdate === 'tool_call') {
+      const name = mapGeminiToolName(update.kind, update.title);
+      const input = buildGeminiToolInput(update);
       return {
         type: 'assistant',
         projectPath,
@@ -143,8 +180,8 @@ export function translateGeminiEvent(msg: any, projectPath: string): any | null 
           content: [{
             id: update.toolCallId,
             type: 'tool_use',
-            name: update.title || 'tool',
-            input: { kind: update.kind, locations: update.locations },
+            name,
+            input,
           }],
         },
       };

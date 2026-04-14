@@ -32,7 +32,7 @@ describe('translateGeminiEvent', () => {
     expect(result!.message.content[0]).toMatchObject({ type: 'text', text: 'Hello', delta: true });
   });
 
-  it('translates session/update tool_call to tool_use', () => {
+  it('translates session/update tool_call to tool_use with mapped name and input', () => {
     const result = translateGeminiEvent({
       method: 'session/update',
       params: { update: { sessionUpdate: 'tool_call', toolCallId: 'tc-1', title: 'ReadFile', kind: 'read', locations: ['/tmp/foo'] } },
@@ -42,7 +42,41 @@ describe('translateGeminiEvent', () => {
     expect(result!.message.content[0]).toMatchObject({
       id: 'tc-1',
       type: 'tool_use',
-      name: 'ReadFile',
+      name: 'Read',
+      input: { file_path: '/tmp/foo' },
+    });
+  });
+
+  it('maps shell tool_call kind to Bash with command input', () => {
+    const result = translateGeminiEvent({
+      method: 'session/update',
+      params: { update: { sessionUpdate: 'tool_call', toolCallId: 'tc-s', title: 'ls -la', kind: 'shell', locations: [] } },
+    }, projectPath);
+    expect(result!.message.content[0]).toMatchObject({
+      name: 'Bash',
+      input: { command: 'ls -la' },
+    });
+  });
+
+  it('maps search tool_call kind to Grep with pattern input', () => {
+    const result = translateGeminiEvent({
+      method: 'session/update',
+      params: { update: { sessionUpdate: 'tool_call', toolCallId: 'tc-g', title: 'TODO', kind: 'search', locations: ['src/'] } },
+    }, projectPath);
+    expect(result!.message.content[0]).toMatchObject({
+      name: 'Grep',
+      input: { pattern: 'TODO', path: 'src/' },
+    });
+  });
+
+  it('falls back to title for unknown tool_call kind', () => {
+    const result = translateGeminiEvent({
+      method: 'session/update',
+      params: { update: { sessionUpdate: 'tool_call', toolCallId: 'tc-u', title: 'CustomTool', kind: 'custom', locations: [] } },
+    }, projectPath);
+    expect(result!.message.content[0]).toMatchObject({
+      name: 'CustomTool',
+      input: { kind: 'custom', locations: [] },
     });
   });
 

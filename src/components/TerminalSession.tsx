@@ -388,23 +388,27 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
         let hasNewData = false;
 
         const textParts: string[] = [];
+        let isDelta = false;
         for (const block of contentBlocks) {
           if (block.type === 'text' && block.text) {
             textParts.push(block.text);
+            if (block.delta) isDelta = true;
           }
         }
         const text = textParts.join('');
 
-        if (text && text !== lastTextEntry) {
+        if (text && (isDelta || text !== lastTextEntry)) {
           gotContent = true;
           const lastIdx = entries.length - 1;
           const lastEntry = lastIdx >= 0 ? entries[lastIdx] : null;
           if (lastEntry && lastEntry.kind === 'text') {
-            lastEntry.text = text;
+            const updated = isDelta ? (lastEntry.text || '') + text : text;
+            lastEntry.text = updated;
+            lastTextEntry = updated;
           } else {
             entries.push({ kind: 'text', text });
+            lastTextEntry = text;
           }
-          lastTextEntry = text;
           hasNewData = true;
         }
 
