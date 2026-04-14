@@ -72,6 +72,8 @@ export function SettingsOverlay({ visible, onClose, config, onSet }: SettingsOve
                   <select value={config['ai.provider']} onChange={e => onSet('ai.provider', e.target.value)}
                     className={styles.input}>
                     <option value="claude">Claude</option>
+                    <option value="codex">Codex</option>
+                    <option value="gemini">Gemini</option>
                   </select>
                 } />
                 <SettingRow label="Model" value={

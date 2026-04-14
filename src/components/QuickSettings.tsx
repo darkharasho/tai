@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Settings, X, ChevronDown, Check, RefreshCw } from 'lucide-react';
-import type { TrustLevel } from '@/types';
+import type { TrustLevel, AIProvider } from '@/types';
 import styles from './QuickSettings.module.css';
 
 interface QuickSettingsProps {
@@ -10,6 +10,8 @@ interface QuickSettingsProps {
   onColorModeChange: (mode: string) => void;
   trustLevel: TrustLevel;
   onTrustLevelChange: (level: TrustLevel) => void;
+  aiProvider: AIProvider;
+  onAIProviderChange: (provider: AIProvider) => void;
 }
 
 type Category = 'general';
@@ -23,6 +25,12 @@ const TRUST_LEVEL_OPTIONS = [
   { value: 'ask', label: 'Ask Every Time' },
   { value: 'approve-edits', label: 'Auto-approve Edits' },
   { value: 'bypass', label: 'Full Auto' },
+];
+
+const PROVIDER_OPTIONS = [
+  { value: 'claude', label: 'Claude' },
+  { value: 'codex', label: 'Codex' },
+  { value: 'gemini', label: 'Gemini' },
 ];
 
 function CustomDropdown({ value, options, onChange }: {
@@ -73,7 +81,7 @@ function CustomDropdown({ value, options, onChange }: {
   );
 }
 
-export function QuickSettings({ visible, onClose, colorMode, onColorModeChange, trustLevel, onTrustLevelChange }: QuickSettingsProps) {
+export function QuickSettings({ visible, onClose, colorMode, onColorModeChange, trustLevel, onTrustLevelChange, aiProvider, onAIProviderChange }: QuickSettingsProps) {
   const [category, setCategory] = useState<Category>('general');
   const [version, setVersion] = useState('');
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'up-to-date' | 'available' | 'error'>('idle');
@@ -131,6 +139,14 @@ export function QuickSettings({ visible, onClose, colorMode, onColorModeChange, 
           <div className={styles.content}>
             {category === 'general' && (
               <>
+                <div className={styles.settingRow}>
+                  <span className={styles.settingLabel}>AI Provider</span>
+                  <CustomDropdown
+                    value={aiProvider}
+                    options={PROVIDER_OPTIONS}
+                    onChange={(v) => onAIProviderChange(v as AIProvider)}
+                  />
+                </div>
                 <div className={styles.settingRow}>
                   <span className={styles.settingLabel}>AI Permissions</span>
                   <CustomDropdown
