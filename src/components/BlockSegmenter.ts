@@ -6,10 +6,16 @@ const SSH_TARGET_RE = /(\S+)@(\S+?)[\s:]/;
 const SSH_CMD_RE = /^ssh\s+(?:.*\s)?(?:(\S+)@)?(\S+)\s*$/;
 const ALT_SCREEN_ENTER = '\x1b[?1049h';
 const ALT_SCREEN_EXIT = '\x1b[?1049l';
+const CURSOR_HIDE = '\x1b[?25l';
+const CURSOR_SHOW = '\x1b[?25h';
+const CURSOR_HOME = '\x1b[H';
+const CLEAR_SCREEN = '\x1b[2J';
 
 type BlockCallback = (block: SegmentedBlock) => void;
 type OutputCallback = (output: string, rawOutput: string) => void;
 type AltScreenCallback = (entered: boolean) => void;
+type InteractiveModeCallback = (entered: boolean, fullscreen?: boolean) => void;
+type PasswordPromptCallback = () => void;
 type PromptChangeCallback = (prompt: string, isRemote: boolean, sshTarget: string | null) => void;
 
 export class BlockSegmenter {
@@ -26,9 +32,14 @@ export class BlockSegmenter {
   private _blockCallbacks: BlockCallback[] = [];
   private _outputCallbacks: OutputCallback[] = [];
   private _altScreenCallbacks: AltScreenCallback[] = [];
+  private _interactiveCallbacks: InteractiveModeCallback[] = [];
+  private _passwordCallbacks: PasswordPromptCallback[] = [];
   private _promptChangeCallbacks: PromptChangeCallback[] = [];
   private _seenFirstPrompt = false;
   private _inAltScreen = false;
+  private _inInteractiveMode = false;
+  private _interactiveFullscreen = false;
+  private _passwordPromptFired = false;
 
   private _nextId(): string {
     return `seg-block-${++this._idCounter}`;
@@ -37,6 +48,8 @@ export class BlockSegmenter {
   onBlock(cb: BlockCallback): void { this._blockCallbacks.push(cb); }
   onOutput(cb: OutputCallback): void { this._outputCallbacks.push(cb); }
   onAltScreen(cb: AltScreenCallback): void { this._altScreenCallbacks.push(cb); }
+  onInteractiveMode(cb: InteractiveModeCallback): void { this._interactiveCallbacks.push(cb); }
+  onPasswordPrompt(cb: PasswordPromptCallback): void { this._passwordCallbacks.push(cb); }
   onPromptChange(cb: PromptChangeCallback): void { this._promptChangeCallbacks.push(cb); }
 
   get currentPrompt(): string { return this._currentPrompt; }
@@ -59,6 +72,10 @@ export class BlockSegmenter {
   feed(rawData: string): void {
     if (rawData.includes(ALT_SCREEN_ENTER)) {
       this._inAltScreen = true;
+      if (this._inInteractiveMode) {
+        this._inInteractiveMode = false;
+        this._interactiveCallbacks.forEach(cb => cb(false));
+      }
       this._altScreenCallbacks.forEach(cb => cb(true));
     }
     if (rawData.includes(ALT_SCREEN_EXIT)) {
@@ -67,6 +84,16 @@ export class BlockSegmenter {
     }
 
     if (this._inAltScreen) return;
+
+    if (!this._inInteractiveMode && rawData.includes(CURSOR_HIDE) && this._seenFirstPrompt && this._pendingLines.length > 0) {
+      this._inInteractiveMode = true;
+      const isFullscreen = rawData.includes(CURSOR_HOME) || rawData.includes(CLEAR_SCREEN);
+      this._interactiveFullscreen = isFullscreen;
+      this._interactiveCallbacks.forEach(cb => cb(true, isFullscreen));
+    } else if (this._inInteractiveMode && !this._interactiveFullscreen && (rawData.includes(CURSOR_HOME) || rawData.includes(CLEAR_SCREEN))) {
+      this._interactiveFullscreen = true;
+      this._interactiveCallbacks.forEach(cb => cb(true, true));
+    }
 
     const clean = stripAnsi(rawData);
     const newlineIndex = clean.lastIndexOf('\n');
@@ -104,7 +131,7 @@ export class BlockSegmenter {
 
     this._checkForPrompt();
 
-    if (this._seenFirstPrompt && this._pendingLines.length >= 1) {
+    if (this._seenFirstPrompt && this._pendingLines.length >= 1 && !this._inInteractiveMode) {
       const outputLines = this._pendingLines.slice(1);
       const rawOutputLines = this._pendingRawLines.slice(1);
       const partialSuffix = this._partialLine ? '\n' + this._partialLine : '';
@@ -118,6 +145,11 @@ export class BlockSegmenter {
   }
 
   private _checkForPrompt(): void {
+    if (!this._passwordPromptFired && this._partialLine && /(?:password|passphrase).*:\s*$/i.test(this._partialLine)) {
+      this._passwordPromptFired = true;
+      this._passwordCallbacks.forEach(cb => cb());
+    }
+
     if (this._partialLine && PROMPT_RE.test(this._partialLine)) {
       this._handlePromptDetected(this._partialLine);
       return;
@@ -145,6 +177,7 @@ export class BlockSegmenter {
     }
 
     if (this._pendingLines.length === 0 && this._seenFirstPrompt) {
+      this._exitInteractiveMode();
       const changed = promptText !== this._currentPrompt;
       this._currentPrompt = promptText;
       this._startTime = Date.now();
@@ -161,7 +194,17 @@ export class BlockSegmenter {
     this._finalizeBlock(promptText);
   }
 
+  private _exitInteractiveMode(): void {
+    this._passwordPromptFired = false;
+    if (this._inInteractiveMode) {
+      this._inInteractiveMode = false;
+      this._interactiveFullscreen = false;
+      this._interactiveCallbacks.forEach(cb => cb(false));
+    }
+  }
+
   private _finalizeBlock(newPromptText: string): void {
+    this._exitInteractiveMode();
     const lines = this._pendingLines;
     const rawLines = this._pendingRawLines;
     let command = '';
@@ -261,9 +304,14 @@ export class BlockSegmenter {
     this._sshConnectionTarget = null;
     this._seenFirstPrompt = false;
     this._inAltScreen = false;
+    this._inInteractiveMode = false;
+    this._interactiveFullscreen = false;
+    this._passwordPromptFired = false;
     this._blockCallbacks = [];
     this._outputCallbacks = [];
     this._altScreenCallbacks = [];
+    this._interactiveCallbacks = [];
+    this._passwordCallbacks = [];
     this._promptChangeCallbacks = [];
   }
 }

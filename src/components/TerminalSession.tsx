@@ -5,6 +5,7 @@ import { BlockList } from './BlockList';
 import type { DisplayItem } from './BlockList';
 import { TerminalInput } from './TerminalInput';
 import type { TerminalInputHandle } from './TerminalInput';
+import { PasswordPrompt } from './PasswordPrompt';
 import { BlockSegmenter } from './BlockSegmenter';
 import { createClaudeProvider } from '@/providers/claude';
 import { createCodexProvider } from '@/providers/codex';
@@ -40,6 +41,8 @@ function nextBlockId(): string {
 export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustLevel, aiProvider, onContextModeChange, onRemoteChange, remoteExecMode, onRemoteExecModeChange, onTrustLevelChange }: TerminalSessionProps) {
   const [displayItems, setDisplayItems] = useState<DisplayItem[]>([]);
   const [altScreenVisible, setAltScreenVisible] = useState(false);
+  const [interactiveMode, setInteractiveMode] = useState(false);
+  const [interactiveFullscreen, setInteractiveFullscreen] = useState(false);
   const [inputMode, setInputMode] = useState<'shell' | 'ai'>('shell');
   const handleInputModeChange = useCallback((mode: 'shell' | 'ai') => {
     setInputMode(mode);
@@ -50,6 +53,7 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
   const [shellHistory, setShellHistory] = useState<string[]>([]);
   const [remoteHistory, setRemoteHistory] = useState<string[]>([]);
   const [awaitingInput, setAwaitingInput] = useState(false);
+  const [passwordPrompt, setPasswordPrompt] = useState(false);
   const [editValue, setEditValue] = useState<string | undefined>(undefined);
 
   const segmenterRef = useRef(new BlockSegmenter());
@@ -61,8 +65,10 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
   const aiSuggestedCommands = useRef<Set<string>>(new Set());
   const pendingCommandRef = useRef<{ command: string; startTime: number } | null>(null);
   const altScreenRef = useRef(false);
+  const interactiveModeRef = useRef(false);
   const preambleSentRef = useRef(false);
   altScreenRef.current = altScreenVisible;
+  interactiveModeRef.current = interactiveMode;
 
   useEffect(() => {
     providerRef.current.stop();
@@ -139,6 +145,7 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
 
     segmenter.onBlock((block) => {
       if (cancelled) return;
+      setPasswordPrompt(false);
       const pending = pendingCommandRef.current;
       pendingCommandRef.current = null;
       const fixedBlock = pending
@@ -188,6 +195,18 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
     segmenter.onAltScreen((entered) => {
       if (cancelled) return;
       setAltScreenVisible(entered);
+    });
+
+    segmenter.onInteractiveMode((entered, fullscreen) => {
+      if (cancelled) return;
+      setInteractiveMode(entered);
+      setInteractiveFullscreen(entered && !!fullscreen);
+      if (!entered) setPasswordPrompt(false);
+    });
+
+    segmenter.onPasswordPrompt(() => {
+      if (cancelled) return;
+      setPasswordPrompt(true);
     });
 
     segmenter.onPromptChange((prompt, isRemote, sshTarget) => {
@@ -634,11 +653,17 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
   useEffect(() => {
     if (!visible) return;
     const handleFocus = () => {
-      if (!altScreenVisible) inputRef.current?.focus();
+      if (!altScreenVisible && !interactiveMode && !passwordPrompt) inputRef.current?.focus();
     };
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [visible, altScreenVisible]);
+  }, [visible, altScreenVisible, interactiveMode, passwordPrompt]);
+
+  useEffect(() => {
+    if (!interactiveMode && !passwordPrompt && !altScreenVisible) {
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
+  }, [interactiveMode, passwordPrompt, altScreenVisible]);
 
   const isRemote = promptInfo?.isRemote ?? false;
   const sessionHistory = displayItems
@@ -651,21 +676,17 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
   const baseHistory = isRemote ? remoteHistory : shellHistory;
   const inputHistory = [...baseHistory, ...sessionHistory];
 
+  const showInlineTerminal = interactiveMode && !interactiveFullscreen && !altScreenVisible;
+  const showFullscreenInteractive = interactiveMode && interactiveFullscreen && !altScreenVisible;
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0, position: 'relative' }}>
-      {ptyId !== null && (
-        <HiddenXterm
-          ref={hiddenXtermRef}
-          ptyId={ptyId}
-          visible={altScreenVisible}
-          onData={(data) => segmenterRef.current.feed(data)}
-        />
-      )}
-      {!altScreenVisible && (
+      {!altScreenVisible && !showFullscreenInteractive && (
         <BlockList
           items={displayItems}
           activeBlockId={null}
           awaitingInput={awaitingInput}
+          interactiveMode={showInlineTerminal}
           cwd={cwd}
           onCopy={handleCopy}
           onAskAI={handleAskAI}
@@ -680,24 +701,43 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
           aiProvider={aiProvider}
         />
       )}
-      {!altScreenVisible && (
-        <TerminalInput
-          ref={inputRef}
-          onSubmit={handleSubmit}
-          mode={inputMode}
-          onModeChange={handleInputModeChange}
-          cwd={cwd}
-          promptInfo={promptInfo}
-          initialValue={editValue}
-          disabled={false}
-          history={inputHistory}
-          onClear={() => setDisplayItems([])}
-          remoteExecMode={remoteExecMode}
-          onRemoteExecModeChange={onRemoteExecModeChange}
-          aiProvider={aiProvider}
-          trustLevel={trustLevel}
-          onTrustLevelChange={onTrustLevelChange}
+      {ptyId !== null && (
+        <HiddenXterm
+          ref={hiddenXtermRef}
+          ptyId={ptyId}
+          visible={altScreenVisible || showInlineTerminal || showFullscreenInteractive}
+          inline={showInlineTerminal}
+          onData={(data) => segmenterRef.current.feed(data)}
         />
+      )}
+      {!altScreenVisible && !showFullscreenInteractive && passwordPrompt && ptyId !== null && (
+        <div style={{ flexShrink: 0 }}>
+          <PasswordPrompt
+            ptyId={ptyId}
+            onDone={() => setPasswordPrompt(false)}
+          />
+        </div>
+      )}
+      {!altScreenVisible && !showFullscreenInteractive && (
+        <div style={{ flexShrink: 0, opacity: showInlineTerminal || passwordPrompt ? 0.3 : 1, pointerEvents: showInlineTerminal || passwordPrompt ? 'none' : 'auto', transition: 'opacity 0.15s' }}>
+          <TerminalInput
+            ref={inputRef}
+            onSubmit={handleSubmit}
+            mode={inputMode}
+            onModeChange={handleInputModeChange}
+            cwd={cwd}
+            promptInfo={promptInfo}
+            initialValue={editValue}
+            disabled={showInlineTerminal || passwordPrompt}
+            history={inputHistory}
+            onClear={() => setDisplayItems([])}
+            remoteExecMode={remoteExecMode}
+            onRemoteExecModeChange={onRemoteExecModeChange}
+            aiProvider={aiProvider}
+            trustLevel={trustLevel}
+            onTrustLevelChange={onTrustLevelChange}
+          />
+        </div>
       )}
     </div>
   );

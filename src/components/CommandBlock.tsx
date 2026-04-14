@@ -43,6 +43,7 @@ interface CommandBlockProps {
   onToggleCollapse?: () => void;
   active?: boolean;
   awaitingInput?: boolean;
+  interactiveMode?: boolean;
   aiSuggested?: boolean;
   cwd?: string;
   onCopy: (text: string) => void;
@@ -56,6 +57,7 @@ export function CommandBlock({
   onToggleCollapse,
   active,
   awaitingInput,
+  interactiveMode,
   aiSuggested,
   cwd,
   onCopy,
@@ -101,8 +103,14 @@ export function CommandBlock({
     );
   }
 
+  const interactiveStyle: React.CSSProperties = interactiveMode ? {
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    marginBottom: 0,
+  } : {};
+
   return (
-    <div className={styles.block} style={{ '--accent-color': modeColor } as React.CSSProperties}>
+    <div className={styles.block} style={{ '--accent-color': modeColor, ...interactiveStyle } as React.CSSProperties}>
       <div className={styles.promptLine} onClick={() => onToggleCollapse?.()}>
         <div className={styles.promptLeft}>
           <span className={styles.promptUser} style={{ color: modeColor }}>{user}</span>

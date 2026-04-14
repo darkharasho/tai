@@ -15,6 +15,7 @@ interface BlockListProps {
   items: DisplayItem[];
   activeBlockId: string | null;
   awaitingInput?: boolean;
+  interactiveMode?: boolean;
   cwd?: string;
   onCopy: (text: string) => void;
   onAskAI: (block: SegmentedBlock) => void;
@@ -26,12 +27,11 @@ interface BlockListProps {
   aiProvider?: AIProvider;
 }
 
-const AUTO_COLLAPSE_THRESHOLD = 10;
-
 export function BlockList({
   items,
   activeBlockId,
   awaitingInput,
+  interactiveMode,
   cwd,
   onCopy,
   onAskAI,
@@ -43,7 +43,6 @@ export function BlockList({
   aiProvider,
 }: BlockListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
-  const [manualExpanded, setManualExpanded] = useState<Set<string>>(new Set());
   const [manualCollapsed, setManualCollapsed] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -57,34 +56,20 @@ export function BlockList({
         next.delete(id);
         return next;
       });
-      setManualExpanded(prev => new Set([...prev, id]));
     } else {
-      setManualExpanded(prev => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
       setManualCollapsed(prev => new Set([...prev, id]));
     }
   }, []);
-
-  const commandBlocks = items.filter(item => item.type === 'command');
-  const commandCount = commandBlocks.length;
 
   function isCollapsed(item: DisplayItem & { type: 'command' }): boolean {
     const id = item.block.id;
     const isActive = item.active || id === activeBlockId;
     if (isActive) return false;
-    if (manualCollapsed.has(id)) return true;
-    const blockIndex = commandBlocks.findIndex(b => b.type === 'command' && b.block.id === id);
-    const distanceFromEnd = commandCount - 1 - blockIndex;
-    const autoCollapse = distanceFromEnd >= AUTO_COLLAPSE_THRESHOLD;
-    if (autoCollapse && !manualExpanded.has(id)) return true;
-    return false;
+    return manualCollapsed.has(id);
   }
 
   return (
-    <div className={styles.blockList}>
+    <div className={styles.blockList} style={interactiveMode ? { paddingBottom: 188 } : undefined}>
       <div className={styles.spacer} />
 
       {items.length === 0 && (
@@ -114,6 +99,7 @@ export function BlockList({
                 onToggleCollapse={() => handleToggleCollapse(id, collapsed)}
                 active={item.active || id === activeBlockId}
                 awaitingInput={(item.active || id === activeBlockId) ? awaitingInput : false}
+                interactiveMode={(item.active || id === activeBlockId) ? interactiveMode : false}
                 aiSuggested={item.aiSuggested}
                 cwd={cwd}
                 onCopy={onCopy}
