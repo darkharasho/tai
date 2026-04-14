@@ -80,8 +80,36 @@
 .promptRight {
   display: flex;
   align-items: center;
+  gap: 6px;
   flex-shrink: 0;
   margin-left: 12px;
+}
+
+.copyBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+
+.block:hover .copyBtn {
+  opacity: 0.5;
+}
+
+.copyBtn:hover {
+  opacity: 1 !important;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.copyBtnCopied {
+  opacity: 1 !important;
+  color: #00ff88;
 }
 
 .promptUser {

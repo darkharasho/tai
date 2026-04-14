@@ -112,6 +112,28 @@
   50% { opacity: 1; }
 }
 
+.stopBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.stopBtn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
 .duration {
   color: var(--text-muted);
   font-family: var(--font-sans);
@@ -287,4 +309,16 @@
   background: var(--color-ai);
   animation: aiPulse 1.2s ease-in-out infinite;
   flex-shrink: 0;
+}
+
+.toolStatusOk {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: #00ff88;
+}
+
+.toolStatusError {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: #ef4444;
 }

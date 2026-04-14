@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Terminal, Copy, Sparkles } from 'lucide-react';
+import { Terminal, Copy, Sparkles, Square, Check, X, Circle, FileText, Pencil, FolderSearch, Search, Globe, type LucideIcon } from 'lucide-react';
 import type { AIEntry } from '@/types';
 import styles from './InlineAIBlock.module.css';
 
@@ -19,6 +19,23 @@ interface InlineAIBlockProps {
   entries?: AIEntry[];
   onRunCommand: (cmd: string) => void;
   onCopy?: (text: string) => void;
+  onStop?: () => void;
+}
+
+const TOOL_ICONS: Record<string, LucideIcon> = {
+  Bash: Terminal,
+  Read: FileText,
+  Write: Pencil,
+  Edit: Pencil,
+  Glob: FolderSearch,
+  Grep: Search,
+  WebFetch: Globe,
+  WebSearch: Globe,
+};
+
+function ToolIcon({ name }: { name: string }) {
+  const Icon = TOOL_ICONS[name] || Circle;
+  return <Icon size={10} />;
 }
 
 export function InlineAIBlock({
@@ -30,6 +47,7 @@ export function InlineAIBlock({
   entries,
   onRunCommand,
   onCopy,
+  onStop,
 }: InlineAIBlockProps) {
   const runnableCommands = new Set(suggestedCommands ?? []);
 
@@ -83,6 +101,12 @@ export function InlineAIBlock({
                 <span className={styles.label}>Claude</span>
                 {streaming && <span className={styles.streamingDot} />}
               </div>
+              {streaming && onStop && (
+                <button className={styles.stopBtn} onClick={onStop} title="Stop response (Ctrl+C)">
+                  <Square size={10} />
+                  <span>Stop</span>
+                </button>
+              )}
               {!streaming && duration != null && (
                 <span className={styles.duration}>{formatDuration(duration)}</span>
               )}
@@ -109,10 +133,15 @@ export function InlineAIBlock({
                         key={call.id || `tool-${i}`}
                         className={`${styles.tool}${hasOutput ? '' : ` ${styles.toolActive}`}`}
                       >
-                        <span className={styles.toolIcon}>{hasOutput ? (call.error ? '\u2717' : '\u2713') : '\u25CB'}</span>
+                        <span className={styles.toolIcon}><ToolIcon name={call.name} /></span>
                         <span className={styles.toolName}>{call.name}</span>
                         <span className={styles.toolInput}>{call.input}</span>
                         {!hasOutput && streaming && <span className={styles.toolSpin} />}
+                        {hasOutput && (
+                          <span className={call.error ? styles.toolStatusError : styles.toolStatusOk}>
+                            {call.error ? <X size={10} /> : <Check size={10} />}
+                          </span>
+                        )}
                       </div>
                     );
                   }

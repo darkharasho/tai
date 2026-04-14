@@ -518,6 +518,24 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
     executeCommand(command);
   }, [executeCommand, promptInfo]);
 
+  const handleStopAI = useCallback(() => {
+    if (aiCleanupRef.current) {
+      const blockId = aiBlockIdRef.current;
+      providerRef.current.stop();
+      if (blockId) {
+        setDisplayItems(prev => prev.map(item =>
+          item.type === 'ai' && item.id === blockId
+            ? { ...item, streaming: false }
+            : item
+        ));
+      }
+      aiCleanupRef.current();
+      aiCleanupRef.current = null;
+      aiBlockIdRef.current = null;
+      handleInputModeChange('shell');
+    }
+  }, [handleInputModeChange]);
+
   const handleToolApprove = useCallback((item: DisplayItem & { type: 'approval' }) => {
     window.tai?.ai?.approve(tabId, item.toolUseId, true);
     setDisplayItems(prev => prev.map(di =>
@@ -561,30 +579,14 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
 
       if (e.key === 'c' && !e.shiftKey) {
         e.preventDefault();
-
-        if (aiCleanupRef.current) {
-          const blockId = aiBlockIdRef.current;
-          providerRef.current.stop();
-          if (blockId) {
-            setDisplayItems(prev => prev.map(item =>
-              item.type === 'ai' && item.id === blockId
-                ? { ...item, streaming: false }
-                : item
-            ));
-          }
-          aiCleanupRef.current();
-          aiCleanupRef.current = null;
-          aiBlockIdRef.current = null;
-          handleInputModeChange('shell');
-        }
-
+        handleStopAI();
         if (ptyId !== null) window.tai?.pty?.write(ptyId, '\x03');
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [visible, ptyId, handleInputModeChange]);
+  }, [visible, ptyId, handleStopAI]);
 
   useEffect(() => {
     if (!visible) return;
@@ -631,6 +633,7 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
           }}
           onToolApprove={handleToolApprove}
           onToolReject={handleToolReject}
+          onStopAI={handleStopAI}
         />
       )}
       {!altScreenVisible && (

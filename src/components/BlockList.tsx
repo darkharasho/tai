@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { Wrench } from 'lucide-react';
+import { Wrench, Check, X } from 'lucide-react';
 import { CommandBlock } from './CommandBlock';
 import { InlineAIBlock } from './InlineAIBlock';
 import { ApprovalPrompt } from './ApprovalPrompt';
@@ -22,6 +22,7 @@ interface BlockListProps {
   onRunSuggested: (command: string) => void;
   onToolApprove: (item: DisplayItem & { type: 'approval' }) => void;
   onToolReject: (item: DisplayItem & { type: 'approval' }) => void;
+  onStopAI?: () => void;
 }
 
 const AUTO_COLLAPSE_THRESHOLD = 10;
@@ -37,6 +38,7 @@ export function BlockList({
   onRunSuggested,
   onToolApprove,
   onToolReject,
+  onStopAI,
 }: BlockListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [manualExpanded, setManualExpanded] = useState<Set<string>>(new Set());
@@ -132,6 +134,7 @@ export function BlockList({
                 entries={item.entries}
                 onRunCommand={onRunSuggested}
                 onCopy={onCopy}
+                onStop={item.streaming ? onStopAI : undefined}
               />
             </div>
           );
@@ -148,8 +151,8 @@ export function BlockList({
                     </span>
                     {item.toolName}
                   </span>
-                  {item.status === 'approved' && <span className={`${styles.toolStatus} ${styles.toolApproved}`}>{'\u2713'} allowed</span>}
-                  {item.status === 'rejected' && <span className={`${styles.toolStatus} ${styles.toolRejected}`}>{'\u2717'} denied</span>}
+                  {item.status === 'approved' && <span className={`${styles.toolStatus} ${styles.toolApproved}`}><Check size={12} /> allowed</span>}
+                  {item.status === 'rejected' && <span className={`${styles.toolStatus} ${styles.toolRejected}`}><X size={12} /> denied</span>}
                 </div>
                 <div className={styles.toolApprovalCommand}>{item.command}</div>
                 {item.status === 'pending' && (

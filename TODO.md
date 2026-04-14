@@ -1,6 +1,6 @@
-- [ ] quick succession chats leave a permanent hanging empty ai card
-- [ ] we need a way to stop the ai response
+- [x] quick succession chats leave a permanent hanging empty ai card
+- [x] we need a way to stop the ai response
 - [ ] we need an ai permissions toggle
 - [ ] codex cli and gemini cli
-- [ ] we need a copy button on the run commands since clicking the header of the card collapses it
-- [ ] change the checkmark and x icons for all tool calls to be lucid icons like sai
+- [x] we need a copy button on the run commands since clicking the header of the card collapses it
+- [x] change the checkmark and x icons for all tool calls to be lucid icons like sai

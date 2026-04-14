@@ -13,6 +13,7 @@ interface ClaudeState {
   sessionId: string | null;
   buffer: string;
   busy: boolean;
+  permMode: string | null;
   remoteTarget: string | null;
   remoteExecMode: 'auto' | 'local';
   pendingToolUses: Map<string, { id: string; name: string; input: Record<string, any> }>;
@@ -23,7 +24,7 @@ const claudeStates = new Map<string, ClaudeState>();
 function getState(key: string): ClaudeState {
   let state = claudeStates.get(key);
   if (!state) {
-    state = { process: null, sessionId: null, buffer: '', busy: false, remoteTarget: null, remoteExecMode: 'auto', pendingToolUses: new Map() };
+    state = { process: null, sessionId: null, buffer: '', busy: false, permMode: null, remoteTarget: null, remoteExecMode: 'auto', pendingToolUses: new Map() };
     claudeStates.set(key, state);
   }
   return state;
@@ -53,8 +54,15 @@ function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, perm
   const state = getState(key);
 
   if (state.process && !state.process.killed) {
-    return state.process;
+    if (state.permMode === permMode) {
+      return state.process;
+    }
+    state.process.kill();
+    state.process = null;
+    state.sessionId = null;
+    state.pendingToolUses.clear();
   }
+  state.permMode = permMode;
 
   const args = [
     '-p',
@@ -71,8 +79,6 @@ function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, perm
   } else if (permMode === 'bypass') {
     args.push('--permission-mode', 'bypassPermissions');
   } else if (permMode === 'approve-edits') {
-    args.push('--permission-mode', 'acceptEdits');
-  } else {
     args.push('--permission-mode', 'acceptEdits');
   }
 

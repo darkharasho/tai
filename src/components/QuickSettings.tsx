@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Settings, X, ChevronDown, Check, RefreshCw } from 'lucide-react';
+import type { TrustLevel } from '@/types';
 import styles from './QuickSettings.module.css';
 
 interface QuickSettingsProps {
@@ -7,6 +8,8 @@ interface QuickSettingsProps {
   onClose: () => void;
   colorMode: string;
   onColorModeChange: (mode: string) => void;
+  trustLevel: TrustLevel;
+  onTrustLevelChange: (level: TrustLevel) => void;
 }
 
 type Category = 'general';
@@ -14,6 +17,12 @@ type Category = 'general';
 const COLOR_MODE_OPTIONS = [
   { value: 'high', label: 'High' },
   { value: 'low', label: 'Low' },
+];
+
+const TRUST_LEVEL_OPTIONS = [
+  { value: 'ask', label: 'Ask Every Time' },
+  { value: 'approve-edits', label: 'Auto-approve Edits' },
+  { value: 'bypass', label: 'Full Auto' },
 ];
 
 function CustomDropdown({ value, options, onChange }: {
@@ -64,7 +73,7 @@ function CustomDropdown({ value, options, onChange }: {
   );
 }
 
-export function QuickSettings({ visible, onClose, colorMode, onColorModeChange }: QuickSettingsProps) {
+export function QuickSettings({ visible, onClose, colorMode, onColorModeChange, trustLevel, onTrustLevelChange }: QuickSettingsProps) {
   const [category, setCategory] = useState<Category>('general');
   const [version, setVersion] = useState('');
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'up-to-date' | 'available' | 'error'>('idle');
@@ -122,6 +131,14 @@ export function QuickSettings({ visible, onClose, colorMode, onColorModeChange }
           <div className={styles.content}>
             {category === 'general' && (
               <>
+                <div className={styles.settingRow}>
+                  <span className={styles.settingLabel}>AI Permissions</span>
+                  <CustomDropdown
+                    value={trustLevel}
+                    options={TRUST_LEVEL_OPTIONS}
+                    onChange={(v) => onTrustLevelChange(v as TrustLevel)}
+                  />
+                </div>
                 <div className={styles.settingRow}>
                   <span className={styles.settingLabel}>Color Mode</span>
                   <CustomDropdown

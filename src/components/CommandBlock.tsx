@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
+import { Copy, Check } from 'lucide-react';
 import { ansiToHtml } from '@/utils/ansiToHtml';
 import type { SegmentedBlock } from '@/types';
 import styles from './CommandBlock.module.css';
@@ -57,8 +58,10 @@ export function CommandBlock({
   awaitingInput,
   aiSuggested,
   cwd,
+  onCopy,
 }: CommandBlockProps) {
   const [showAll, setShowAll] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const outputLines = block.output ? block.output.split('\n') : [];
   const isLong = outputLines.length > LONG_OUTPUT_LINES;
@@ -119,7 +122,21 @@ export function CommandBlock({
               <span className={styles.running} />
             )
           ) : (
-            <span className={styles.meta}>{formatDuration(block.duration)}</span>
+            <>
+              <span
+                className={`${styles.copyBtn}${copied ? ` ${styles.copyBtnCopied}` : ''}`}
+                title="Copy command"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCopy(block.command);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1500);
+                }}
+              >
+                {copied ? <Check size={11} /> : <Copy size={11} />}
+              </span>
+              <span className={styles.meta}>{formatDuration(block.duration)}</span>
+            </>
           )}
         </div>
       </div>
