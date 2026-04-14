@@ -76,7 +76,7 @@ describe('translateGeminiEvent', () => {
     }, projectPath);
     expect(result!.message.content[0]).toMatchObject({
       name: 'CustomTool',
-      input: { kind: 'custom', locations: [] },
+      input: { kind: 'custom' },
     });
   });
 

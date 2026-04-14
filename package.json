@@ -10,8 +10,8 @@
     "dist": "vite build && electron-builder --linux AppImage",
     "dist:win": "vite build && electron-builder --win",
     "dist:mac": "vite build && electron-builder --mac dmg zip",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "vitest run --config tests/vitest.config.ts",
+    "test:watch": "vitest --config tests/vitest.config.ts"
   },
   "keywords": [],
   "author": "darkharasho",

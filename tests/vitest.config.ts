@@ -10,6 +10,10 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, '../src'),
       electron: path.resolve(__dirname, './__mocks__/electron.ts'),
+      'node:path': 'path',
+      'node:fs': 'fs',
+      'node:os': 'os',
+      'node:child_process': 'child_process',
     },
     conditions: ['node'],
   },
