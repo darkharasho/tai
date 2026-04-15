@@ -8,6 +8,8 @@ export interface HiddenXtermHandle {
   sendInput: (data: string) => void;
   getTerminal: () => Terminal | null;
   focus: () => void;
+  clear: () => void;
+  getBufferContent: () => string;
 }
 
 interface HiddenXtermProps {
@@ -122,6 +124,24 @@ export const HiddenXterm = forwardRef<HiddenXtermHandle, HiddenXtermProps>(
       },
       focus() {
         xtermRef.current?.focus();
+      },
+      clear() {
+        xtermRef.current?.clear();
+      },
+      getBufferContent() {
+        const term = xtermRef.current;
+        if (!term) return '';
+        const buf = term.buffer.active;
+        const lines: string[] = [];
+        for (let i = 0; i < buf.length; i++) {
+          const line = buf.getLine(i);
+          if (line) lines.push(line.translateToString(true));
+        }
+        let end = lines.length;
+        while (end > 0 && lines[end - 1].trim() === '') end--;
+        let start = 0;
+        while (start < end && lines[start].trim() === '') start++;
+        return lines.slice(start, end).join('\n');
       },
     }), [ptyId, onData]);
 

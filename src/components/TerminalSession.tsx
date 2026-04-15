@@ -67,6 +67,7 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
   const altScreenRef = useRef(false);
   const interactiveModeRef = useRef(false);
   const preambleSentRef = useRef(false);
+  const capturedOutputRef = useRef<string | null>(null);
   altScreenRef.current = altScreenVisible;
   interactiveModeRef.current = interactiveMode;
 
@@ -148,9 +149,14 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
       setPasswordPrompt(false);
       const pending = pendingCommandRef.current;
       pendingCommandRef.current = null;
-      const fixedBlock = pending
+      const captured = capturedOutputRef.current;
+      capturedOutputRef.current = null;
+      let fixedBlock = pending
         ? { ...block, command: pending.command, duration: Date.now() - pending.startTime }
         : block;
+      if (captured) {
+        fixedBlock = { ...fixedBlock, output: captured, rawOutput: captured };
+      }
       const isSuggested = aiSuggestedCommands.current.has(fixedBlock.command);
       if (isSuggested) aiSuggestedCommands.current.delete(fixedBlock.command);
       setDisplayItems(prev => {
@@ -199,6 +205,12 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
 
     segmenter.onInteractiveMode((entered, fullscreen) => {
       if (cancelled) return;
+      if (entered && fullscreen) {
+        hiddenXtermRef.current?.clear();
+      } else if (!entered) {
+        const content = hiddenXtermRef.current?.getBufferContent();
+        if (content) capturedOutputRef.current = content;
+      }
       setInteractiveMode(entered);
       setInteractiveFullscreen(entered && !!fullscreen);
       if (!entered) setPasswordPrompt(false);

@@ -105,8 +105,10 @@ export class BlockSegmenter {
       if (this._inInteractiveMode) {
         this._inInteractiveMode = false;
         this._interactiveFullscreen = false;
-        this._pendingLines = [];
-        this._pendingRawLines = [];
+        if (this._pendingLines.length > 1) {
+          this._pendingLines = [this._pendingLines[0]];
+          this._pendingRawLines = [this._pendingRawLines[0]];
+        }
         this._partialLine = '';
         this._partialRawLine = '';
         this._interactiveCallbacks.forEach(cb => cb(false));
@@ -119,6 +121,12 @@ export class BlockSegmenter {
     if (!this._inInteractiveMode && rawData.includes(CURSOR_HIDE) && this._seenFirstPrompt) {
       this._inInteractiveMode = true;
       this._interactiveFullscreen = true;
+      if (this._pendingLines.length > 1) {
+        this._pendingLines = [this._pendingLines[0]];
+        this._pendingRawLines = [this._pendingRawLines[0]];
+      }
+      this._partialLine = '';
+      this._partialRawLine = '';
       this._interactiveCallbacks.forEach(cb => cb(true, true));
     }
 
