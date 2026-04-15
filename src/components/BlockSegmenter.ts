@@ -4,8 +4,8 @@ import type { SegmentedBlock } from '@/types';
 const PROMPT_RE = /(\S+[@:]\S+[\$#%>❯]|[\$#%❯])\s*$/;
 const SSH_TARGET_RE = /(\S+)@(\S+?)[\s:]/;
 const SSH_CMD_RE = /^ssh\s+(?:.*\s)?(?:(\S+)@)?(\S+)\s*$/;
-const ALT_SCREEN_ENTER = '\x1b[?1049h';
-const ALT_SCREEN_EXIT = '\x1b[?1049l';
+const ALT_SCREEN_ENTER_SEQS = ['\x1b[?1049h', '\x1b[?47h', '\x1b[?1047h'];
+const ALT_SCREEN_EXIT_SEQS = ['\x1b[?1049l', '\x1b[?47l', '\x1b[?1047l'];
 const CURSOR_HIDE = '\x1b[?25l';
 const CURSOR_SHOW = '\x1b[?25h';
 const CURSOR_HOME = '\x1b[H';
@@ -39,9 +39,7 @@ export class BlockSegmenter {
   private _inAltScreen = false;
   private _inInteractiveMode = false;
   private _interactiveFullscreen = false;
-  private _cursorHidden = false;
   private _commandActive = false;
-  private _interactiveDebounce: ReturnType<typeof setTimeout> | null = null;
   private _passwordPromptFired = false;
 
   private _nextId(): string {
@@ -77,39 +75,51 @@ export class BlockSegmenter {
   }
 
   feed(rawData: string): void {
-    if (rawData.includes(ALT_SCREEN_ENTER)) {
+    const hasAltEnter = ALT_SCREEN_ENTER_SEQS.some(s => rawData.includes(s));
+    const altExitSeq = ALT_SCREEN_EXIT_SEQS.find(s => rawData.includes(s));
+
+    if (hasAltEnter) {
       this._inAltScreen = true;
       if (this._inInteractiveMode) {
         this._inInteractiveMode = false;
+        this._interactiveFullscreen = false;
         this._interactiveCallbacks.forEach(cb => cb(false));
       }
       this._altScreenCallbacks.forEach(cb => cb(true));
     }
-    if (rawData.includes(ALT_SCREEN_EXIT)) {
+    if (altExitSeq) {
       this._inAltScreen = false;
+      this._partialLine = '';
+      this._partialRawLine = '';
+      this._pendingLines = [];
+      this._pendingRawLines = [];
       this._altScreenCallbacks.forEach(cb => cb(false));
+      const exitIdx = rawData.indexOf(altExitSeq) + altExitSeq.length;
+      rawData = rawData.substring(exitIdx);
+      if (!rawData) return;
     }
 
     if (this._inAltScreen) return;
 
     if (rawData.includes(CURSOR_SHOW)) {
-      this._cursorHidden = false;
-      this._cancelInteractiveDebounce();
-    }
-    if (rawData.includes(CURSOR_HIDE)) {
-      this._cursorHidden = true;
+      if (this._inInteractiveMode) {
+        this._inInteractiveMode = false;
+        this._interactiveFullscreen = false;
+        this._pendingLines = [];
+        this._pendingRawLines = [];
+        this._partialLine = '';
+        this._partialRawLine = '';
+        this._interactiveCallbacks.forEach(cb => cb(false));
+        const showIdx = rawData.indexOf(CURSOR_SHOW) + CURSOR_SHOW.length;
+        rawData = rawData.substring(showIdx);
+        if (!rawData) return;
+      }
     }
 
-    if (this._cursorHidden && this._seenFirstPrompt && this._commandActive) {
-      if (!this._inInteractiveMode && (rawData.includes(CURSOR_HOME) || rawData.includes(CLEAR_SCREEN))) {
-        this._cancelInteractiveDebounce();
-        this._inInteractiveMode = true;
-        this._interactiveFullscreen = true;
-        this._interactiveCallbacks.forEach(cb => cb(true, true));
-      } else if (this._inInteractiveMode && !this._interactiveFullscreen && (rawData.includes(CURSOR_HOME) || rawData.includes(CLEAR_SCREEN))) {
-        this._interactiveFullscreen = true;
-        this._interactiveCallbacks.forEach(cb => cb(true, true));
-      }
+    if (!this._inInteractiveMode && rawData.includes(CURSOR_HIDE) && this._seenFirstPrompt) {
+      this._inInteractiveMode = true;
+      this._interactiveFullscreen = true;
+      this._interactiveCallbacks.forEach(cb => cb(true, true));
     }
 
     const clean = stripAnsi(rawData);
@@ -146,9 +156,9 @@ export class BlockSegmenter {
       this._partialRawLine = this._partialRawLine.substring(rawCrIdx + 1);
     }
 
-    this._checkForPrompt();
+    if (!this._inInteractiveMode) this._checkForPrompt();
 
-    if (this._seenFirstPrompt && this._pendingLines.length >= 1 && !this._inInteractiveMode) {
+    if (this._seenFirstPrompt && this._pendingLines.length >= 1) {
       const outputLines = this._pendingLines.slice(1);
       const rawOutputLines = this._pendingRawLines.slice(1);
       const partialSuffix = this._partialLine ? '\n' + this._partialLine : '';
@@ -158,29 +168,6 @@ export class BlockSegmenter {
       if (output) {
         this._outputCallbacks.forEach(cb => cb(output, rawOutput));
       }
-    }
-
-    if (this._cursorHidden && !this._inInteractiveMode && this._seenFirstPrompt && this._commandActive) {
-      this._startInteractiveDebounce();
-    }
-  }
-
-  private _startInteractiveDebounce(): void {
-    this._cancelInteractiveDebounce();
-    this._interactiveDebounce = setTimeout(() => {
-      this._interactiveDebounce = null;
-      if (this._cursorHidden && !this._inInteractiveMode) {
-        this._inInteractiveMode = true;
-        this._interactiveFullscreen = false;
-        this._interactiveCallbacks.forEach(cb => cb(true, false));
-      }
-    }, 300);
-  }
-
-  private _cancelInteractiveDebounce(): void {
-    if (this._interactiveDebounce !== null) {
-      clearTimeout(this._interactiveDebounce);
-      this._interactiveDebounce = null;
     }
   }
 
@@ -195,10 +182,6 @@ export class BlockSegmenter {
     }
 
     if (this._partialLine && PROMPT_RE.test(this._partialLine)) {
-      if (this._commandActive) {
-        const strict = /\S+[@:]\S+[\$#%>❯]\s*$/;
-        if (!strict.test(this._partialLine)) return;
-      }
       this._handlePromptDetected(this._partialLine);
       return;
     }
@@ -244,7 +227,6 @@ export class BlockSegmenter {
 
   private _exitInteractiveMode(): void {
     this._passwordPromptFired = false;
-    this._cancelInteractiveDebounce();
     if (this._inInteractiveMode) {
       this._inInteractiveMode = false;
       this._interactiveFullscreen = false;
@@ -319,12 +301,13 @@ export class BlockSegmenter {
     const newId = this._extractIdentity(prompt);
     if (!newId) return false;
 
+    const hostPart = newId.split('@')[1]?.toLowerCase() ?? '';
+    if (hostPart === 'localhost' || hostPart === '127.0.0.1') return false;
+
     if (this._localHostname) {
-      const hostPart = newId.split('@')[1]?.toLowerCase() ?? '';
-      // os.hostname() on macOS often returns FQDN (e.g. "host.local")
-      // while shell prompts show the short name (e.g. "host")
-      const localShort = this._localHostname.replace(/\.local$/, '');
-      return hostPart !== this._localHostname && hostPart !== localShort;
+      const localShort = this._localHostname.replace(/\.local(?:domain)?$/, '');
+      const promptShort = hostPart.replace(/\.local(?:domain)?$/, '');
+      return promptShort !== this._localHostname && promptShort !== localShort;
     }
 
     const initId = this._extractIdentity(this._initialPrompt);
@@ -356,9 +339,7 @@ export class BlockSegmenter {
     this._inAltScreen = false;
     this._inInteractiveMode = false;
     this._interactiveFullscreen = false;
-    this._cursorHidden = false;
     this._commandActive = false;
-    this._cancelInteractiveDebounce();
     this._passwordPromptFired = false;
     this._blockCallbacks = [];
     this._outputCallbacks = [];

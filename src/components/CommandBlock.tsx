@@ -43,7 +43,6 @@ interface CommandBlockProps {
   onToggleCollapse?: () => void;
   active?: boolean;
   awaitingInput?: boolean;
-  interactiveMode?: boolean;
   aiSuggested?: boolean;
   cwd?: string;
   onCopy: (text: string) => void;
@@ -58,7 +57,6 @@ export function CommandBlock({
   onToggleCollapse,
   active,
   awaitingInput,
-  interactiveMode,
   aiSuggested,
   cwd,
   onCopy,
@@ -66,13 +64,14 @@ export function CommandBlock({
 }: CommandBlockProps) {
   const [showAll, setShowAll] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [inputValue, setInputValue] = useState('');
   const interactiveRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (interactiveMode && active && interactiveRef.current) {
-      interactiveRef.current.focus();
+    if (active && awaitingInput && onSendInput) {
+      requestAnimationFrame(() => interactiveRef.current?.focus());
     }
-  }, [interactiveMode, active]);
+  }, [active, awaitingInput, onSendInput]);
 
   const outputLines = block.output ? block.output.split('\n') : [];
   const isLong = outputLines.length > LONG_OUTPUT_LINES;
@@ -185,26 +184,18 @@ export function CommandBlock({
           ref={interactiveRef}
           type="text"
           className={styles.interactiveInput}
-          placeholder="terminal input"
-          value=""
-          onChange={() => {}}
+          placeholder="Type input, Enter to send"
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const { key } = e;
-            if (key === 'ArrowUp') onSendInput('\x1b[A');
-            else if (key === 'ArrowDown') onSendInput('\x1b[B');
-            else if (key === 'ArrowRight') onSendInput('\x1b[C');
-            else if (key === 'ArrowLeft') onSendInput('\x1b[D');
-            else if (key === 'Enter') onSendInput('\r');
-            else if (key === 'Tab') onSendInput('\t');
-            else if (key === 'Backspace') onSendInput('\x7f');
-            else if (key === 'Delete') onSendInput('\x1b[3~');
-            else if (key === 'Escape') onSendInput('\x1b');
-            else if (key === 'Home') onSendInput('\x1b[H');
-            else if (key === 'End') onSendInput('\x1b[F');
-            else if (key.length === 1 && e.ctrlKey) onSendInput(String.fromCharCode(key.charCodeAt(0) - 96));
-            else if (key.length === 1 && !e.metaKey) onSendInput(key);
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              onSendInput(inputValue + '\r');
+              setInputValue('');
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              setInputValue('');
+            }
           }}
         />
       )}

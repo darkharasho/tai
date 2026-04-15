@@ -621,7 +621,7 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
   useEffect(() => {
     if (!visible) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (altScreenRef.current) return;
+      if (altScreenRef.current || interactiveModeRef.current) return;
 
       const ctrlOrMeta = e.ctrlKey || e.metaKey;
       if (!ctrlOrMeta) return;
@@ -655,19 +655,19 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
   useEffect(() => {
     if (!visible) return;
     const handleFocus = () => {
-      if (!altScreenVisible && !interactiveMode && !passwordPrompt) inputRef.current?.focus();
+      if (!altScreenVisible && !awaitingInput && !passwordPrompt) inputRef.current?.focus();
     };
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [visible, altScreenVisible, interactiveMode, passwordPrompt]);
+  }, [visible, altScreenVisible, awaitingInput, passwordPrompt]);
 
   useEffect(() => {
-    if (interactiveMode || passwordPrompt) {
+    if (awaitingInput || passwordPrompt) {
       inputRef.current?.blur();
     } else if (!altScreenVisible) {
       requestAnimationFrame(() => inputRef.current?.focus());
     }
-  }, [interactiveMode, passwordPrompt, altScreenVisible]);
+  }, [awaitingInput, passwordPrompt, altScreenVisible]);
 
   const isRemote = promptInfo?.isRemote ?? false;
   const sessionHistory = displayItems
@@ -680,23 +680,22 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
   const baseHistory = isRemote ? remoteHistory : shellHistory;
   const inputHistory = [...baseHistory, ...sessionHistory];
 
-  const inlineInteractive = interactiveMode && !interactiveFullscreen && !altScreenVisible;
-  const showFullscreenInteractive = interactiveMode && interactiveFullscreen && !altScreenVisible;
-  const inputDisabled = inlineInteractive || passwordPrompt;
-
   const handleSendInput = useCallback((data: string) => {
     if (ptyId === null) return;
     window.tai?.pty?.write(ptyId, data);
   }, [ptyId]);
 
+  const showFullscreenInteractive = interactiveMode && interactiveFullscreen && !altScreenVisible;
+  const showXterm = altScreenVisible || showFullscreenInteractive;
+  const inputDisabled = awaitingInput || passwordPrompt;
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0, position: 'relative' }}>
-      {!altScreenVisible && !showFullscreenInteractive && (
+      {!showXterm && (
         <BlockList
           items={displayItems}
           activeBlockId={null}
           awaitingInput={awaitingInput}
-          interactiveMode={inlineInteractive}
           cwd={cwd}
           onCopy={handleCopy}
           onAskAI={handleAskAI}
@@ -716,11 +715,11 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
         <HiddenXterm
           ref={hiddenXtermRef}
           ptyId={ptyId}
-          visible={altScreenVisible || showFullscreenInteractive}
+          visible={showXterm}
           onData={(data) => segmenterRef.current.feed(data)}
         />
       )}
-      {!altScreenVisible && !showFullscreenInteractive && passwordPrompt && ptyId !== null && (
+      {!showXterm && passwordPrompt && ptyId !== null && (
         <div style={{ flexShrink: 0 }}>
           <PasswordPrompt
             ptyId={ptyId}
@@ -728,7 +727,7 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
           />
         </div>
       )}
-      {!altScreenVisible && !showFullscreenInteractive && (
+      {!showXterm && (
         <div style={{ flexShrink: 0, opacity: inputDisabled ? 0.3 : 1, pointerEvents: inputDisabled ? 'none' : 'auto', transition: 'opacity 0.15s' }}>
           <TerminalInput
             ref={inputRef}

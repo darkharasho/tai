@@ -15,7 +15,6 @@ interface BlockListProps {
   items: DisplayItem[];
   activeBlockId: string | null;
   awaitingInput?: boolean;
-  interactiveMode?: boolean;
   cwd?: string;
   onCopy: (text: string) => void;
   onAskAI: (block: SegmentedBlock) => void;
@@ -32,7 +31,6 @@ export function BlockList({
   items,
   activeBlockId,
   awaitingInput,
-  interactiveMode,
   cwd,
   onCopy,
   onAskAI,
@@ -101,7 +99,6 @@ export function BlockList({
                 onToggleCollapse={() => handleToggleCollapse(id, collapsed)}
                 active={item.active || id === activeBlockId}
                 awaitingInput={(item.active || id === activeBlockId) ? awaitingInput : false}
-                interactiveMode={(item.active || id === activeBlockId) ? interactiveMode : false}
                 aiSuggested={item.aiSuggested}
                 cwd={cwd}
                 onCopy={onCopy}
