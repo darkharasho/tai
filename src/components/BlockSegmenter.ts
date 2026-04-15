@@ -39,6 +39,9 @@ export class BlockSegmenter {
   private _inAltScreen = false;
   private _inInteractiveMode = false;
   private _interactiveFullscreen = false;
+  private _cursorHidden = false;
+  private _commandActive = false;
+  private _interactiveDebounce: ReturnType<typeof setTimeout> | null = null;
   private _passwordPromptFired = false;
 
   private _nextId(): string {
@@ -54,6 +57,10 @@ export class BlockSegmenter {
 
   get currentPrompt(): string { return this._currentPrompt; }
   get seenFirstPrompt(): boolean { return this._seenFirstPrompt; }
+
+  markCommandSent(): void {
+    this._commandActive = true;
+  }
 
   setLocalHostname(hostname: string): void {
     this._localHostname = hostname.toLowerCase();
@@ -85,14 +92,24 @@ export class BlockSegmenter {
 
     if (this._inAltScreen) return;
 
-    if (!this._inInteractiveMode && rawData.includes(CURSOR_HIDE) && this._seenFirstPrompt && this._pendingLines.length > 0) {
-      this._inInteractiveMode = true;
-      const isFullscreen = rawData.includes(CURSOR_HOME) || rawData.includes(CLEAR_SCREEN);
-      this._interactiveFullscreen = isFullscreen;
-      this._interactiveCallbacks.forEach(cb => cb(true, isFullscreen));
-    } else if (this._inInteractiveMode && !this._interactiveFullscreen && (rawData.includes(CURSOR_HOME) || rawData.includes(CLEAR_SCREEN))) {
-      this._interactiveFullscreen = true;
-      this._interactiveCallbacks.forEach(cb => cb(true, true));
+    if (rawData.includes(CURSOR_SHOW)) {
+      this._cursorHidden = false;
+      this._cancelInteractiveDebounce();
+    }
+    if (rawData.includes(CURSOR_HIDE)) {
+      this._cursorHidden = true;
+    }
+
+    if (this._cursorHidden && this._seenFirstPrompt && this._commandActive) {
+      if (!this._inInteractiveMode && (rawData.includes(CURSOR_HOME) || rawData.includes(CLEAR_SCREEN))) {
+        this._cancelInteractiveDebounce();
+        this._inInteractiveMode = true;
+        this._interactiveFullscreen = true;
+        this._interactiveCallbacks.forEach(cb => cb(true, true));
+      } else if (this._inInteractiveMode && !this._interactiveFullscreen && (rawData.includes(CURSOR_HOME) || rawData.includes(CLEAR_SCREEN))) {
+        this._interactiveFullscreen = true;
+        this._interactiveCallbacks.forEach(cb => cb(true, true));
+      }
     }
 
     const clean = stripAnsi(rawData);
@@ -142,15 +159,46 @@ export class BlockSegmenter {
         this._outputCallbacks.forEach(cb => cb(output, rawOutput));
       }
     }
+
+    if (this._cursorHidden && !this._inInteractiveMode && this._seenFirstPrompt && this._commandActive) {
+      this._startInteractiveDebounce();
+    }
+  }
+
+  private _startInteractiveDebounce(): void {
+    this._cancelInteractiveDebounce();
+    this._interactiveDebounce = setTimeout(() => {
+      this._interactiveDebounce = null;
+      if (this._cursorHidden && !this._inInteractiveMode) {
+        this._inInteractiveMode = true;
+        this._interactiveFullscreen = false;
+        this._interactiveCallbacks.forEach(cb => cb(true, false));
+      }
+    }, 300);
+  }
+
+  private _cancelInteractiveDebounce(): void {
+    if (this._interactiveDebounce !== null) {
+      clearTimeout(this._interactiveDebounce);
+      this._interactiveDebounce = null;
+    }
   }
 
   private _checkForPrompt(): void {
-    if (!this._passwordPromptFired && this._partialLine && /(?:password|passphrase).*:\s*$/i.test(this._partialLine)) {
-      this._passwordPromptFired = true;
-      this._passwordCallbacks.forEach(cb => cb());
+    const pwRe = /(?:password|passphrase).*:\s*$/i;
+    if (!this._passwordPromptFired) {
+      if ((this._partialLine && pwRe.test(this._partialLine)) ||
+          (this._pendingLines.length > 0 && pwRe.test(this._pendingLines[this._pendingLines.length - 1]))) {
+        this._passwordPromptFired = true;
+        this._passwordCallbacks.forEach(cb => cb());
+      }
     }
 
     if (this._partialLine && PROMPT_RE.test(this._partialLine)) {
+      if (this._commandActive) {
+        const strict = /\S+[@:]\S+[\$#%>❯]\s*$/;
+        if (!strict.test(this._partialLine)) return;
+      }
       this._handlePromptDetected(this._partialLine);
       return;
     }
@@ -196,6 +244,7 @@ export class BlockSegmenter {
 
   private _exitInteractiveMode(): void {
     this._passwordPromptFired = false;
+    this._cancelInteractiveDebounce();
     if (this._inInteractiveMode) {
       this._inInteractiveMode = false;
       this._interactiveFullscreen = false;
@@ -204,6 +253,7 @@ export class BlockSegmenter {
   }
 
   private _finalizeBlock(newPromptText: string): void {
+    this._commandActive = false;
     this._exitInteractiveMode();
     const lines = this._pendingLines;
     const rawLines = this._pendingRawLines;
@@ -306,6 +356,9 @@ export class BlockSegmenter {
     this._inAltScreen = false;
     this._inInteractiveMode = false;
     this._interactiveFullscreen = false;
+    this._cursorHidden = false;
+    this._commandActive = false;
+    this._cancelInteractiveDebounce();
     this._passwordPromptFired = false;
     this._blockCallbacks = [];
     this._outputCallbacks = [];

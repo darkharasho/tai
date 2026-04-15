@@ -16,6 +16,7 @@ const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigat
 export interface TerminalInputHandle {
   paste: (text: string) => void;
   focus: () => void;
+  blur: () => void;
 }
 
 function stripPromptGlyphs(text: string): string {
@@ -85,6 +86,9 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
     },
     focus: () => {
       inputRef.current?.focus();
+    },
+    blur: () => {
+      inputRef.current?.blur();
     },
   }));
 

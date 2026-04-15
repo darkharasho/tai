@@ -13,12 +13,11 @@ export interface HiddenXtermHandle {
 interface HiddenXtermProps {
   ptyId: number;
   visible: boolean;
-  inline?: boolean;
   onData?: (data: string) => void;
 }
 
 export const HiddenXterm = forwardRef<HiddenXtermHandle, HiddenXtermProps>(
-  function HiddenXterm({ ptyId, visible, inline, onData }, ref) {
+  function HiddenXterm({ ptyId, visible, onData }, ref) {
     const containerRef = useRef<HTMLDivElement>(null);
     const xtermRef = useRef<Terminal | null>(null);
     const fitRef = useRef<FitAddon | null>(null);
@@ -91,7 +90,7 @@ export const HiddenXterm = forwardRef<HiddenXtermHandle, HiddenXtermProps>(
         }, 50);
         return () => clearTimeout(timer);
       }
-    }, [visible, inline, ptyId]);
+    }, [visible, ptyId]);
 
     useEffect(() => {
       if (!containerRef.current) return;
@@ -127,25 +126,12 @@ export const HiddenXterm = forwardRef<HiddenXtermHandle, HiddenXtermProps>(
     }), [ptyId, onData]);
 
     const style: React.CSSProperties = visible
-      ? inline
-        ? {
-            position: 'relative',
-            zIndex: 1,
-            height: '180px',
-            flexShrink: 0,
-            overflow: 'hidden',
-            margin: '-188px 14px 8px',
-            borderRadius: '0 0 10px 10px',
-            border: '1px solid var(--border-card)',
-            borderTop: '1px solid rgba(255,255,255,0.04)',
-            background: 'var(--bg-card)',
-          }
-        : {
-            position: 'relative',
-            flex: 1,
-            minHeight: 0,
-            overflow: 'hidden',
-          }
+      ? {
+          position: 'relative',
+          flex: 1,
+          minHeight: 0,
+          overflow: 'hidden',
+        }
       : {
           position: 'absolute',
           inset: 0,

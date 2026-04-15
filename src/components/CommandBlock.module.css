@@ -233,6 +233,35 @@
   opacity: 1;
 }
 
+.interactiveInput {
+  display: block;
+  width: calc(100% + 32px);
+  box-sizing: border-box;
+  padding: 8px 16px;
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  margin: 8px -16px -14px;
+  outline: none;
+  cursor: text;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  background: transparent;
+  border-radius: 0 0 10px 10px;
+  transition: background 0.15s;
+  caret-color: var(--text-primary);
+}
+
+.interactiveInput::placeholder {
+  color: var(--text-muted);
+  opacity: 0.4;
+}
+
+.interactiveInput:focus {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-primary);
+}
+
 :global(.cb-link) {
   color: #58a6ff;
   text-decoration: none;

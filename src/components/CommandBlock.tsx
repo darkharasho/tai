@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { ansiToHtml } from '@/utils/ansiToHtml';
 import type { SegmentedBlock } from '@/types';
@@ -49,6 +49,7 @@ interface CommandBlockProps {
   onCopy: (text: string) => void;
   onAskAI: (block: SegmentedBlock) => void;
   onRerun: (command: string) => void;
+  onSendInput?: (data: string) => void;
 }
 
 export function CommandBlock({
@@ -61,9 +62,17 @@ export function CommandBlock({
   aiSuggested,
   cwd,
   onCopy,
+  onSendInput,
 }: CommandBlockProps) {
   const [showAll, setShowAll] = useState(false);
   const [copied, setCopied] = useState(false);
+  const interactiveRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (interactiveMode && active && interactiveRef.current) {
+      interactiveRef.current.focus();
+    }
+  }, [interactiveMode, active]);
 
   const outputLines = block.output ? block.output.split('\n') : [];
   const isLong = outputLines.length > LONG_OUTPUT_LINES;
@@ -103,14 +112,12 @@ export function CommandBlock({
     );
   }
 
-  const interactiveStyle: React.CSSProperties = interactiveMode ? {
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
-    marginBottom: 0,
-  } : {};
-
   return (
-    <div className={styles.block} style={{ '--accent-color': modeColor, ...interactiveStyle } as React.CSSProperties}>
+    <div
+      className={styles.block}
+      style={{ '--accent-color': modeColor } as React.CSSProperties}
+      onClick={() => { if (active && onSendInput) interactiveRef.current?.focus(); }}
+    >
       <div className={styles.promptLine} onClick={() => onToggleCollapse?.()}>
         <div className={styles.promptLeft}>
           <span className={styles.promptUser} style={{ color: modeColor }}>{user}</span>
@@ -171,6 +178,35 @@ export function CommandBlock({
             )}
           </div>
         </>
+      )}
+
+      {active && onSendInput && (
+        <input
+          ref={interactiveRef}
+          type="text"
+          className={styles.interactiveInput}
+          placeholder="terminal input"
+          value=""
+          onChange={() => {}}
+          onKeyDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const { key } = e;
+            if (key === 'ArrowUp') onSendInput('\x1b[A');
+            else if (key === 'ArrowDown') onSendInput('\x1b[B');
+            else if (key === 'ArrowRight') onSendInput('\x1b[C');
+            else if (key === 'ArrowLeft') onSendInput('\x1b[D');
+            else if (key === 'Enter') onSendInput('\r');
+            else if (key === 'Tab') onSendInput('\t');
+            else if (key === 'Backspace') onSendInput('\x7f');
+            else if (key === 'Delete') onSendInput('\x1b[3~');
+            else if (key === 'Escape') onSendInput('\x1b');
+            else if (key === 'Home') onSendInput('\x1b[H');
+            else if (key === 'End') onSendInput('\x1b[F');
+            else if (key.length === 1 && e.ctrlKey) onSendInput(String.fromCharCode(key.charCodeAt(0) - 96));
+            else if (key.length === 1 && !e.metaKey) onSendInput(key);
+          }}
+        />
       )}
     </div>
   );

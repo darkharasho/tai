@@ -24,6 +24,7 @@ interface BlockListProps {
   onToolApprove: (item: DisplayItem & { type: 'approval' }) => void;
   onToolReject: (item: DisplayItem & { type: 'approval' }) => void;
   onStopAI?: () => void;
+  onSendInput?: (data: string) => void;
   aiProvider?: AIProvider;
 }
 
@@ -40,6 +41,7 @@ export function BlockList({
   onToolApprove,
   onToolReject,
   onStopAI,
+  onSendInput,
   aiProvider,
 }: BlockListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -69,7 +71,7 @@ export function BlockList({
   }
 
   return (
-    <div className={styles.blockList} style={interactiveMode ? { paddingBottom: 188 } : undefined}>
+    <div className={styles.blockList}>
       <div className={styles.spacer} />
 
       {items.length === 0 && (
@@ -105,6 +107,7 @@ export function BlockList({
                 onCopy={onCopy}
                 onAskAI={onAskAI}
                 onRerun={onRerun}
+                onSendInput={(item.active || id === activeBlockId) ? onSendInput : undefined}
               />
             </div>
           );
