@@ -130,7 +130,7 @@ function writeConfig(config: Record<string, any>) {
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 }
 
-ipcMain.handle('system:hostname', () => os.hostname());
+ipcMain.handle('system:hostname', () => process.env.HOSTNAME || os.hostname());
 
 ipcMain.handle('config:get', () => readConfig());
 ipcMain.handle('config:set', (_event, key: string, value: any) => {

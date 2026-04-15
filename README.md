@@ -14,6 +14,14 @@
   <a href="https://github.com/darkharasho/tai/releases"><img src="https://img.shields.io/github/downloads/darkharasho/tai/total?style=flat-square&color=00a884" alt="Downloads" /></a>
 </p>
 
+<p align="center">
+  <img src="docs/screenshots/terminal.png" alt="TAI terminal showing block-based command output with colorized ls and git log" width="800" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/ai-mode.png" alt="TAI in AI mode with natural language input ready to query Claude" width="800" />
+</p>
+
 ---
 
 ## Your terminal, but smarter.
