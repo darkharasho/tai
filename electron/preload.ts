@@ -29,8 +29,8 @@ contextBridge.exposeInMainWorld('tai', {
     },
   },
   ai: {
-    send: (key: string, cwd: string, message: string, permMode: string, model: string) =>
-      ipcRenderer.invoke('ai:send', key, cwd, message, permMode, model),
+    send: (key: string, cwd: string, message: string, permMode: string, model: string, effort?: string) =>
+      ipcRenderer.invoke('ai:send', key, cwd, message, permMode, model, effort),
     cancel: (key: string) => ipcRenderer.send('ai:cancel', key),
     stop: (key: string) => ipcRenderer.send('ai:stop', key),
     approve: (key: string, toolUseId: string, approved: boolean) =>

@@ -12,9 +12,13 @@ interface QuickSettingsProps {
   onTrustLevelChange: (level: TrustLevel) => void;
   aiProvider: AIProvider;
   onAIProviderChange: (provider: AIProvider) => void;
+  claudeModel: string;
+  onClaudeModelChange: (model: string) => void;
+  claudeEffort: string;
+  onClaudeEffortChange: (effort: string) => void;
 }
 
-type Category = 'general';
+type Category = 'general' | 'claude';
 
 const COLOR_MODE_OPTIONS = [
   { value: 'high', label: 'High' },
@@ -31,6 +35,25 @@ const PROVIDER_OPTIONS = [
   { value: 'claude', label: 'Claude' },
   { value: 'codex', label: 'Codex' },
   { value: 'gemini', label: 'Gemini' },
+];
+
+const CLAUDE_MODEL_OPTIONS = [
+  { value: 'default', label: 'Default' },
+  { value: 'best', label: 'Best' },
+  { value: 'opus', label: 'Opus' },
+  { value: 'opus[1m]', label: 'Opus (1M context)' },
+  { value: 'sonnet', label: 'Sonnet' },
+  { value: 'sonnet[1m]', label: 'Sonnet (1M context)' },
+  { value: 'haiku', label: 'Haiku' },
+  { value: 'opusplan', label: 'Opus Plan' },
+];
+
+const CLAUDE_EFFORT_OPTIONS = [
+  { value: 'auto', label: 'Default' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+  { value: 'max', label: 'Max (Opus only)' },
 ];
 
 function CustomDropdown({ value, options, onChange }: {
@@ -81,7 +104,7 @@ function CustomDropdown({ value, options, onChange }: {
   );
 }
 
-export function QuickSettings({ visible, onClose, colorMode, onColorModeChange, trustLevel, onTrustLevelChange, aiProvider, onAIProviderChange }: QuickSettingsProps) {
+export function QuickSettings({ visible, onClose, colorMode, onColorModeChange, trustLevel, onTrustLevelChange, aiProvider, onAIProviderChange, claudeModel, onClaudeModelChange, claudeEffort, onClaudeEffortChange }: QuickSettingsProps) {
   const [category, setCategory] = useState<Category>('general');
   const [version, setVersion] = useState('');
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'up-to-date' | 'available' | 'error'>('idle');
@@ -112,6 +135,7 @@ export function QuickSettings({ visible, onClose, colorMode, onColorModeChange, 
 
   const categories: { id: Category; label: string }[] = [
     { id: 'general', label: 'General' },
+    { id: 'claude', label: 'Claude' },
   ];
 
   return (
@@ -181,6 +205,26 @@ export function QuickSettings({ visible, onClose, colorMode, onColorModeChange, 
                       {updateStatus === 'error' && 'Check Failed'}
                     </button>
                   </div>
+                </div>
+              </>
+            )}
+            {category === 'claude' && (
+              <>
+                <div className={styles.settingRow}>
+                  <span className={styles.settingLabel}>Model</span>
+                  <CustomDropdown
+                    value={claudeModel}
+                    options={CLAUDE_MODEL_OPTIONS}
+                    onChange={onClaudeModelChange}
+                  />
+                </div>
+                <div className={styles.settingRow}>
+                  <span className={styles.settingLabel}>Reasoning Effort</span>
+                  <CustomDropdown
+                    value={claudeEffort}
+                    options={CLAUDE_EFFORT_OPTIONS}
+                    onChange={onClaudeEffortChange}
+                  />
                 </div>
               </>
             )}

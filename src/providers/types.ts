@@ -16,7 +16,7 @@ export interface ProviderCapabilities {
 export interface Provider {
   id: string;
   name: string;
-  send(message: string, cwd: string, trustLevel: string, model?: string): void;
+  send(message: string, cwd: string, trustLevel: string, model?: string, effort?: string): void;
   cancel(): void;
   stop(): void;
   onMessage(callback: (chunk: any) => void): () => void;

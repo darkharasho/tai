@@ -10,6 +10,7 @@ import { BlockSegmenter } from './BlockSegmenter';
 import { createClaudeProvider } from '@/providers/claude';
 import { createCodexProvider } from '@/providers/codex';
 import { createGeminiProvider } from '@/providers/gemini';
+import { useSettings } from '@/hooks/useSettings';
 import type { AIProvider, ContextMode, TrustLevel, AIEntry } from '@/types';
 
 interface TerminalSessionProps {
@@ -39,6 +40,9 @@ function nextBlockId(): string {
 }
 
 export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustLevel, aiProvider, onContextModeChange, onRemoteChange, remoteExecMode, onRemoteExecModeChange, onTrustLevelChange }: TerminalSessionProps) {
+  const { config } = useSettings();
+  const claudeModel = config['claude.model'] || 'sonnet';
+  const claudeEffort = config['claude.effort'] || 'auto';
   const [displayItems, setDisplayItems] = useState<DisplayItem[]>([]);
   const [altScreenVisible, setAltScreenVisible] = useState(false);
   const [interactiveMode, setInteractiveMode] = useState(false);
@@ -557,8 +561,8 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
     aiCleanupRef.current = cleanup;
     aiBlockIdRef.current = aiId;
 
-    providerRef.current.send(fullPrompt, cwd, trustLevel);
-  }, [cwd, trustLevel, handleInputModeChange, promptInfo, remoteExecMode]);
+    providerRef.current.send(fullPrompt, cwd, trustLevel, claudeModel, claudeEffort);
+  }, [cwd, trustLevel, handleInputModeChange, promptInfo, remoteExecMode, claudeModel, claudeEffort]);
 
   const handleAskAI = useCallback((block: import('@/types').SegmentedBlock) => {
     const prompt = `The following command ran:\n\n\`\`\`\n$ ${block.command}\n${block.output}\n\`\`\`\n\nAnalyze this and suggest a fix if needed. If you suggest a command, put it in a \`\`\`bash code block.`;

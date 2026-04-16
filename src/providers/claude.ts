@@ -7,8 +7,8 @@ export function createClaudeProvider(tabId: string): Provider {
     id: 'claude',
     name: 'Claude',
 
-    send(message: string, cwd: string, trustLevel: string, model?: string) {
-      window.tai.ai.send(tabId, cwd, message, trustLevel, model || 'sonnet');
+    send(message: string, cwd: string, trustLevel: string, model?: string, effort?: string) {
+      window.tai.ai.send(tabId, cwd, message, trustLevel, model || 'sonnet', effort || 'auto');
     },
 
     cancel() {

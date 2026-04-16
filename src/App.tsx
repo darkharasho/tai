@@ -206,6 +206,10 @@ export default function App() {
         onTrustLevelChange={handleTrustLevelChange}
         aiProvider={activeTab.aiProvider}
         onAIProviderChange={handleAIProviderChange}
+        claudeModel={config['claude.model'] || 'sonnet'}
+        onClaudeModelChange={(model) => setSetting('claude.model', model)}
+        claudeEffort={config['claude.effort'] || 'auto'}
+        onClaudeEffortChange={(effort) => setSetting('claude.effort', effort)}
       />
       <UpdateNotifier
         state={updater.state}

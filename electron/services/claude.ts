@@ -50,7 +50,7 @@ function enrichedEnv(): Record<string, string> {
   return env;
 }
 
-function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, permMode: string, model: string): ChildProcess {
+function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, permMode: string, model: string, effort: string): ChildProcess {
   const state = getState(key);
 
   if (state.process && !state.process.killed) {
@@ -82,8 +82,12 @@ function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, perm
     args.push('--permission-mode', 'acceptEdits');
   }
 
-  if (model) {
+  if (model && model !== 'default') {
     args.push('--model', model);
+  }
+
+  if (effort && effort !== 'auto') {
+    args.push('--effort', effort);
   }
 
   if (state.sessionId) {
@@ -229,10 +233,10 @@ async function handleRemoteToolCalls(
 }
 
 export function setupClaudeService(getWindow: () => BrowserWindow | null) {
-  ipcMain.handle('ai:send', (_event, key: string, cwd: string, message: string, permMode: string, model: string) => {
+  ipcMain.handle('ai:send', (_event, key: string, cwd: string, message: string, permMode: string, model: string, effort?: string) => {
     const win = getWindow();
     const state = getState(key);
-    const proc = ensureProcess(win, key, cwd, permMode, model);
+    const proc = ensureProcess(win, key, cwd, permMode, model, effort || 'auto');
 
     state.busy = true;
     const payload = JSON.stringify({

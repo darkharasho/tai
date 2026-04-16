@@ -7,6 +7,8 @@ const DEFAULTS = {
   'general.cursorStyle': 'bar',
   'ai.provider': 'claude',
   'ai.model': 'sonnet',
+  'claude.model': 'sonnet',
+  'claude.effort': 'auto',
   'trust.default': 'ask',
   'appearance.gradientBorder': true,
   'appearance.animationSpeed': 20,

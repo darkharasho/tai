@@ -21,7 +21,7 @@ declare global {
         onMaximizedChange: (callback: (maximized: boolean) => void) => () => void;
       };
       ai: {
-        send: (key: string, cwd: string, message: string, permMode: string, model: string) => Promise<boolean>;
+        send: (key: string, cwd: string, message: string, permMode: string, model: string, effort?: string) => Promise<boolean>;
         cancel: (key: string) => void;
         stop: (key: string) => void;
         approve: (key: string, toolUseId: string, approved: boolean) => Promise<boolean>;
