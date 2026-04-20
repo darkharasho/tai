@@ -8,7 +8,6 @@ interface ToolResult {
 
 interface PendingRequest {
   resolve: (result: ToolResult) => void;
-  reject: (err: Error) => void;
 }
 
 export class RemoteDaemonProxy {
@@ -39,7 +38,9 @@ export class RemoteDaemonProxy {
     });
 
     this.proc.stdout!.on('data', (chunk: Buffer) => this._handleData(chunk));
-    this.proc.stderr!.on('data', () => {}); // suppress
+    this.proc.stderr!.on('data', (chunk: Buffer) => {
+      console.error('[tai-daemon stderr]', chunk.toString().trim());
+    });
     this.proc.on('exit', () => this._handleExit());
 
     // Timeout if ready not received within 10s
@@ -61,7 +62,9 @@ export class RemoteDaemonProxy {
       try {
         const msg = JSON.parse(line);
         this._handleMessage(msg);
-      } catch {}
+      } catch (e) {
+        console.warn('[tai-daemon] failed to parse line:', line);
+      }
     }
   }
 
@@ -112,9 +115,11 @@ export class RemoteDaemonProxy {
   }
 
   private _handleExit() {
+    if (!this.ready) {
+      this.readyReject(new Error('SSH process exited before daemon became ready'));
+    }
     this.ready = false;
     if (this.pingInterval) { clearInterval(this.pingInterval); this.pingInterval = null; }
-    // Reject all pending requests
     for (const [, pending] of this.pending) {
       pending.resolve({ output: 'daemon disconnected', isError: true });
     }
@@ -142,8 +147,8 @@ export class RemoteDaemonProxy {
     const params = this._mapParams(toolName, input);
     const daemonTool = toolName.toLowerCase();
 
-    return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+    return new Promise((resolve) => {
+      this.pending.set(id, { resolve });
       this._write({ id, tool: daemonTool, params });
     });
   }
@@ -173,9 +178,12 @@ export class RemoteDaemonProxy {
 
   disconnect() {
     if (this.pingInterval) { clearInterval(this.pingInterval); this.pingInterval = null; }
+    for (const [, pending] of this.pending) {
+      pending.resolve({ output: 'disconnected', isError: true });
+    }
+    this.pending.clear();
     this.proc?.kill();
     this.proc = null;
     this.ready = false;
-    this.pending.clear();
   }
 }
