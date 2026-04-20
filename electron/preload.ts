@@ -72,6 +72,10 @@ contextBridge.exposeInMainWorld('tai', {
     getHostname: () => ipcRenderer.invoke('system:hostname'),
     platform: process.platform,
   },
+  daemon: {
+    check: (target: string) => ipcRenderer.invoke('tai:daemon:check', target),
+    install: (target: string) => ipcRenderer.invoke('tai:daemon:install', target),
+  },
   config: {
     get: () => ipcRenderer.invoke('config:get'),
     set: (key: string, value: any) => ipcRenderer.invoke('config:set', key, value),

@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
+import { spawn } from 'child_process';
 import { setupPtyService, destroyAllTerminals } from './services/pty';
 import { setupClaudeService, destroyAllClaude } from './services/claude';
 import { setupCodexService, destroyAllCodex } from './services/codex';
@@ -139,4 +140,99 @@ ipcMain.handle('config:set', (_event, key: string, value: any) => {
   writeConfig(config);
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('config:changed', config);
   return config;
+});
+
+// Daemon install helpers
+ipcMain.handle('tai:daemon:check', async (_event, target: string) => {
+  // Returns { installed: boolean, version?: string }
+  return new Promise<{ installed: boolean; version?: string }>((resolve) => {
+    const proc = spawn('ssh', [target, '~/.tai/tai-daemon', '--version'], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    let output = '';
+    proc.stdout.on('data', (chunk: Buffer) => { output += chunk.toString(); });
+    proc.on('exit', (code) => {
+      if (code === 0) {
+        resolve({ installed: true, version: output.trim() });
+      } else {
+        resolve({ installed: false });
+      }
+    });
+    // Timeout after 10s
+    setTimeout(() => { proc.kill(); resolve({ installed: false }); }, 10000);
+  });
+});
+
+ipcMain.handle('tai:daemon:install', async (_event, target: string) => {
+  // Detect arch, scp correct binary, chmod +x
+  // Returns { success: boolean, error?: string }
+  const arch = await new Promise<{ os: string; arch: string } | null>((resolve) => {
+    const proc = spawn('ssh', [target, 'uname -s && uname -m'], {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    let output = '';
+    proc.stdout.on('data', (chunk: Buffer) => { output += chunk.toString(); });
+    proc.on('exit', (code) => {
+      if (code !== 0) { resolve(null); return; }
+      const lines = output.trim().split('\n');
+      resolve({ os: lines[0]?.trim() || '', arch: lines[1]?.trim() || '' });
+    });
+    setTimeout(() => { proc.kill(); resolve(null); }, 10000);
+  });
+
+  if (!arch) return { success: false, error: 'Failed to detect remote architecture' };
+
+  // Map uname output to binary name
+  const osName = arch.os.toLowerCase();
+  const archName = arch.arch.toLowerCase();
+  let binaryName: string;
+  if (osName === 'linux' && archName === 'x86_64') binaryName = 'tai-daemon-linux-amd64';
+  else if (osName === 'linux' && archName === 'aarch64') binaryName = 'tai-daemon-linux-arm64';
+  else if (osName === 'darwin' && archName === 'x86_64') binaryName = 'tai-daemon-darwin-amd64';
+  else if (osName === 'darwin' && (archName === 'arm64' || archName === 'aarch64')) binaryName = 'tai-daemon-darwin-arm64';
+  else return { success: false, error: `Unsupported platform: ${arch.os} ${arch.arch}` };
+
+  // Find bundled binary
+  const daemonDir = app.isPackaged
+    ? path.join(process.resourcesPath, 'daemon', 'dist')
+    : path.join(__dirname, '..', 'daemon', 'dist');
+  const binaryPath = path.join(daemonDir, binaryName);
+
+  if (!fs.existsSync(binaryPath)) {
+    return { success: false, error: `Bundled binary not found: ${binaryName}` };
+  }
+
+  // SCP to remote
+  const installResult = await new Promise<{ success: boolean; error?: string }>((resolve) => {
+    // First ensure ~/.tai exists, then scp
+    const mkdirProc = spawn('ssh', [target, 'mkdir -p ~/.tai'], {
+      stdio: ['ignore', 'ignore', 'ignore'],
+    });
+    mkdirProc.on('exit', (code) => {
+      if (code !== 0) { resolve({ success: false, error: 'Failed to create ~/.tai directory' }); return; }
+
+      const scpProc = spawn('scp', [binaryPath, `${target}:~/.tai/tai-daemon`], {
+        stdio: ['ignore', 'ignore', 'pipe'],
+      });
+      let errOutput = '';
+      scpProc.stderr?.on('data', (chunk: Buffer) => { errOutput += chunk.toString(); });
+      scpProc.on('exit', (scpCode) => {
+        if (scpCode !== 0) { resolve({ success: false, error: errOutput.trim() || 'scp failed' }); return; }
+
+        // chmod +x
+        const chmodProc = spawn('ssh', [target, 'chmod +x ~/.tai/tai-daemon'], {
+          stdio: ['ignore', 'ignore', 'ignore'],
+        });
+        chmodProc.on('exit', (chmodCode) => {
+          if (chmodCode !== 0) { resolve({ success: false, error: 'chmod +x failed' }); return; }
+          resolve({ success: true });
+        });
+        setTimeout(() => { chmodProc.kill(); resolve({ success: false, error: 'chmod timed out' }); }, 10000);
+      });
+      setTimeout(() => { scpProc.kill(); resolve({ success: false, error: 'scp timed out' }); }, 60000);
+    });
+    setTimeout(() => { mkdirProc.kill(); resolve({ success: false, error: 'mkdir timed out' }); }, 10000);
+  });
+
+  return installResult;
 });
