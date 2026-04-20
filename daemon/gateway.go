@@ -26,11 +26,11 @@ func startDaemon(socketPath string) error {
 
 	cmd := exec.Command(self, "--serve")
 	cmd.SysProcAttr = newSysProcAttr()
+	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
 		return err
 	}
 
-	// Wait up to 5 seconds for socket to appear
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		if isDaemonRunning(socketPath) {
@@ -38,6 +38,7 @@ func startDaemon(socketPath string) error {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+	_ = cmd.Process.Kill()
 	return fmt.Errorf("daemon did not start within 5 seconds")
 }
 
@@ -48,24 +49,33 @@ func runGateway(socketPath string) error {
 		}
 	}
 
-	conn, err := net.Dial("unix", socketPath)
-	if err != nil {
-		return fmt.Errorf("failed to connect to daemon: %w", err)
+	var conn *net.UnixConn
+	for i := 0; i < 3; i++ {
+		c, err := net.Dial("unix", socketPath)
+		if err == nil {
+			conn = c.(*net.UnixConn)
+			break
+		}
+		if i < 2 {
+			time.Sleep(100 * time.Millisecond)
+		} else {
+			return fmt.Errorf("failed to connect to daemon: %w", err)
+		}
 	}
 	defer conn.Close()
 
-	// Bridge stdin → socket
 	done := make(chan struct{}, 2)
 	go func() {
 		io.Copy(conn, os.Stdin)
+		conn.CloseWrite()
 		done <- struct{}{}
 	}()
-	// Bridge socket → stdout
 	go func() {
 		io.Copy(os.Stdout, conn)
 		done <- struct{}{}
 	}()
 
+	<-done
 	<-done
 	return nil
 }
