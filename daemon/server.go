@@ -18,8 +18,11 @@ type connWriter struct {
 func (w *connWriter) writeJSON(v interface{}) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	data, _ := json.Marshal(v)
-	w.conn.Write(append(data, '\n'))
+	data, err := json.Marshal(v)
+	if err != nil {
+		return
+	}
+	w.conn.Write(append(data, '\n')) //nolint:errcheck — write errors close the scanner loop naturally
 }
 
 type Server struct {
@@ -87,6 +90,7 @@ func (s *Server) handleConn(conn net.Conn) {
 	for scanner.Scan() {
 		var req Request
 		if err := json.Unmarshal(scanner.Bytes(), &req); err != nil {
+			w.writeJSON(Response{Error: fmt.Sprintf("invalid json: %v", err)})
 			continue
 		}
 		if req.Type == "ping" {
