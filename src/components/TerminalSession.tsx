@@ -7,6 +7,7 @@ import { TerminalInput } from './TerminalInput';
 import type { TerminalInputHandle } from './TerminalInput';
 import { PasswordPrompt } from './PasswordPrompt';
 import { DaemonInstallCard } from './DaemonInstallCard';
+import { DAEMON_VERSION } from '../daemonVersion';
 import { BlockSegmenter } from './BlockSegmenter';
 import { createClaudeProvider } from '@/providers/claude';
 import { createCodexProvider } from '@/providers/codex';
@@ -55,6 +56,10 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
   }, [onContextModeChange]);
   const [cwd, setCwd] = useState(initialCwd);
   const [promptInfo, setPromptInfo] = useState<{ text: string; isRemote: boolean; sshTarget?: string } | null>(null);
+  const [remoteSystemInfo, setRemoteSystemInfo] = useState<string>('');
+  const remoteSystemInfoRef = useRef('');
+  const [daemonToast, setDaemonToast] = useState<{ message: string; ok: boolean } | null>(null);
+  const daemonToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [shellHistory, setShellHistory] = useState<string[]>([]);
   const [remoteHistory, setRemoteHistory] = useState<string[]>([]);
   const [awaitingInput, setAwaitingInput] = useState(false);
@@ -81,6 +86,12 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
   const capturedOutputRef = useRef<string | null>(null);
   altScreenRef.current = altScreenVisible;
   interactiveModeRef.current = interactiveMode;
+
+  const showDaemonToast = (message: string, ok: boolean) => {
+    if (daemonToastTimerRef.current) clearTimeout(daemonToastTimerRef.current);
+    setDaemonToast({ message, ok });
+    daemonToastTimerRef.current = setTimeout(() => setDaemonToast(null), 4000);
+  };
 
   useEffect(() => {
     providerRef.current.stop();
@@ -112,6 +123,25 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
     }
   }, [promptInfo?.isRemote, promptInfo?.sshTarget]);
 
+  // Persistent listener for daemon lifecycle messages that arrive outside of a conversation
+  useEffect(() => {
+    const cleanup = window.tai?.ai?.onMessage(tabId, (msg: any) => {
+      if (msg.type === 'remote:daemon_connected') {
+        if (msg.systemInfo) { setRemoteSystemInfo(msg.systemInfo); remoteSystemInfoRef.current = msg.systemInfo; }
+        const infoLine = msg.systemInfo ? ` · ${msg.systemInfo.split('\n')[0]}` : '';
+        showDaemonToast(`Connected to remote${infoLine}`, true);
+      }
+      if (msg.type === 'remote:daemon_connect_failed') {
+        showDaemonToast(`Daemon connection failed: ${msg.error}`, false);
+      }
+      if (msg.type === 'remote:daemon_disconnected') {
+        setRemoteSystemInfo(''); remoteSystemInfoRef.current = '';
+        showDaemonToast('Daemon disconnected', false);
+      }
+    });
+    return cleanup;
+  }, [tabId]);
+
   useEffect(() => {
     const target = promptInfo?.isRemote ? (promptInfo.sshTarget ?? null) : null;
     window.tai?.ai?.setRemoteTarget(tabId, target, remoteExecMode);
@@ -125,7 +155,7 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
       return;
     }
     window.tai.daemon.check(remoteTarget).then((result: { installed: boolean; version?: string }) => {
-      const currentVersion = '1.2.4'; // bundled version
+      const currentVersion = DAEMON_VERSION;
       if (!result.installed) {
         setDaemonCardState({ show: true, mode: 'install', newVersion: currentVersion });
       } else if (result.version !== currentVersion) {
@@ -405,11 +435,11 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
         lines.push(
           '',
           `REMOTE EXECUTION: You are connected to remote host: ${promptInfo.sshTarget}`,
-          'All Bash commands execute on the remote host, not locally.',
-          'Available tools: Bash, Read (via cat), Write (via heredoc), Grep (via grep).',
-          'The Edit tool is NOT available remotely. Use sed or write the full file with a heredoc instead.',
-          'The Glob tool uses find on the remote host.',
+          'All tool calls (Bash, Read, Write, Edit, Grep, Glob) execute on the remote host, not locally.',
         );
+        if (remoteSystemInfoRef.current) {
+          lines.push(`Remote system: ${remoteSystemInfoRef.current}`);
+        }
       }
     }
     lines.push(`Working directory: ${cwd}`);
@@ -808,6 +838,24 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
             trustLevel={trustLevel}
             onTrustLevelChange={onTrustLevelChange}
           />
+        </div>
+      )}
+      {daemonToast && (
+        <div style={{
+          position: 'fixed', bottom: 16, right: 16, zIndex: 2500,
+          background: 'var(--bg-card)', border: '1px solid var(--border-card)',
+          borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center',
+          gap: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', fontSize: 13,
+          color: 'var(--text-primary)', fontFamily: 'var(--font-sans)', maxWidth: 360,
+          animation: 'slideIn 0.2s ease',
+        }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+            background: daemonToast.ok ? 'var(--color-success, #4ade80)' : 'var(--color-error, #f87171)' }} />
+          {daemonToast.message}
+          <button onClick={() => setDaemonToast(null)} style={{
+            background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
+            padding: 2, borderRadius: 4, marginLeft: 'auto', display: 'flex',
+          }}>✕</button>
         </div>
       )}
     </div>

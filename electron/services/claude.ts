@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import { RemoteSshManager } from './remoteSsh';
 import { RemoteToolProxy } from './remoteToolProxy';
 import { RemoteDaemonProxy } from './remoteDaemonProxy';
+import { generateMcpServerScript, generateMcpConfig } from './mcpRemoteServer';
 
 const sshManager = new RemoteSshManager();
 const toolProxy = new RemoteToolProxy(sshManager);
@@ -77,9 +78,9 @@ function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, perm
 
   const isRemoteExec = state.remoteTarget && state.remoteExecMode === 'auto';
 
-  if (isRemoteExec) {
-    args.push('--permission-mode', 'acceptEdits');
-  } else if (permMode === 'bypass') {
+  if (isRemoteExec || permMode === 'bypass') {
+    // Remote exec: user already trusted the remote by enabling the daemon.
+    // bypassPermissions also auto-approves the MCP tool calls that route to it.
     args.push('--permission-mode', 'bypassPermissions');
   } else if (permMode === 'approve-edits') {
     args.push('--permission-mode', 'acceptEdits');
@@ -95,6 +96,29 @@ function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, perm
 
   if (state.sessionId) {
     args.push('--resume', state.sessionId);
+  }
+
+  let mcpServerPath: string | null = null;
+  let mcpConfigPath: string | null = null;
+  let sshConfigPath: string | null = null;
+
+  if (isRemoteExec && state.daemonEnabled) {
+    const safeKey = key.replace(/[^a-z0-9]/gi, '_');
+
+    // SSH config: include ~/.ssh/config (user-owned) but skip system files
+    sshConfigPath = `/tmp/tai-ssh-config-${safeKey}`;
+    fs.writeFileSync(sshConfigPath, `Include ~/.ssh/config\nBatchMode yes\nStrictHostKeyChecking accept-new\n`, { mode: 0o600 });
+
+    // MCP server: routes all tool calls through the daemon on the remote host
+    mcpServerPath = `/tmp/tai-mcp-server-${safeKey}.cjs`;
+    fs.writeFileSync(mcpServerPath, generateMcpServerScript(state.remoteTarget!, sshConfigPath), { mode: 0o755 });
+
+    mcpConfigPath = `/tmp/tai-mcp-config-${safeKey}.json`;
+    fs.writeFileSync(mcpConfigPath, JSON.stringify(generateMcpConfig(mcpServerPath)), { mode: 0o600 });
+
+    args.push('--mcp-config', mcpConfigPath);
+    args.push('--disallowed-tools', 'Bash,Read,Write,Edit,Grep,Glob,WebFetch,WebSearch');
+    console.log(`[daemon] remote exec via MCP server: ${mcpServerPath} -> ${state.remoteTarget}`);
   }
 
   const proc = spawn('claude', args, {
@@ -132,13 +156,24 @@ function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, perm
           const content = Array.isArray(msg.message.content) ? msg.message.content : [];
           for (const block of content) {
             if (block.type === 'tool_use' && block.id) {
+              console.log(`[daemon] queued tool: ${block.name} id=${block.id}`);
               state.pendingToolUses.set(block.id, { id: block.id, name: block.name, input: block.input });
             }
           }
         }
 
+        if (msg.type !== 'system' && msg.type !== 'assistant') {
+          console.log(`[daemon] msg type=${msg.type} isRemoteExec=${!!isRemoteExec} toolUseId=${msg.toolUseId}`);
+        }
+
         if (isRemoteExec && msg.type === 'approval_needed' && msg.toolUseId) {
-          const toolInfo = state.pendingToolUses.get(msg.toolUseId);
+          let toolInfo = state.pendingToolUses.get(msg.toolUseId);
+          if (!toolInfo && msg.toolName) {
+            // Fallback: reconstruct tool info from approval_needed message fields
+            const input: Record<string, any> = {};
+            if (msg.command !== undefined) input.command = msg.command;
+            toolInfo = { id: msg.toolUseId, name: msg.toolName, input };
+          }
           if (toolInfo) {
             state.pendingToolUses.delete(msg.toolUseId);
             handleRemoteToolCalls(win, key, state, [toolInfo]);
@@ -152,13 +187,19 @@ function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, perm
   });
 
   proc.stderr!.on('data', (chunk: Buffer) => {
-    safeSend(win, 'ai:error', key, chunk.toString());
+    const text = chunk.toString();
+    if (isRemoteExec) console.log(`[daemon] claude/bwrap stderr: ${text.trim()}`);
+    safeSend(win, 'ai:error', key, text);
   });
 
-  proc.on('exit', () => {
+  proc.on('exit', (code, signal) => {
+    console.log(`[daemon] claude process exited code=${code} signal=${signal}`);
     state.process = null;
     state.busy = false;
     state.pendingToolUses.clear();
+    for (const p of [mcpServerPath, mcpConfigPath, sshConfigPath]) {
+      if (p) try { fs.unlinkSync(p); } catch {}
+    }
   });
 
   return proc;
@@ -249,6 +290,7 @@ export function setupClaudeService(getWindow: () => BrowserWindow | null) {
   ipcMain.handle('ai:setDaemonEnabled', async (_event, key: string, enabled: boolean) => {
     const state = getState(key);
     const win = getWindow();
+    console.log(`[daemon] setDaemonEnabled key=${key} enabled=${enabled} remoteTarget=${state.remoteTarget}`);
 
     if (enabled && state.remoteTarget) {
       if (!state.daemonProxy) {
@@ -261,9 +303,20 @@ export function setupClaudeService(getWindow: () => BrowserWindow | null) {
       try {
         await state.daemonProxy.connect();
         state.daemonEnabled = true;
+        console.log(`[daemon] connected successfully to ${state.remoteTarget}`);
+        let systemInfo = '';
+        try {
+          const infoResult = await state.daemonProxy.executeTool('Bash', {
+            command: "uname -srm; cat /etc/os-release 2>/dev/null | grep PRETTY_NAME | cut -d= -f2 | tr -d '\"'",
+          });
+          if (!infoResult.isError) systemInfo = infoResult.output.trim();
+        } catch {}
+        console.log(`[daemon] remote system info: ${systemInfo}`);
+        safeSend(win, 'ai:message', key, { type: 'remote:daemon_connected', systemInfo });
       } catch (err: any) {
         state.daemonProxy = null;
         state.daemonEnabled = false;
+        console.log(`[daemon] connect failed: ${err.message}`);
         safeSend(win, 'ai:message', key, { type: 'remote:daemon_connect_failed', error: err.message });
       }
     } else {
@@ -324,6 +377,7 @@ export function setupClaudeService(getWindow: () => BrowserWindow | null) {
   });
 
   ipcMain.handle('ai:setRemoteTarget', (_event, key: string, target: string | null, mode: string) => {
+    console.log(`[daemon] setRemoteTarget key=${key} target=${target} mode=${mode}`);
     const state = getState(key);
     const wasRemote = state.remoteTarget && state.remoteExecMode === 'auto';
     state.remoteTarget = target;

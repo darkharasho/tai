@@ -13,9 +13,9 @@ const PROVIDER_NAMES: Record<AIProvider, string> = {
 };
 
 const PROVIDER_ICONS: Record<AIProvider, string> = {
-  claude: '/svg/claude.svg',
-  codex: '/svg/openai.svg',
-  gemini: '/svg/Google-gemini-icon.svg',
+  claude: './svg/claude.svg',
+  codex: './svg/openai.svg',
+  gemini: './svg/Google-gemini-icon.svg',
 };
 
 function formatDuration(ms: number): string {
