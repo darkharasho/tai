@@ -17,8 +17,13 @@ jobs:
         with:
           node-version: 20
           cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: daemon/go.sum
       - run: npm ci
       - run: npm run build
+      - run: cd daemon && go test ./...
       - run: npm test
 
   build-linux:
@@ -30,8 +35,14 @@ jobs:
         with:
           node-version: 20
           cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: daemon/go.sum
       - run: npm ci
       - run: npm run build
+      - name: Build daemon binaries
+        run: cd daemon && make all
       - name: Build Linux
         run: npx electron-builder --linux AppImage --publish never
       - name: Upload artifacts
@@ -51,8 +62,21 @@ jobs:
         with:
           node-version: 20
           cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: daemon/go.sum
       - run: npm ci
       - run: npm run build
+      - name: Build daemon binaries
+        shell: bash
+        run: |
+          cd daemon
+          mkdir -p dist
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/tai-daemon-linux-amd64 .
+          GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/tai-daemon-linux-arm64 .
+          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/tai-daemon-darwin-amd64 .
+          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/tai-daemon-darwin-arm64 .
       - name: Build Windows
         run: npx electron-builder --win --publish never
       - name: Upload artifacts
@@ -73,8 +97,14 @@ jobs:
         with:
           node-version: 20
           cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: daemon/go.sum
       - run: npm ci
       - run: npm run build
+      - name: Build daemon binaries
+        run: cd daemon && make all
       - name: Build macOS
         run: npx electron-builder --mac dmg zip --publish never
         env:
