@@ -138,18 +138,13 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
     });
   }, [remoteTarget]);
 
-  const handleDaemonInstall = async () => {
+  const handleDaemonInstall = () => {
+    window.tai.ai.setDaemonEnabled(tabId, true);
     setDaemonCardState(null);
-    const result = await window.tai.daemon.install(remoteTarget!);
-    if (result.success) {
-      window.tai.ai.setDaemonEnabled(tabId, true);
-    }
-    // On failure: silently fall back to agentless (no second prompt)
   };
 
   const handleDaemonDismiss = () => {
     setDaemonCardState(null);
-    // daemonEnabled stays false → agentless fallback is used
   };
 
   useEffect(() => {
