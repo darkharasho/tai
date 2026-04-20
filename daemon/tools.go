@@ -121,9 +121,40 @@ func (t *ToolExecutor) ExecuteRead(p ReadParams) (ReadResult, error) {
 	return ReadResult{Content: content}, nil
 }
 
-// Stubs for tools implemented in Tasks 3 and 4
-func (t *ToolExecutor) ExecuteWrite(p WriteParams) error { return fmt.Errorf("not implemented") }
-func (t *ToolExecutor) ExecuteEdit(p EditParams) error   { return fmt.Errorf("not implemented") }
+// ExecuteWrite writes content to a file, creating parent directories as needed.
+func (t *ToolExecutor) ExecuteWrite(p WriteParams) error {
+	if err := os.MkdirAll(filepath.Dir(p.Path), 0755); err != nil {
+		return err
+	}
+	tmp := p.Path + ".tai-tmp"
+	if err := os.WriteFile(tmp, []byte(p.Content), 0644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, p.Path)
+}
+
+// ExecuteEdit replaces old_string with new_string in a file.
+// Returns error if old_string is not found or is ambiguous (appears > 1 time).
+func (t *ToolExecutor) ExecuteEdit(p EditParams) error {
+	data, err := os.ReadFile(p.Path)
+	if err != nil {
+		return err
+	}
+	content := string(data)
+	count := strings.Count(content, p.OldString)
+	if count == 0 {
+		return fmt.Errorf("old_string not found in %s", p.Path)
+	}
+	if count > 1 {
+		return fmt.Errorf("old_string found %d times in %s; must be unique", count, p.Path)
+	}
+	newContent := strings.Replace(content, p.OldString, p.NewString, 1)
+	tmp := p.Path + ".tai-tmp"
+	if err := os.WriteFile(tmp, []byte(newContent), 0644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, p.Path)
+}
 func (t *ToolExecutor) ExecuteGrep(p GrepParams) (GrepResult, error) {
 	return GrepResult{}, fmt.Errorf("not implemented")
 }

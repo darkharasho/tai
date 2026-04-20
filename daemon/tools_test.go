@@ -87,3 +87,78 @@ func TestExecuteReadOffsetLimit(t *testing.T) {
 		t.Fatalf("expected %q, got %q", "2\tline2\n", result.Content)
 	}
 }
+
+func TestExecuteWrite(t *testing.T) {
+	dir, err := os.MkdirTemp("", "tai-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	path := dir + "/sub/file.txt"
+
+	ex := NewToolExecutor()
+	if err := ex.ExecuteWrite(WriteParams{Path: path, Content: "hello world"}); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	if string(data) != "hello world" {
+		t.Fatalf("unexpected content: %q", string(data))
+	}
+}
+
+func TestExecuteWriteCreatesParentDirs(t *testing.T) {
+	dir, _ := os.MkdirTemp("", "tai-test-*")
+	defer os.RemoveAll(dir)
+	path := dir + "/a/b/c/file.txt"
+
+	ex := NewToolExecutor()
+	if err := ex.ExecuteWrite(WriteParams{Path: path, Content: "nested"}); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(path)
+	if string(data) != "nested" {
+		t.Fatalf("expected 'nested', got %q", string(data))
+	}
+}
+
+func TestExecuteEdit(t *testing.T) {
+	tmp, _ := os.CreateTemp("", "tai-test-*.txt")
+	tmp.WriteString("hello world")
+	tmp.Close()
+	defer os.Remove(tmp.Name())
+
+	ex := NewToolExecutor()
+	if err := ex.ExecuteEdit(EditParams{Path: tmp.Name(), OldString: "world", NewString: "there"}); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(tmp.Name())
+	if string(data) != "hello there" {
+		t.Fatalf("expected 'hello there', got %q", string(data))
+	}
+}
+
+func TestExecuteEditNotFound(t *testing.T) {
+	tmp, _ := os.CreateTemp("", "tai-test-*.txt")
+	tmp.WriteString("hello world")
+	tmp.Close()
+	defer os.Remove(tmp.Name())
+
+	ex := NewToolExecutor()
+	err := ex.ExecuteEdit(EditParams{Path: tmp.Name(), OldString: "missing", NewString: "x"})
+	if err == nil {
+		t.Fatal("expected error for missing old_string")
+	}
+}
+
+func TestExecuteEditAmbiguous(t *testing.T) {
+	tmp, _ := os.CreateTemp("", "tai-test-*.txt")
+	tmp.WriteString("foo foo")
+	tmp.Close()
+	defer os.Remove(tmp.Name())
+
+	ex := NewToolExecutor()
+	err := ex.ExecuteEdit(EditParams{Path: tmp.Name(), OldString: "foo", NewString: "bar"})
+	if err == nil {
+		t.Fatal("expected error for ambiguous old_string")
+	}
+}
