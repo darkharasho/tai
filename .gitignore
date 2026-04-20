@@ -4,3 +4,4 @@ dist-electron/
 /release/
 .superpowers/
 .DS_Store
+.worktrees/
