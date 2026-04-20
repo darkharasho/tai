@@ -43,6 +43,7 @@ export function DaemonInstallCard({ target, mode, currentVersion, newVersion, on
 
     setStatus('success');
     onInstall();
+    setTimeout(onDismiss, 2000);
   };
 
   if (status === 'success') {

@@ -140,7 +140,6 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
 
   const handleDaemonInstall = () => {
     window.tai.ai.setDaemonEnabled(tabId, true);
-    setDaemonCardState(null);
   };
 
   const handleDaemonDismiss = () => {
