@@ -156,14 +156,54 @@ func (t *ToolExecutor) ExecuteEdit(p EditParams) error {
 	return os.Rename(tmp, p.Path)
 }
 func (t *ToolExecutor) ExecuteGrep(p GrepParams) (GrepResult, error) {
-	return GrepResult{}, fmt.Errorf("not implemented")
-}
-func (t *ToolExecutor) ExecuteGlob(p GlobParams) (GlobResult, error) {
-	return GlobResult{}, fmt.Errorf("not implemented")
+	var args []string
+	var cmdName string
+
+	if _, err := exec.LookPath("rg"); err == nil {
+		cmdName = "rg"
+		args = []string{"--line-number", "--no-heading"}
+		if p.Glob != "" {
+			args = append(args, "--glob", p.Glob)
+		}
+		args = append(args, p.Pattern)
+		if p.Path != "" {
+			args = append(args, p.Path)
+		}
+	} else {
+		cmdName = "grep"
+		args = []string{"-rn", p.Pattern}
+		if p.Path != "" {
+			args = append(args, p.Path)
+		}
+	}
+
+	var out bytes.Buffer
+	c := exec.Command(cmdName, args...)
+	c.Stdout = &out
+	c.Stderr = &out
+	_ = c.Run() // grep exits 1 for no matches — not an error
+
+	output := out.String()
+	if len(output) > maxOutputBytes {
+		output = output[:maxOutputBytes] + "\n[output truncated at 200KB]"
+	}
+	return GrepResult{Output: output}, nil
 }
 
-// keep doublestar import used until Task 4
-var _ = doublestar.Glob
+func (t *ToolExecutor) ExecuteGlob(p GlobParams) (GlobResult, error) {
+	base := p.Path
+	if base == "" {
+		base = t.Cwd()
+	}
+	matches, err := doublestar.Glob(os.DirFS(base), p.Pattern)
+	if err != nil {
+		return GlobResult{}, err
+	}
+	if matches == nil {
+		matches = []string{}
+	}
+	return GlobResult{Files: matches}, nil
+}
 
 // keep filepath import used until needed
 var _ = filepath.Join

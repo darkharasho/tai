@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -160,5 +161,51 @@ func TestExecuteEditAmbiguous(t *testing.T) {
 	err := ex.ExecuteEdit(EditParams{Path: tmp.Name(), OldString: "foo", NewString: "bar"})
 	if err == nil {
 		t.Fatal("expected error for ambiguous old_string")
+	}
+}
+
+func TestExecuteGlob(t *testing.T) {
+	dir, _ := os.MkdirTemp("", "tai-test-*")
+	defer os.RemoveAll(dir)
+	os.WriteFile(dir+"/a.go", []byte(""), 0644)
+	os.WriteFile(dir+"/b.go", []byte(""), 0644)
+	os.WriteFile(dir+"/c.txt", []byte(""), 0644)
+
+	ex := NewToolExecutor()
+	result, err := ex.ExecuteGlob(GlobParams{Pattern: "*.go", Path: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 2 {
+		t.Fatalf("expected 2 .go files, got %d: %v", len(result.Files), result.Files)
+	}
+}
+
+func TestExecuteGlobNoMatches(t *testing.T) {
+	dir, _ := os.MkdirTemp("", "tai-test-*")
+	defer os.RemoveAll(dir)
+
+	ex := NewToolExecutor()
+	result, err := ex.ExecuteGlob(GlobParams{Pattern: "*.rs", Path: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Files) != 0 {
+		t.Fatalf("expected 0 files, got %d", len(result.Files))
+	}
+}
+
+func TestExecuteGrep(t *testing.T) {
+	dir, _ := os.MkdirTemp("", "tai-test-*")
+	defer os.RemoveAll(dir)
+	os.WriteFile(dir+"/file.txt", []byte("hello world\ngoodbye world\n"), 0644)
+
+	ex := NewToolExecutor()
+	result, err := ex.ExecuteGrep(GrepParams{Pattern: "hello", Path: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Output, "hello") {
+		t.Fatalf("expected 'hello' in output, got %q", result.Output)
 	}
 }
