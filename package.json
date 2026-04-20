@@ -58,6 +58,13 @@
     },
     "asarUnpack": [
       "node_modules/node-pty/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "daemon/dist/",
+        "to": "daemon/dist/",
+        "filter": ["**/*"]
+      }
     ]
   },
   "dependencies": {
