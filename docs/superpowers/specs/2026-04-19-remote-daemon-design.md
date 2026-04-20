@@ -1,0 +1,210 @@
+# Remote Daemon Design
+
+**Date:** 2026-04-19
+**Status:** Approved
+
+## Problem
+
+The existing agentless remote execution (v1) has two critical limitations:
+
+1. **No Edit tool** — Claude must work around missing Edit with sed/heredoc, which is fragile and verbose
+2. **Shell output fencing fragility** — wrapping commands with `__TAI_START__`/`__TAI_END__` markers breaks when command output contains the markers or when the shell behaves unexpectedly
+
+## Solution
+
+An optional Go daemon binary (`tai-daemon`) installed on remote hosts. TAI communicates with it over newline-delimited JSON via SSH stdio — no ports, no tunnels, SSH provides the secure channel. The daemon provides full tool parity plus managed LSP support. The agentless path remains as fallback.
+
+## Architecture
+
+```
+TAI (Electron, local)                    Remote Host
+┌─────────────────────┐                  ┌──────────────────────────────┐
+│                     │  ssh stdio JSON  │                              │
+│  RemoteDaemonProxy  │◄────────────────►│  tai-daemon --connect        │
+│  (replaces          │                  │  (gateway, ~50 lines)        │
+│   RemoteToolProxy   │                  │         │ unix socket        │
+│   + RemoteSshMgr)   │                  │         ▼                    │
+│                     │                  │  tai-daemon --serve          │
+└─────────────────────┘                  │  (background, persistent)    │
+                                         │    ├─ tool executor          │
+                                         │    ├─ LSP manager            │
+                                         │    │    ├─ gopls             │
+                                         │    │    ├─ pyright           │
+                                         │    │    └─ ...               │
+                                         │    └─ cwd tracker            │
+                                         └──────────────────────────────┘
+```
+
+`tai-daemon` is a single Go binary with two modes:
+
+- `--serve` — persistent background process, listens on Unix socket at `~/.tai/daemon.sock`
+- `--connect` — lightweight stdio gateway; checks if `--serve` is running, starts it if not, then bridges stdin/stdout ↔ Unix socket
+
+TAI replaces `RemoteSshManager` + `RemoteToolProxy` with `RemoteDaemonProxy`, which speaks JSON over the SSH stdio channel.
+
+**Mode selection** (in `claude.ts`):
+
+```
+isRemote + daemon connected       → RemoteDaemonProxy  (full tools + LSP)
+isRemote + no daemon / cancelled  → RemoteToolProxy    (agentless fallback)
+not remote                        → local execution    (unchanged)
+```
+
+## Section 1: Install & Upgrade Flow
+
+On SSH target detection, before connecting:
+
+1. **Arch detection** — `ssh user@host "uname -s && uname -m"` to identify OS/arch
+2. **Version check** — `ssh user@host "~/.tai/tai-daemon version"` — if installed and version matches, skip to connect
+3. **Install card** — if not installed or outdated, show prompt in terminal:
+
+```
+┌─────────────────────────────────────────────┐
+│  Install TAI Daemon on user@host?           │
+│                                             │
+│  Enables full tool support + LSP on this    │
+│  host. Installs to ~/.tai/tai-daemon        │
+│                                             │
+│  [Install]  [Not now]                       │
+└─────────────────────────────────────────────┘
+```
+
+For update scenarios, card shows "Update TAI Daemon on user@host?" with the version delta.
+
+4. **Install** — TAI bundles pre-compiled binaries for linux/amd64, linux/arm64, darwin/amd64, darwin/arm64 in `daemon/dist/`. The correct binary is `scp`'d to `~/.tai/tai-daemon` and `chmod +x`'d.
+5. **Connect** — TAI SSHes and runs `~/.tai/tai-daemon --connect`. Gateway starts `--serve` in background if not running, then bridges stdio.
+6. **"Not now"** — falls back to agentless mode, no prompt again for that session.
+
+## Section 2: Protocol
+
+Newline-delimited JSON over stdio between TAI and `tai-daemon --connect`.
+
+**Request** (TAI → daemon):
+```json
+{ "id": "abc123", "tool": "bash", "params": { "command": "ls -la", "cwd": "/home/user", "timeout": 30000 } }
+{ "id": "def456", "tool": "lsp", "params": { "language": "go", "method": "textDocument/hover", "document": "...", "position": { "line": 10, "character": 5 } } }
+```
+
+**Response** (daemon → TAI):
+```json
+{ "id": "abc123", "result": { "output": "total 48\n...", "exitCode": 0 } }
+{ "id": "def456", "result": { "contents": "func Foo() string" } }
+{ "id": "abc123", "error": "command timed out after 30000ms" }
+```
+
+**Lifecycle messages:**
+```json
+{ "type": "ready", "version": "1.2.4", "capabilities": ["bash","read","write","edit","grep","glob","lsp"] }
+{ "type": "ping" }
+{ "type": "pong" }
+```
+
+**LSP notifications** (unsolicited, daemon → TAI):
+```json
+{ "type": "lsp_notify", "language": "go", "method": "textDocument/publishDiagnostics", "params": { ... } }
+```
+
+- IDs are UUIDs generated by TAI — responses can arrive out of order (daemon handles concurrent tool calls)
+- TAI waits for `ready` before sending tool calls
+- Heartbeat: TAI sends `ping` every 30 seconds; if no `pong` within 5 seconds, connection is considered dead
+
+## Section 3: Tool Implementations
+
+All tools run natively in Go — no shell fencing, no parsing fragility.
+
+| Tool | Implementation |
+|------|----------------|
+| **Bash** | `exec.Command("bash", "-c", cmd)` with cwd, env, configurable timeout. stdout+stderr captured separately. |
+| **Read** | Native `os.ReadFile` with line-number prefix, offset/limit slicing. No subprocess. |
+| **Write** | Atomic: write to `<path>.tai-tmp`, then `os.Rename`. Creates parent dirs. |
+| **Edit** | Load file, find `old_string` (error if not found or ambiguous), replace with `new_string`, atomic write. |
+| **Grep** | Prefers `rg` if available, falls back to `grep -rn`. Args passed directly — no shell interpretation. |
+| **Glob** | `doublestar.Glob` (pure Go library) — no subprocess. |
+| **LSP** | See Section 4. |
+
+**Cwd tracking:** Bash tool appends `; echo __TAI_CWD__; pwd` internally, strips it from output, updates daemon's tracked cwd. Subsequent tool calls use this as default cwd.
+
+**Output cap:** 200KB per tool call, truncated with `[output truncated at 200KB]`.
+
+## Section 4: LSP Management
+
+The daemon maintains a registry of running language servers keyed by language.
+
+**Server discovery** — on first LSP request for a language, daemon checks `$PATH` in priority order:
+
+| Language | Servers checked |
+|----------|----------------|
+| Go | `gopls` |
+| Python | `pyright-langserver`, `pylsp`, `jedi-language-server` |
+| TypeScript/JS | `typescript-language-server`, `deno` |
+| Rust | `rust-analyzer` |
+| C/C++ | `clangd` |
+| Others | User-configurable via `~/.tai/lsp.json` |
+
+**Lifecycle:**
+- **Lazy start** — server spawned on first LSP request for that language
+- **Health monitoring** — crashed servers restarted up to 3 times, then error returned to TAI
+- **Idle shutdown** — server killed after 10 minutes of inactivity for that language
+- **Daemon shutdown** — all servers killed cleanly on `SIGTERM`
+
+**Protocol:** Daemon speaks JSON-RPC 2.0 to each language server over stdio (standard LSP transport). TAI requests/responses translated 1:1 — daemon is a transparent proxy with lifecycle management on top.
+
+**Document sync:** TAI sends `textDocument/didOpen` and `textDocument/didChange` through the daemon to keep server state current.
+
+## Section 5: TAI Integration Changes
+
+| File | Change |
+|------|--------|
+| `electron/services/remoteDaemonProxy.ts` | New — manages SSH connection, speaks JSON protocol, routes tool calls |
+| `electron/services/remoteSsh.ts` | Kept unchanged — agentless fallback only |
+| `electron/services/remoteToolProxy.ts` | Kept unchanged — agentless fallback only |
+| `electron/services/claude.ts` | Modified — mode selection: daemon proxy vs agentless vs local |
+| `electron/main.ts` | Modified — install IPC handlers, scp binary, arch detection |
+| `src/components/TerminalSession.tsx` | Modified — trigger install card on SSH detection |
+| `src/components/DaemonInstallCard.tsx` | New — install/update/cancel prompt UI |
+| `daemon/` | New Go module — `main.go`, `tools.go`, `lsp.go`, `gateway.go` |
+| `package.json` | Modified — `extraResources` to bundle `daemon/dist/` binaries |
+
+## Section 6: Error Handling & Fallback
+
+**Daemon crash mid-session:**
+- `RemoteDaemonProxy` detects EOF on SSH stdout
+- Notification: "TAI daemon disconnected — falling back to agentless mode"
+- Auto-switches to `RemoteToolProxy` for remainder of session
+- "Reconnect" button offered to re-establish
+
+**Install failure** (scp error, wrong arch, no write permission):
+- Error shown inline in install card with specific reason
+- Retry option stays available
+- "Use without daemon" dismisses and falls back to agentless
+
+**LSP server not found:**
+- Daemon returns error with install hint: `"no LSP server found for go. Install: go install golang.org/x/tools/gopls@latest"`
+- TAI surfaces as one-time notification, doesn't retry that language this session
+
+**Version mismatch:**
+- Install card shows "Update" variant if installed daemon is older than TAI's bundled version
+- Same scp flow, replaces existing binary in place
+
+**SSH connection drop:**
+- Daemon detects stdin EOF, sends `SIGTERM` to all child processes, exits cleanly
+- Background `--serve` process remains alive (not connected via stdio)
+
+## Files
+
+| Path | Description |
+|------|-------------|
+| `daemon/main.go` | Entry point, flag parsing, `--serve` / `--connect` dispatch |
+| `daemon/gateway.go` | `--connect` mode: socket discovery, start-if-missing, stdio bridge |
+| `daemon/server.go` | `--serve` mode: Unix socket listener, request router, session manager |
+| `daemon/tools.go` | Bash, Read, Write, Edit, Grep, Glob implementations |
+| `daemon/lsp.go` | Language server registry, lifecycle management, JSON-RPC proxy |
+| `daemon/dist/` | Pre-compiled binaries (linux/amd64, linux/arm64, darwin/amd64, darwin/arm64) |
+| `electron/services/remoteDaemonProxy.ts` | TAI-side proxy: SSH stdio, JSON protocol, tool routing |
+| `src/components/DaemonInstallCard.tsx` | Install/update/cancel prompt card |
+
+## Future Considerations
+
+- Windows remote host support (requires named pipes instead of Unix socket)
+- Daemon auto-update without re-prompting (background scp on version check)
+- Remote file watching for LSP diagnostics on file save
