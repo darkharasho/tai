@@ -1,9 +1,29 @@
 // src/components/ToolCallBody.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Copy } from 'lucide-react';
 import type { AIToolCall } from '@/types';
 import { detectLangFromPath, highlightCode } from '@/utils/shikiHighlighter';
 import styles from './ToolCallBody.module.css';
+
+function CodeBar({ label, code }: { label: string; code: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <div className="ai-code-bar">
+      <span className="ai-code-lang">{label}</span>
+      <div className="ai-code-bar-actions">
+        <span className="ai-code-bar-btn" title="Copy" onClick={handleCopy}>
+          <Copy size={12} />
+          <span>{copied ? 'Copied' : 'Copy'}</span>
+        </span>
+      </div>
+    </div>
+  );
+}
 
 export function formatToolLabel(name: string, input: string): string {
   try {
@@ -127,15 +147,18 @@ function extractShikiLines(html: string): string[] {
   });
 }
 
-function OutputSection({ output, lang }: { output: string; lang: string }) {
+function OutputSection({ output, lang, label = 'output' }: { output: string; lang: string; label?: string }) {
   const [showAll, setShowAll] = useState(false);
   const parsed = parseToolError(output);
 
   if (parsed.isError) {
     return (
-      <div className={styles.errorDisplay}>
-        <AlertCircle size={12} />
-        <span>{parsed.message}</span>
+      <div className="ai-code-wrap">
+        <CodeBar label="error" code={parsed.message} />
+        <div className={styles.errorDisplay}>
+          <AlertCircle size={12} />
+          <span>{parsed.message}</span>
+        </div>
       </div>
     );
   }
@@ -144,10 +167,8 @@ function OutputSection({ output, lang }: { output: string; lang: string }) {
   const displayText = showAll ? parsed.message : truncated;
 
   return (
-    <div className={styles.outputSection}>
-      <div className={styles.outputHeader}>
-        <span className={styles.outputLabel}>Output</span>
-      </div>
+    <div className="ai-code-wrap">
+      <CodeBar label={label} code={parsed.message} />
       <HighlightedCode code={displayText} lang={lang} />
       {isTruncated && (
         <button className={styles.showMore} onClick={() => setShowAll(prev => !prev)}>
@@ -166,9 +187,14 @@ export default function ToolCallBody({ call }: { call: AIToolCall }) {
 
     // Edit — unified diff
     if (call.name === 'Edit' && parsed.old_string != null) {
+      const filePath = parsed.file_path || '';
+      const fullDiff = (parsed.old_string || '') + '\n' + (parsed.new_string || '');
       return (
         <div className={styles.body}>
-          <DiffView oldString={parsed.old_string || ''} newString={parsed.new_string || ''} filePath={parsed.file_path || ''} />
+          <div className="ai-code-wrap">
+            <CodeBar label={filePath ? `diff · ${filePath.split('/').pop()}` : 'diff'} code={fullDiff} />
+            <DiffView oldString={parsed.old_string || ''} newString={parsed.new_string || ''} filePath={filePath} />
+          </div>
           {call.output && <OutputSection output={call.output} lang="text" />}
         </div>
       );
@@ -180,9 +206,12 @@ export default function ToolCallBody({ call }: { call: AIToolCall }) {
       if (outputParsed.isError) {
         return (
           <div className={styles.body}>
-            <div className={styles.errorDisplay}>
-              <AlertCircle size={12} />
-              <span>{outputParsed.message}</span>
+            <div className="ai-code-wrap">
+              <CodeBar label="error" code={outputParsed.message} />
+              <div className={styles.errorDisplay}>
+                <AlertCircle size={12} />
+                <span>{outputParsed.message}</span>
+              </div>
             </div>
           </div>
         );
@@ -190,38 +219,48 @@ export default function ToolCallBody({ call }: { call: AIToolCall }) {
       const { truncated, isTruncated, totalLines } = truncateLines(call.output, MAX_LINES);
       return (
         <div className={styles.body}>
-          <pre className={styles.plainCode}><code>{showAll ? call.output : truncated}</code></pre>
-          {isTruncated && (
-            <button className={styles.showMore} onClick={() => setShowAll(prev => !prev)}>
-              {showAll ? 'Show less' : `Show all (${totalLines} lines)`}
-            </button>
-          )}
+          <div className="ai-code-wrap">
+            <CodeBar label="bash" code={call.output} />
+            <pre className={styles.plainCode}><code>{showAll ? call.output : truncated}</code></pre>
+            {isTruncated && (
+              <button className={styles.showMore} onClick={() => setShowAll(prev => !prev)}>
+                {showAll ? 'Show less' : `Show all (${totalLines} lines)`}
+              </button>
+            )}
+          </div>
         </div>
       );
     }
 
     // Read — syntax-highlighted output
     if (call.name === 'Read' && call.output) {
-      const lang = detectLangFromPath(parsed.file_path || '');
+      const filePath = parsed.file_path || '';
+      const lang = detectLangFromPath(filePath);
+      const fileName = filePath.split('/').pop() || 'output';
       return (
         <div className={styles.body}>
-          <OutputSection output={call.output} lang={lang} />
+          <OutputSection output={call.output} lang={lang} label={fileName} />
         </div>
       );
     }
 
     // Write — syntax-highlighted content from input
     if (call.name === 'Write' && parsed.content) {
-      const lang = detectLangFromPath(parsed.file_path || '');
+      const filePath = parsed.file_path || '';
+      const lang = detectLangFromPath(filePath);
+      const fileName = filePath.split('/').pop() || 'output';
       const { truncated, isTruncated, totalLines } = truncateLines(parsed.content, MAX_LINES);
       return (
         <div className={styles.body}>
-          <HighlightedCode code={showAll ? parsed.content : truncated} lang={lang} />
-          {isTruncated && (
-            <button className={styles.showMore} onClick={() => setShowAll(prev => !prev)}>
-              {showAll ? 'Show less' : `Show all (${totalLines} lines)`}
-            </button>
-          )}
+          <div className="ai-code-wrap">
+            <CodeBar label={fileName} code={parsed.content} />
+            <HighlightedCode code={showAll ? parsed.content : truncated} lang={lang} />
+            {isTruncated && (
+              <button className={styles.showMore} onClick={() => setShowAll(prev => !prev)}>
+                {showAll ? 'Show less' : `Show all (${totalLines} lines)`}
+              </button>
+            )}
+          </div>
         </div>
       );
     }
@@ -231,12 +270,15 @@ export default function ToolCallBody({ call }: { call: AIToolCall }) {
       const { truncated, isTruncated, totalLines } = truncateLines(call.output, MAX_LINES);
       return (
         <div className={styles.body}>
-          <pre className={styles.plainCode}><code>{showAll ? call.output : truncated}</code></pre>
-          {isTruncated && (
-            <button className={styles.showMore} onClick={() => setShowAll(prev => !prev)}>
-              {showAll ? 'Show less' : `Show all (${totalLines} lines)`}
-            </button>
-          )}
+          <div className="ai-code-wrap">
+            <CodeBar label={call.name.toLowerCase()} code={call.output} />
+            <pre className={styles.plainCode}><code>{showAll ? call.output : truncated}</code></pre>
+            {isTruncated && (
+              <button className={styles.showMore} onClick={() => setShowAll(prev => !prev)}>
+                {showAll ? 'Show less' : `Show all (${totalLines} lines)`}
+              </button>
+            )}
+          </div>
         </div>
       );
     }
@@ -248,12 +290,15 @@ export default function ToolCallBody({ call }: { call: AIToolCall }) {
       const { truncated, isTruncated, totalLines } = truncateLines(call.output, MAX_LINES);
       return (
         <div className={styles.body}>
-          <pre className={styles.plainCode}><code>{showAll ? call.output : truncated}</code></pre>
-          {isTruncated && (
-            <button className={styles.showMore} onClick={() => setShowAll(prev => !prev)}>
-              {showAll ? 'Show less' : `Show all (${totalLines} lines)`}
-            </button>
-          )}
+          <div className="ai-code-wrap">
+            <CodeBar label="output" code={call.output} />
+            <pre className={styles.plainCode}><code>{showAll ? call.output : truncated}</code></pre>
+            {isTruncated && (
+              <button className={styles.showMore} onClick={() => setShowAll(prev => !prev)}>
+                {showAll ? 'Show less' : `Show all (${totalLines} lines)`}
+              </button>
+            )}
+          </div>
         </div>
       );
     }

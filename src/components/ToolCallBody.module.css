@@ -1,8 +1,8 @@
 .body {
   margin: 4px 0 6px;
-  border: 1px solid var(--border-card);
-  border-radius: 6px;
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .highlighted {
@@ -108,18 +108,3 @@
   margin-top: 2px;
 }
 
-.outputSection {
-  border-top: 1px dashed var(--border-card);
-}
-
-.outputHeader {
-  padding: 6px 10px 0;
-}
-
-.outputLabel {
-  font-family: var(--font-sans);
-  font-size: 10px;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  letter-spacing: 0.5px;
-}
