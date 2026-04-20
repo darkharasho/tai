@@ -156,15 +156,3 @@ func (s *Server) dispatch(req Request) (interface{}, error) {
 		return nil, fmt.Errorf("unknown tool: %s", req.Tool)
 	}
 }
-
-// Temporary stub — replaced by lsp.go in Task 6
-type LSPManager struct{ notifyFunc func(string, string, json.RawMessage) }
-
-func NewLSPManager(f func(string, string, json.RawMessage)) *LSPManager {
-	return &LSPManager{notifyFunc: f}
-}
-func (m *LSPManager) SetNotifyFunc(f func(string, string, json.RawMessage)) { m.notifyFunc = f }
-func (m *LSPManager) Handle(p LspParams) (json.RawMessage, error) {
-	return nil, fmt.Errorf("LSP not yet implemented")
-}
-func (m *LSPManager) Shutdown() {}
