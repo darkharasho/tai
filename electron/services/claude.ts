@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { RemoteSshManager } from './remoteSsh';
 import { RemoteToolProxy } from './remoteToolProxy';
+import { RemoteDaemonProxy } from './remoteDaemonProxy';
 
 const sshManager = new RemoteSshManager();
 const toolProxy = new RemoteToolProxy(sshManager);
@@ -17,6 +18,8 @@ interface ClaudeState {
   remoteTarget: string | null;
   remoteExecMode: 'auto' | 'local';
   pendingToolUses: Map<string, { id: string; name: string; input: Record<string, any> }>;
+  daemonProxy: RemoteDaemonProxy | null;
+  daemonEnabled: boolean;
 }
 
 const claudeStates = new Map<string, ClaudeState>();
@@ -24,7 +27,7 @@ const claudeStates = new Map<string, ClaudeState>();
 function getState(key: string): ClaudeState {
   let state = claudeStates.get(key);
   if (!state) {
-    state = { process: null, sessionId: null, buffer: '', busy: false, permMode: null, remoteTarget: null, remoteExecMode: 'auto', pendingToolUses: new Map() };
+    state = { process: null, sessionId: null, buffer: '', busy: false, permMode: null, remoteTarget: null, remoteExecMode: 'auto', pendingToolUses: new Map(), daemonProxy: null, daemonEnabled: false };
     claudeStates.set(key, state);
   }
   return state;
@@ -167,35 +170,43 @@ async function handleRemoteToolCalls(
   state: ClaudeState,
   toolUses: Array<{ id: string; name: string; input: Record<string, any> }>,
 ) {
-  if (!sshManager.isConnected(key) && state.remoteTarget) {
-    try {
-      await sshManager.connect(key, state.remoteTarget);
-    } catch (err: any) {
-      for (const tool of toolUses) {
-        const errorResult = JSON.stringify({
-          type: 'user',
-          message: {
-            role: 'user',
-            content: [{
-              type: 'tool_result',
-              tool_use_id: tool.id,
-              content: `SSH connection failed: ${err.message}. AI commands will run locally.`,
-              is_error: true,
-            }],
-          },
+  // Only connect SSH if daemon is not handling this
+  if (!state.daemonEnabled || !state.daemonProxy?.isConnected()) {
+    if (!sshManager.isConnected(key) && state.remoteTarget) {
+      try {
+        await sshManager.connect(key, state.remoteTarget);
+      } catch (err: any) {
+        for (const tool of toolUses) {
+          const errorResult = JSON.stringify({
+            type: 'user',
+            message: {
+              role: 'user',
+              content: [{
+                type: 'tool_result',
+                tool_use_id: tool.id,
+                content: `SSH connection failed: ${err.message}. AI commands will run locally.`,
+                is_error: true,
+              }],
+            },
+          });
+          state.process?.stdin!.write(errorResult + '\n');
+        }
+        safeSend(win, 'ai:message', key, {
+          type: 'remote:connection_failed',
+          error: err.message,
         });
-        state.process?.stdin!.write(errorResult + '\n');
+        return;
       }
-      safeSend(win, 'ai:message', key, {
-        type: 'remote:connection_failed',
-        error: err.message,
-      });
-      return;
     }
   }
 
   for (const tool of toolUses) {
-    const result = await toolProxy.executeRemoteTool(key, tool.name, tool.input);
+    let result: { output: string; isError: boolean };
+    if (state.daemonEnabled && state.daemonProxy?.isConnected()) {
+      result = await state.daemonProxy.executeTool(tool.name, tool.input);
+    } else {
+      result = await toolProxy.executeRemoteTool(key, tool.name, tool.input);
+    }
 
     let output = result.output;
     const MAX_OUTPUT = 100 * 1024;
@@ -233,6 +244,36 @@ async function handleRemoteToolCalls(
 }
 
 export function setupClaudeService(getWindow: () => BrowserWindow | null) {
+  const win = getWindow();
+
+  ipcMain.handle('ai:setDaemonEnabled', async (_event, key: string, enabled: boolean) => {
+    const state = getState(key);
+    const win = getWindow();
+
+    if (enabled && state.remoteTarget) {
+      if (!state.daemonProxy) {
+        state.daemonProxy = new RemoteDaemonProxy(state.remoteTarget);
+        state.daemonProxy.setOnDisconnect(() => {
+          state.daemonEnabled = false;
+          safeSend(win, 'ai:message', key, { type: 'remote:daemon_disconnected' });
+        });
+      }
+      try {
+        await state.daemonProxy.connect();
+        state.daemonEnabled = true;
+      } catch (err: any) {
+        state.daemonProxy = null;
+        state.daemonEnabled = false;
+        safeSend(win, 'ai:message', key, { type: 'remote:daemon_connect_failed', error: err.message });
+      }
+    } else {
+      state.daemonProxy?.disconnect();
+      state.daemonProxy = null;
+      state.daemonEnabled = false;
+    }
+    return state.daemonEnabled;
+  });
+
   ipcMain.handle('ai:send', (_event, key: string, cwd: string, message: string, permMode: string, model: string, effort?: string) => {
     const win = getWindow();
     const state = getState(key);
@@ -306,6 +347,7 @@ export function setupClaudeService(getWindow: () => BrowserWindow | null) {
 export function destroyAllClaude() {
   for (const state of claudeStates.values()) {
     if (state.process) state.process.kill();
+    state.daemonProxy?.disconnect();
   }
   claudeStates.clear();
   sshManager.destroyAll();

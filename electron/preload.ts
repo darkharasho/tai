@@ -51,6 +51,8 @@ contextBridge.exposeInMainWorld('tai', {
     },
     setRemoteTarget: (key: string, target: string | null, mode: string) =>
       ipcRenderer.invoke('ai:setRemoteTarget', key, target, mode),
+    setDaemonEnabled: (key: string, enabled: boolean) =>
+      ipcRenderer.invoke('ai:setDaemonEnabled', key, enabled),
   },
   codex: {
     send: (key: string, cwd: string, message: string, permMode: string, model: string) =>

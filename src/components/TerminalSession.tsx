@@ -6,6 +6,7 @@ import type { DisplayItem } from './BlockList';
 import { TerminalInput } from './TerminalInput';
 import type { TerminalInputHandle } from './TerminalInput';
 import { PasswordPrompt } from './PasswordPrompt';
+import { DaemonInstallCard } from './DaemonInstallCard';
 import { BlockSegmenter } from './BlockSegmenter';
 import { createClaudeProvider } from '@/providers/claude';
 import { createCodexProvider } from '@/providers/codex';
@@ -59,6 +60,12 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
   const [awaitingInput, setAwaitingInput] = useState(false);
   const [passwordPrompt, setPasswordPrompt] = useState(false);
   const [editValue, setEditValue] = useState<string | undefined>(undefined);
+  const [daemonCardState, setDaemonCardState] = useState<{
+    show: boolean;
+    mode: 'install' | 'update';
+    currentVersion?: string;
+    newVersion?: string;
+  } | null>(null);
 
   const segmenterRef = useRef(new BlockSegmenter());
   const hiddenXtermRef = useRef<HiddenXtermHandle>(null);
@@ -109,6 +116,41 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
     const target = promptInfo?.isRemote ? (promptInfo.sshTarget ?? null) : null;
     window.tai?.ai?.setRemoteTarget(tabId, target, remoteExecMode);
   }, [tabId, promptInfo?.isRemote, promptInfo?.sshTarget, remoteExecMode]);
+
+  const remoteTarget = promptInfo?.isRemote ? (promptInfo.sshTarget ?? null) : null;
+
+  useEffect(() => {
+    if (!remoteTarget) {
+      setDaemonCardState(null);
+      return;
+    }
+    window.tai.daemon.check(remoteTarget).then((result: { installed: boolean; version?: string }) => {
+      const currentVersion = '1.2.4'; // bundled version
+      if (!result.installed) {
+        setDaemonCardState({ show: true, mode: 'install', newVersion: currentVersion });
+      } else if (result.version !== currentVersion) {
+        setDaemonCardState({ show: true, mode: 'update', currentVersion: result.version, newVersion: currentVersion });
+      } else {
+        // Already up to date — enable daemon immediately
+        setDaemonCardState(null);
+        window.tai.ai.setDaemonEnabled(tabId, true);
+      }
+    });
+  }, [remoteTarget]);
+
+  const handleDaemonInstall = async () => {
+    setDaemonCardState(null);
+    const result = await window.tai.daemon.install(remoteTarget!);
+    if (result.success) {
+      window.tai.ai.setDaemonEnabled(tabId, true);
+    }
+    // On failure: silently fall back to agentless (no second prompt)
+  };
+
+  const handleDaemonDismiss = () => {
+    setDaemonCardState(null);
+    // daemonEnabled stays false → agentless fallback is used
+  };
 
   useEffect(() => {
     if (visible) {
@@ -707,6 +749,16 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0, position: 'relative' }}>
+      {!showXterm && daemonCardState?.show && (
+        <DaemonInstallCard
+          target={remoteTarget!}
+          mode={daemonCardState.mode}
+          currentVersion={daemonCardState.currentVersion}
+          newVersion={daemonCardState.newVersion}
+          onInstall={handleDaemonInstall}
+          onDismiss={handleDaemonDismiss}
+        />
+      )}
       {!showXterm && (
         <BlockList
           items={displayItems}

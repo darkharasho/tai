@@ -28,6 +28,11 @@ declare global {
         onMessage: (key: string, callback: (msg: any) => void) => () => void;
         onError: (key: string, callback: (error: string) => void) => () => void;
         setRemoteTarget: (key: string, target: string | null, mode: string) => Promise<boolean>;
+        setDaemonEnabled: (key: string, enabled: boolean) => Promise<boolean>;
+      };
+      daemon: {
+        check: (target: string) => Promise<{ installed: boolean; version?: string }>;
+        install: (target: string) => Promise<{ success: boolean; error?: string }>;
       };
       codex: {
         send: (key: string, cwd: string, message: string, permMode: string, model: string) => Promise<boolean>;
