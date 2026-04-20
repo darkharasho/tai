@@ -45,6 +45,7 @@ func (s *Server) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	os.Chmod(s.socketPath, 0600) //nolint:errcheck — non-fatal; best-effort permission hardening
 	defer ln.Close()
 	defer s.lsp.Shutdown()
 

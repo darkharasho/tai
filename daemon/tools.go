@@ -162,6 +162,9 @@ func (t *ToolExecutor) ExecuteGrep(p GrepParams) (GrepResult, error) {
 	if _, err := exec.LookPath("rg"); err == nil {
 		cmdName = "rg"
 		args = []string{"--line-number", "--no-heading"}
+		if p.CaseInsensitive {
+			args = append(args, "-i")
+		}
 		if p.Glob != "" {
 			args = append(args, "--glob", p.Glob)
 		}
@@ -171,7 +174,11 @@ func (t *ToolExecutor) ExecuteGrep(p GrepParams) (GrepResult, error) {
 		}
 	} else {
 		cmdName = "grep"
-		args = []string{"-rn", p.Pattern}
+		args = []string{"-rn"}
+		if p.CaseInsensitive {
+			args = append(args, "-i")
+		}
+		args = append(args, p.Pattern)
 		if p.Path != "" {
 			args = append(args, p.Path)
 		}

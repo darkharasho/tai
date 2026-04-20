@@ -24,7 +24,7 @@ func startDaemon(socketPath string) error {
 		return err
 	}
 
-	cmd := exec.Command(self, "--serve")
+	cmd := exec.Command(self, "--serve", "--socket", socketPath)
 	cmd.SysProcAttr = newSysProcAttr()
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {

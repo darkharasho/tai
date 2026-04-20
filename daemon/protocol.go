@@ -57,9 +57,10 @@ type EditParams struct {
 }
 
 type GrepParams struct {
-	Pattern string `json:"pattern"`
-	Path    string `json:"path"`
-	Glob    string `json:"glob,omitempty"`
+	Pattern         string `json:"pattern"`
+	Path            string `json:"path"`
+	Glob            string `json:"glob,omitempty"`
+	CaseInsensitive bool   `json:"-i,omitempty"`
 }
 
 type GrepResult struct {
