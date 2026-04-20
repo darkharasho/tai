@@ -28,6 +28,7 @@ func main() {
 	switch {
 	case *version:
 		fmt.Println(Version)
+		os.Exit(0)
 
 	case *serve:
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
