@@ -5,6 +5,7 @@ import { Terminal, Copy, Sparkles, Square, Check, X, Circle, FileText, Pencil, F
 import type { AIEntry, AIProvider } from '@/types';
 import styles from './InlineAIBlock.module.css';
 import ToolCallBody, { formatToolLabel } from './ToolCallBody';
+import { useSettings } from '@/hooks/useSettings';
 
 const PROVIDER_NAMES: Record<AIProvider, string> = {
   claude: 'Claude',
@@ -65,14 +66,22 @@ export function InlineAIBlock({
   aiProvider = 'claude',
 }: InlineAIBlockProps) {
   const runnableCommands = new Set(suggestedCommands ?? []);
+  const { config } = useSettings();
+  const expandAllByDefault: boolean = config['ai.expandToolCalls'] ?? false;
 
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
 
-  const toggleTool = useCallback((id: string) => {
+  const toggleTool = useCallback((id: string, defaultOpen: boolean) => {
     setExpandedTools(prev => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (defaultOpen) {
+        const collapseKey = `collapsed:${id}`;
+        if (next.has(collapseKey)) next.delete(collapseKey);
+        else next.add(collapseKey);
+      } else {
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+      }
       return next;
     });
   }, []);
@@ -159,14 +168,18 @@ export function InlineAIBlock({
                     if (!call) return null;
                     const hasOutput = call.output != null;
                     const toolId = call.id || `tool-${i}`;
-                    const isExpanded = expandedTools.has(toolId);
-                    const hasExpandableContent = hasOutput || (call.name === 'Edit' && call.input);
+                    const defaultOpen = expandAllByDefault || call.name === 'TodoWrite';
+                    const collapseKey = `collapsed:${toolId}`;
+                    const isExpanded = defaultOpen
+                      ? !expandedTools.has(collapseKey)
+                      : expandedTools.has(toolId);
+                    const hasExpandableContent = hasOutput || call.name === 'Edit' || call.name === 'TodoWrite' || expandAllByDefault;
                     const label = formatToolLabel(call.name, call.input);
                     return (
                       <div key={toolId}>
                         <div
                           className={`${styles.tool}${hasOutput ? '' : ` ${styles.toolActive}`}${hasExpandableContent ? ` ${styles.toolClickable}` : ''}`}
-                          onClick={hasExpandableContent ? () => toggleTool(toolId) : undefined}
+                          onClick={hasExpandableContent ? () => toggleTool(toolId, defaultOpen) : undefined}
                         >
                           {hasExpandableContent && (
                             <span className={styles.toolChevron}>

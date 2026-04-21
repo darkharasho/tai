@@ -16,6 +16,8 @@ interface QuickSettingsProps {
   onClaudeModelChange: (model: string) => void;
   claudeEffort: string;
   onClaudeEffortChange: (effort: string) => void;
+  expandToolCalls: boolean;
+  onExpandToolCallsChange: (value: boolean) => void;
 }
 
 type Category = 'general' | 'claude';
@@ -104,7 +106,7 @@ function CustomDropdown({ value, options, onChange }: {
   );
 }
 
-export function QuickSettings({ visible, onClose, colorMode, onColorModeChange, trustLevel, onTrustLevelChange, aiProvider, onAIProviderChange, claudeModel, onClaudeModelChange, claudeEffort, onClaudeEffortChange }: QuickSettingsProps) {
+export function QuickSettings({ visible, onClose, colorMode, onColorModeChange, trustLevel, onTrustLevelChange, aiProvider, onAIProviderChange, claudeModel, onClaudeModelChange, claudeEffort, onClaudeEffortChange, expandToolCalls, onExpandToolCallsChange }: QuickSettingsProps) {
   const [category, setCategory] = useState<Category>('general');
   const [version, setVersion] = useState('');
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'up-to-date' | 'available' | 'error'>('idle');
@@ -186,6 +188,11 @@ export function QuickSettings({ visible, onClose, colorMode, onColorModeChange, 
                     options={COLOR_MODE_OPTIONS}
                     onChange={onColorModeChange}
                   />
+                </div>
+
+                <div className={styles.settingRow}>
+                  <span className={styles.settingLabel}>Expand Tool Calls</span>
+                  <input type="checkbox" checked={expandToolCalls} onChange={e => onExpandToolCallsChange(e.target.checked)} />
                 </div>
 
                 <div className={styles.settingRow}>

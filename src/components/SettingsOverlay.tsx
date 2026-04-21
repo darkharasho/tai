@@ -96,6 +96,10 @@ export function SettingsOverlay({ visible, onClose, config, onSet }: SettingsOve
             )}
             {category === 'appearance' && (
               <SettingsGroup>
+                <SettingRow label="Expand tool calls by default" value={
+                  <input type="checkbox" checked={!!config['ai.expandToolCalls']}
+                    onChange={e => onSet('ai.expandToolCalls', e.target.checked)} />
+                } />
                 <SettingRow label="Gradient Border" value={
                   <input type="checkbox" checked={config['appearance.gradientBorder']}
                     onChange={e => onSet('appearance.gradientBorder', e.target.checked)} />

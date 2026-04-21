@@ -7,6 +7,7 @@ import WhatsNewModal from './components/WhatsNewModal';
 import UpdateNotifier from './components/UpdateNotifier';
 import ConfirmModal from './components/ConfirmModal';
 import { useSettings } from './hooks/useSettings';
+import { initScrollbarHover } from './utils/scrollbarHover';
 import { useWhatsNew } from './hooks/useWhatsNew';
 import { useUpdateNotifier } from './hooks/useUpdateNotifier';
 import type { AIProvider, ContextMode, TabState, TrustLevel } from './types';
@@ -38,6 +39,8 @@ export default function App() {
   useEffect(() => {
     return window.tai?.window?.onMaximizedChange?.((m: boolean) => setMaximized(m));
   }, []);
+
+  useEffect(() => initScrollbarHover(), []);
 
   useEffect(() => {
     if (!configLoaded || configApplied.current) return;
@@ -210,6 +213,8 @@ export default function App() {
         onClaudeModelChange={(model) => setSetting('claude.model', model)}
         claudeEffort={config['claude.effort'] || 'auto'}
         onClaudeEffortChange={(effort) => setSetting('claude.effort', effort)}
+        expandToolCalls={!!config['ai.expandToolCalls']}
+        onExpandToolCallsChange={(value) => setSetting('ai.expandToolCalls', value)}
       />
       <UpdateNotifier
         state={updater.state}

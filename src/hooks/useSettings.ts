@@ -10,6 +10,7 @@ const DEFAULTS = {
   'claude.model': 'sonnet',
   'claude.effort': 'auto',
   'trust.default': 'ask',
+  'ai.expandToolCalls': false,
   'appearance.gradientBorder': true,
   'appearance.animationSpeed': 20,
   'appearance.colorMode': 'high',

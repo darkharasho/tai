@@ -1,8 +1,66 @@
 .body {
-  margin: 4px 0 6px;
+  margin: 0 0 4px;
+  padding-left: 20px;
+  border-left: 2px solid rgba(255, 255, 255, 0.07);
+  margin-left: 4px;
+}
+
+.body :global(.ai-code-wrap) {
+  margin: 0;
+  border: none;
+  background: none;
+  border-radius: 0;
+}
+
+.body :global(.ai-code-wrap) pre {
+  padding: 2px 0;
+  font-size: 11px;
+}
+
+.body :global(.ai-code-wrap) pre code {
+  font-size: 11px;
+}
+
+.outputBar {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0 2px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.outputBarFirst {
+  border-top: none;
+  padding-top: 0;
+}
+
+.outputBarLabel {
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.outputBarBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s;
+  opacity: 0;
+}
+
+.outputBar:hover .outputBarBtn {
+  opacity: 1;
+}
+
+.outputBarBtn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .highlighted {
@@ -38,11 +96,11 @@
 
 .diffBlock {
   margin: 0;
-  padding: 6px 0;
+  padding: 2px 0;
   background: transparent;
   font-family: var(--font-mono);
   font-size: 11px;
-  line-height: 1.6;
+  line-height: 1.5;
 }
 
 .diffBlock code {
@@ -53,14 +111,14 @@
 
 .diffAdd {
   display: flex;
-  padding: 0 10px;
+  padding: 0 4px;
   white-space: pre-wrap;
   background: rgba(72, 100, 40, 0.35);
 }
 
 .diffDel {
   display: flex;
-  padding: 0 10px;
+  padding: 0 4px;
   white-space: pre-wrap;
   background: rgba(180, 60, 40, 0.25);
 }
@@ -106,5 +164,55 @@
 .errorDisplay svg {
   flex-shrink: 0;
   margin-top: 2px;
+}
+
+.todoList {
+  display: flex;
+  flex-direction: column;
+  padding: 2px 0;
+  gap: 4px;
+}
+
+.todoItem {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.todoIcon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  margin-top: 1px;
+}
+
+.todoDone .todoContent {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.todoDone .todoIcon {
+  color: var(--color-ai);
+}
+
+.todoContent {
+  flex: 1;
+}
+
+.todoPriorityHigh {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--color-error, #e05);
+  opacity: 0.75;
+}
+
+.todoPriorityLow {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--text-muted);
 }
 

@@ -1,6 +1,6 @@
 // src/components/ToolCallBody.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { AlertCircle, Copy } from 'lucide-react';
+import { AlertCircle, Copy, Square, CheckSquare, Loader } from 'lucide-react';
 import type { AIToolCall } from '@/types';
 import { detectLangFromPath, highlightCode } from '@/utils/shikiHighlighter';
 import styles from './ToolCallBody.module.css';
@@ -21,6 +21,24 @@ function CodeBar({ label, code }: { label: string; code: string }) {
           <span>{copied ? 'Copied' : 'Copy'}</span>
         </span>
       </div>
+    </div>
+  );
+}
+
+function OutputBar({ label, code, first }: { label: string; code: string; first?: boolean }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <div className={`${styles.outputBar}${first ? ` ${styles.outputBarFirst}` : ''}`}>
+      <span className={styles.outputBarLabel}>{label}</span>
+      <span className={styles.outputBarBtn} onClick={handleCopy}>
+        <Copy size={11} />
+        <span>{copied ? 'Copied' : 'Copy'}</span>
+      </span>
     </div>
   );
 }
@@ -46,9 +64,18 @@ export function formatToolLabel(name: string, input: string): string {
     if (parsed.url) return parsed.url;
     if (parsed.query) return parsed.query;
 
-    return input;
+    if (name === 'TodoWrite' && Array.isArray(parsed.todos)) {
+      const total = parsed.todos.length;
+      const done = parsed.todos.filter((t: { status: string }) => t.status === 'completed').length;
+      return `${done}/${total} done`;
+    }
+
+    const firstStr = Object.values(parsed).find(v => typeof v === 'string' && v.length > 0);
+    if (firstStr) return String(firstStr).slice(0, 80);
+
+    return '';
   } catch {
-    return input;
+    return input.slice(0, 80);
   }
 }
 
@@ -147,161 +174,163 @@ function extractShikiLines(html: string): string[] {
   });
 }
 
-function OutputSection({ output, lang, label = 'output' }: { output: string; lang: string; label?: string }) {
-  const [showAll, setShowAll] = useState(false);
-  const parsed = parseToolError(output);
+interface Todo {
+  id: string;
+  content: string;
+  status: 'pending' | 'in_progress' | 'completed';
+  priority: 'high' | 'medium' | 'low';
+}
 
-  if (parsed.isError) {
-    return (
-      <div className="ai-code-wrap">
-        <CodeBar label="error" code={parsed.message} />
-        <div className={styles.errorDisplay}>
-          <AlertCircle size={12} />
-          <span>{parsed.message}</span>
-        </div>
-      </div>
-    );
-  }
-
-  const { truncated, isTruncated, totalLines } = truncateLines(parsed.message, MAX_LINES);
-  const displayText = showAll ? parsed.message : truncated;
-
+function TodoView({ todos }: { todos: Todo[] }) {
+  const priorityOrder = { high: 0, medium: 1, low: 2 };
+  const sorted = [...todos].sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
   return (
-    <div className="ai-code-wrap">
-      <CodeBar label={label} code={parsed.message} />
-      <HighlightedCode code={displayText} lang={lang} />
-      {isTruncated && (
-        <button className={styles.showMore} onClick={() => setShowAll(prev => !prev)}>
-          {showAll ? 'Show less' : `Show all (${totalLines} lines)`}
-        </button>
-      )}
+    <div className={styles.todoList}>
+      {sorted.map(todo => (
+        <div key={todo.id} className={`${styles.todoItem} ${todo.status === 'completed' ? styles.todoDone : ''}`}>
+          <span className={styles.todoIcon}>
+            {todo.status === 'completed' ? <CheckSquare size={12} /> : todo.status === 'in_progress' ? <Loader size={12} /> : <Square size={12} />}
+          </span>
+          <span className={styles.todoContent}>{todo.content}</span>
+          {todo.priority === 'high' && <span className={styles.todoPriorityHigh}>high</span>}
+          {todo.priority === 'low' && <span className={styles.todoPriorityLow}>low</span>}
+        </div>
+      ))}
     </div>
   );
 }
 
 export default function ToolCallBody({ call }: { call: AIToolCall }) {
-  const [showAll, setShowAll] = useState(false);
+  const [showAllInput, setShowAllInput] = useState(false);
+  const [showAllOutput, setShowAllOutput] = useState(false);
 
   try {
-    const parsed = JSON.parse(call.input);
+    const parsed = JSON.parse(call.input) as Record<string, unknown>;
+    const filePath = (parsed.file_path as string) || '';
 
-    // Edit — unified diff
-    if (call.name === 'Edit' && parsed.old_string != null) {
-      const filePath = parsed.file_path || '';
-      const fullDiff = (parsed.old_string || '') + '\n' + (parsed.new_string || '');
-      return (
-        <div className={styles.body}>
-          <div className="ai-code-wrap">
-            <CodeBar label={filePath ? `diff · ${filePath.split('/').pop()}` : 'diff'} code={fullDiff} />
-            <DiffView oldString={parsed.old_string || ''} newString={parsed.new_string || ''} filePath={filePath} />
-          </div>
-          {call.output && <OutputSection output={call.output} lang="text" />}
-        </div>
+    // --- Build input section ---
+    let inputLabel = 'input';
+    let inputCopyText = '';
+    let inputNode: React.ReactNode = null;
+
+    if (call.name === 'TodoWrite' && Array.isArray(parsed.todos)) {
+      inputLabel = 'todos';
+      inputCopyText = (parsed.todos as Todo[]).map(t => `[${t.status}] ${t.content}`).join('\n');
+      inputNode = <TodoView todos={parsed.todos as Todo[]} />;
+
+    } else if (call.name === 'Edit' && parsed.old_string != null) {
+      const pop = filePath.split('/').pop();
+      inputLabel = pop ? `diff · ${pop}` : 'diff';
+      inputCopyText = ((parsed.old_string as string) || '') + '\n' + ((parsed.new_string as string) || '');
+      inputNode = (
+        <DiffView
+          oldString={(parsed.old_string as string) || ''}
+          newString={(parsed.new_string as string) || ''}
+          filePath={filePath}
+        />
       );
+
+    } else if (call.name === 'Bash' && parsed.command) {
+      inputLabel = 'command';
+      inputCopyText = parsed.command as string;
+      inputNode = <pre className={styles.plainCode}><code>{parsed.command as string}</code></pre>;
+
+    } else if (call.name === 'Write' && parsed.content) {
+      const lang = detectLangFromPath(filePath);
+      inputLabel = filePath.split('/').pop() || 'content';
+      inputCopyText = parsed.content as string;
+      const { truncated, isTruncated, totalLines } = truncateLines(parsed.content as string, MAX_LINES);
+      inputNode = (
+        <>
+          <HighlightedCode code={showAllInput ? (parsed.content as string) : truncated} lang={lang} />
+          {isTruncated && (
+            <button className={styles.showMore} onClick={() => setShowAllInput(p => !p)}>
+              {showAllInput ? 'Show less' : `Show all (${totalLines} lines)`}
+            </button>
+          )}
+        </>
+      );
+
+    } else if (call.name === 'Read') {
+      // no input section — file path already shown in tool row label
+
+    } else {
+      // Generic: pretty-print JSON, trim large values
+      const display: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(parsed)) {
+        display[k] = typeof v === 'string' && v.length > 300 ? v.slice(0, 300) + '…' : v;
+      }
+      const jsonStr = JSON.stringify(display, null, 2);
+      if (jsonStr !== '{}') {
+        inputLabel = call.name.toLowerCase();
+        inputCopyText = JSON.stringify(parsed, null, 2);
+        inputNode = <HighlightedCode code={jsonStr} lang="json" />;
+      }
     }
 
-    // Bash — show output
-    if (call.name === 'Bash' && call.output) {
-      const outputParsed = parseToolError(call.output);
-      if (outputParsed.isError) {
-        return (
-          <div className={styles.body}>
-            <div className="ai-code-wrap">
-              <CodeBar label="error" code={outputParsed.message} />
-              <div className={styles.errorDisplay}>
-                <AlertCircle size={12} />
-                <span>{outputParsed.message}</span>
-              </div>
-            </div>
+    // --- Build output section ---
+    let outputLabel = 'output';
+    let outputCopyText = '';
+    let outputNode: React.ReactNode = null;
+
+    if (call.output) {
+      const outParsed = parseToolError(call.output);
+      outputCopyText = outParsed.message;
+
+      if (outParsed.isError) {
+        outputLabel = 'error';
+        outputNode = (
+          <div className={styles.errorDisplay}>
+            <AlertCircle size={12} />
+            <span>{outParsed.message}</span>
           </div>
         );
+      } else {
+        const outputLang = call.name === 'Read' ? detectLangFromPath(filePath) : 'text';
+        if (call.name === 'Read') outputLabel = filePath.split('/').pop() || 'output';
+        const { truncated, isTruncated, totalLines } = truncateLines(outParsed.message, MAX_LINES);
+        outputNode = (
+          <>
+            <HighlightedCode code={showAllOutput ? outParsed.message : truncated} lang={outputLang} />
+            {isTruncated && (
+              <button className={styles.showMore} onClick={() => setShowAllOutput(p => !p)}>
+                {showAllOutput ? 'Show less' : `Show all (${totalLines} lines)`}
+              </button>
+            )}
+          </>
+        );
       }
-      const { truncated, isTruncated, totalLines } = truncateLines(call.output, MAX_LINES);
-      return (
-        <div className={styles.body}>
-          <div className="ai-code-wrap">
-            <CodeBar label="bash" code={call.output} />
-            <pre className={styles.plainCode}><code>{showAll ? call.output : truncated}</code></pre>
-            {isTruncated && (
-              <button className={styles.showMore} onClick={() => setShowAll(prev => !prev)}>
-                {showAll ? 'Show less' : `Show all (${totalLines} lines)`}
-              </button>
-            )}
-          </div>
-        </div>
-      );
     }
 
-    // Read — syntax-highlighted output
-    if (call.name === 'Read' && call.output) {
-      const filePath = parsed.file_path || '';
-      const lang = detectLangFromPath(filePath);
-      const fileName = filePath.split('/').pop() || 'output';
-      return (
-        <div className={styles.body}>
-          <OutputSection output={call.output} lang={lang} label={fileName} />
-        </div>
-      );
-    }
+    if (!inputNode && !outputNode) return null;
 
-    // Write — syntax-highlighted content from input
-    if (call.name === 'Write' && parsed.content) {
-      const filePath = parsed.file_path || '';
-      const lang = detectLangFromPath(filePath);
-      const fileName = filePath.split('/').pop() || 'output';
-      const { truncated, isTruncated, totalLines } = truncateLines(parsed.content, MAX_LINES);
-      return (
-        <div className={styles.body}>
-          <div className="ai-code-wrap">
-            <CodeBar label={fileName} code={parsed.content} />
-            <HighlightedCode code={showAll ? parsed.content : truncated} lang={lang} />
-            {isTruncated && (
-              <button className={styles.showMore} onClick={() => setShowAll(prev => !prev)}>
-                {showAll ? 'Show less' : `Show all (${totalLines} lines)`}
-              </button>
-            )}
-          </div>
+    return (
+      <div className={styles.body}>
+        <div className="ai-code-wrap">
+          {inputNode && <OutputBar label={inputLabel} code={inputCopyText} first />}
+          {inputNode}
+          {outputNode && <OutputBar label={outputLabel} code={outputCopyText} first={!inputNode} />}
+          {outputNode}
         </div>
-      );
-    }
-
-    // Grep/Glob and others — plain output
-    if (call.output) {
-      const { truncated, isTruncated, totalLines } = truncateLines(call.output, MAX_LINES);
-      return (
-        <div className={styles.body}>
-          <div className="ai-code-wrap">
-            <CodeBar label={call.name.toLowerCase()} code={call.output} />
-            <pre className={styles.plainCode}><code>{showAll ? call.output : truncated}</code></pre>
-            {isTruncated && (
-              <button className={styles.showMore} onClick={() => setShowAll(prev => !prev)}>
-                {showAll ? 'Show less' : `Show all (${totalLines} lines)`}
-              </button>
-            )}
-          </div>
-        </div>
-      );
-    }
-
-    return null;
+      </div>
+    );
   } catch {
-    // Malformed input — show raw output if available
-    if (call.output) {
-      const { truncated, isTruncated, totalLines } = truncateLines(call.output, MAX_LINES);
-      return (
-        <div className={styles.body}>
-          <div className="ai-code-wrap">
-            <CodeBar label="output" code={call.output} />
-            <pre className={styles.plainCode}><code>{showAll ? call.output : truncated}</code></pre>
-            {isTruncated && (
-              <button className={styles.showMore} onClick={() => setShowAll(prev => !prev)}>
-                {showAll ? 'Show less' : `Show all (${totalLines} lines)`}
-              </button>
-            )}
-          </div>
+    if (!call.output) return null;
+    const outParsed = parseToolError(call.output);
+    const { truncated, isTruncated, totalLines } = truncateLines(outParsed.message, MAX_LINES);
+    return (
+      <div className={styles.body}>
+        <div className="ai-code-wrap">
+          <pre className={styles.plainCode}>
+            <code>{showAllOutput ? outParsed.message : truncated}</code>
+          </pre>
+          {isTruncated && (
+            <button className={styles.showMore} onClick={() => setShowAllOutput(p => !p)}>
+              {showAllOutput ? 'Show less' : `Show all (${totalLines} lines)`}
+            </button>
+          )}
         </div>
-      );
-    }
-    return null;
+      </div>
+    );
   }
 }
