@@ -38,8 +38,8 @@ describe('formatToolLabel', () => {
     expect(formatToolLabel('WebSearch', '{"query":"react shiki setup"}')).toBe('react shiki setup');
   });
 
-  it('falls back to raw input for unknown tools', () => {
-    expect(formatToolLabel('Unknown', '{"foo":"bar"}')).toBe('{"foo":"bar"}');
+  it('extracts first string value for unknown tools', () => {
+    expect(formatToolLabel('Unknown', '{"foo":"bar"}')).toBe('bar');
   });
 
   it('falls back to raw input on invalid JSON', () => {
