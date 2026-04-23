@@ -2,10 +2,12 @@ import { ipcMain, BrowserWindow } from 'electron';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import { RemoteSshManager } from './remoteSsh';
 import { RemoteToolProxy } from './remoteToolProxy';
 import { RemoteDaemonProxy } from './remoteDaemonProxy';
 import { generateMcpServerScript, generateMcpConfig } from './mcpRemoteServer';
+import { enrichEnv, resolveBinary } from './platform';
 
 const sshManager = new RemoteSshManager();
 const toolProxy = new RemoteToolProxy(sshManager);
@@ -41,17 +43,7 @@ function safeSend(win: BrowserWindow | null, channel: string, ...args: unknown[]
 }
 
 function enrichedEnv(): Record<string, string> {
-  const env = { ...process.env } as Record<string, string>;
-  const home = env.HOME || '/';
-  const extraPaths = [
-    path.join(home, '.local/bin'),
-    path.join(home, '.nvm/current/bin'),
-    path.join(home, '.volta/bin'),
-    '/usr/local/bin',
-    '/opt/homebrew/bin',
-  ];
-  env.PATH = [...extraPaths, env.PATH || ''].join(':');
-  return env;
+  return enrichEnv();
 }
 
 function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, permMode: string, model: string, effort: string): ChildProcess {
@@ -104,16 +96,17 @@ function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, perm
 
   if (isRemoteExec && state.daemonEnabled) {
     const safeKey = key.replace(/[^a-z0-9]/gi, '_');
+    const tmp = os.tmpdir();
 
     // SSH config: include ~/.ssh/config (user-owned) but skip system files
-    sshConfigPath = `/tmp/tai-ssh-config-${safeKey}`;
+    sshConfigPath = path.join(tmp, `tai-ssh-config-${safeKey}`);
     fs.writeFileSync(sshConfigPath, `Include ~/.ssh/config\nBatchMode yes\nStrictHostKeyChecking accept-new\n`, { mode: 0o600 });
 
     // MCP server: routes all tool calls through the daemon on the remote host
-    mcpServerPath = `/tmp/tai-mcp-server-${safeKey}.cjs`;
+    mcpServerPath = path.join(tmp, `tai-mcp-server-${safeKey}.cjs`);
     fs.writeFileSync(mcpServerPath, generateMcpServerScript(state.remoteTarget!, sshConfigPath), { mode: 0o755 });
 
-    mcpConfigPath = `/tmp/tai-mcp-config-${safeKey}.json`;
+    mcpConfigPath = path.join(tmp, `tai-mcp-config-${safeKey}.json`);
     fs.writeFileSync(mcpConfigPath, JSON.stringify(generateMcpConfig(mcpServerPath)), { mode: 0o600 });
 
     args.push('--mcp-config', mcpConfigPath);
@@ -121,9 +114,10 @@ function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, perm
     console.log(`[daemon] remote exec via MCP server: ${mcpServerPath} -> ${state.remoteTarget}`);
   }
 
-  const proc = spawn('claude', args, {
+  const env = enrichedEnv();
+  const proc = spawn(resolveBinary('claude', env), args, {
     cwd,
-    env: enrichedEnv(),
+    env,
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 

@@ -22,12 +22,15 @@ app.name = 'tai';
 
 let mainWindow: BrowserWindow | null = null;
 
-const windowStatePath = path.join(process.env.HOME || '/', '.config', 'tai', 'window-state.json');
+// On Linux, app.getPath('userData') resolves to ~/.config/tai (matching the
+// previous hard-coded location), so existing settings/window-state are preserved.
+// On Windows: %APPDATA%\tai\. On macOS: ~/Library/Application Support/tai/.
+const windowStatePath = () => path.join(app.getPath('userData'), 'window-state.json');
 
 function loadWindowState(): { x?: number; y?: number; width: number; height: number; maximized?: boolean } {
   try {
-    if (fs.existsSync(windowStatePath)) {
-      return JSON.parse(fs.readFileSync(windowStatePath, 'utf8'));
+    if (fs.existsSync(windowStatePath())) {
+      return JSON.parse(fs.readFileSync(windowStatePath(), 'utf8'));
     }
   } catch {}
   return { width: 1200, height: 800 };
@@ -39,9 +42,9 @@ function saveWindowState() {
   const bounds = maximized ? mainWindow.getNormalBounds() : mainWindow.getBounds();
   const state = { ...bounds, maximized };
   try {
-    const dir = path.dirname(windowStatePath);
+    const dir = path.dirname(windowStatePath());
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(windowStatePath, JSON.stringify(state));
+    fs.writeFileSync(windowStatePath(), JSON.stringify(state));
   } catch {}
 }
 
@@ -114,21 +117,23 @@ ipcMain.on('window:maximize', () => {
 });
 ipcMain.on('window:close', () => mainWindow?.close());
 
-const configPath = path.join(process.env.HOME || '/', '.config', 'tai', 'settings.json');
+const configPath = () => path.join(app.getPath('userData'), 'settings.json');
 
 function readConfig(): Record<string, any> {
   try {
-    const dir = path.dirname(configPath);
+    const file = configPath();
+    const dir = path.dirname(file);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    if (!fs.existsSync(configPath)) return {};
-    return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    if (!fs.existsSync(file)) return {};
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch { return {}; }
 }
 
 function writeConfig(config: Record<string, any>) {
-  const dir = path.dirname(configPath);
+  const file = configPath();
+  const dir = path.dirname(file);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+  fs.writeFileSync(file, JSON.stringify(config, null, 2));
 }
 
 ipcMain.handle('system:hostname', () => process.env.HOSTNAME || os.hostname());

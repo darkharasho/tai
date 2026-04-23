@@ -4,36 +4,10 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { createGeminiAcpClient } from './gemini-acp';
 import type { GeminiAcpClient } from './gemini-acp';
+import { enrichEnv } from './platform';
 
 function enrichedEnv(): Record<string, string> {
-  const env = { ...process.env } as Record<string, string>;
-  const home = os.homedir();
-  const extraPaths: string[] = [];
-  const nvmDir = path.join(home, '.nvm', 'versions', 'node');
-
-  if (fs.existsSync(nvmDir)) {
-    try {
-      const versions = fs.readdirSync(nvmDir);
-      for (const v of versions) {
-        extraPaths.push(path.join(nvmDir, v, 'bin'));
-      }
-    } catch { /* ignore */ }
-  }
-
-  extraPaths.push(
-    path.join(home, '.local', 'bin'),
-    path.join(home, '.volta', 'bin'),
-    '/usr/local/bin',
-    '/opt/homebrew/bin',
-  );
-
-  const currentPath = env.PATH || '';
-  const pathSet = new Set(currentPath.split(':'));
-  const additions = extraPaths.filter(p => !pathSet.has(p));
-  if (additions.length > 0) {
-    env.PATH = currentPath + ':' + additions.join(':');
-  }
-  return env;
+  return enrichEnv();
 }
 
 function safeSend(win: BrowserWindow | null, channel: string, ...args: unknown[]) {

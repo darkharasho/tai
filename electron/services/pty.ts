@@ -2,7 +2,9 @@ import * as pty from 'node-pty';
 import { BrowserWindow, ipcMain } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { execFile } from 'child_process';
+import { isWindows } from './platform';
 
 let hasSystemdRun: boolean | undefined;
 function detectSystemdScope(): boolean {
@@ -36,7 +38,6 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
   }
 
   ipcMain.handle('pty:create', (_event, cwd: string) => {
-    const shell = process.env.SHELL || '/bin/bash';
     const id = nextId++;
     const env = { ...process.env } as Record<string, string>;
     delete env.GIO_LAUNCHED_DESKTOP_FILE;
@@ -47,15 +48,27 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
     delete env.CHROME_DESKTOP;
     delete env.INVOCATION_ID;
 
-    const useScope = canUseSystemdScope();
-    const spawnCmd = useScope ? 'systemd-run' : shell;
-    const spawnArgs = useScope
-      ? ['--user', '--scope', '--quiet', '--', shell, '--login']
-      : ['--login'];
+    let spawnCmd: string;
+    let spawnArgs: string[];
+    let termName: string;
+
+    if (isWindows) {
+      spawnCmd = process.env.COMSPEC || 'cmd.exe';
+      spawnArgs = [];
+      termName = 'xterm-256color';
+    } else {
+      const shell = process.env.SHELL || '/bin/bash';
+      const useScope = canUseSystemdScope();
+      spawnCmd = useScope ? 'systemd-run' : shell;
+      spawnArgs = useScope
+        ? ['--user', '--scope', '--quiet', '--', shell, '--login']
+        : ['--login'];
+      termName = 'xterm-256color';
+    }
 
     const term = pty.spawn(spawnCmd, spawnArgs, {
-      name: 'xterm-256color',
-      cwd: cwd || process.env.HOME || '/',
+      name: termName,
+      cwd: cwd || os.homedir(),
       env,
     });
 
@@ -141,6 +154,7 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
   });
 
   ipcMain.handle('pty:tabComplete', async (_event, text: string, cwd: string) => {
+    if (isWindows) return [];
     const lastWord = text.split(/\s+/).pop() || '';
     const isFirstWord = !text.includes(' ');
     const flags = isFirstWord ? '-c -f' : '-f -d';
@@ -165,11 +179,15 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
   });
 
   ipcMain.handle('pty:getShellHistory', async (_event, count: number) => {
-    const home = process.env.HOME || '/';
-    const candidates = [
-      path.join(home, '.zsh_history'),
-      path.join(home, '.bash_history'),
-    ];
+    const home = os.homedir();
+    const candidates = isWindows
+      ? [
+          path.join(process.env.APPDATA || home, 'Microsoft', 'Windows', 'PowerShell', 'PSReadLine', 'ConsoleHost_history.txt'),
+        ]
+      : [
+          path.join(home, '.zsh_history'),
+          path.join(home, '.bash_history'),
+        ];
     for (const histFile of candidates) {
       try {
         const content = fs.readFileSync(histFile, 'utf8');

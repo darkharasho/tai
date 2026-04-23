@@ -1,4 +1,5 @@
 import { spawn, ChildProcess } from 'node:child_process';
+import { resolveBinary } from './platform';
 
 export interface GeminiAcpClientOptions {
   cwd: string;
@@ -110,7 +111,8 @@ export function createGeminiAcpClient(options: GeminiAcpClientOptions): GeminiAc
         startReject = reject;
       });
 
-      const proc = spawn('gemini', ['--acp'], {
+      const env = options.env as Record<string, string>;
+      const proc = spawn(resolveBinary('gemini', env), ['--acp'], {
         cwd: options.cwd,
         env: options.env,
         stdio: ['pipe', 'pipe', 'pipe'],
