@@ -74,6 +74,9 @@ contextBridge.exposeInMainWorld('tai', {
     getHostname: () => ipcRenderer.invoke('system:hostname'),
     platform: process.platform,
   },
+  shell: {
+    openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
+  },
   daemon: {
     check: (target: string) => ipcRenderer.invoke('tai:daemon:check', target),
     install: (target: string) => ipcRenderer.invoke('tai:daemon:install', target),

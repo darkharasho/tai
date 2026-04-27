@@ -86,7 +86,7 @@ export function CommandBlock({
     if (target.tagName === 'A' && target.dataset.url) {
       e.preventDefault();
       if (e.ctrlKey || e.metaKey) {
-        window.open(target.dataset.url, '_blank');
+        window.tai?.shell?.openExternal(target.dataset.url);
       }
     }
   }, []);

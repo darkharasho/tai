@@ -49,6 +49,9 @@ declare global {
         getHostname: () => Promise<string>;
         platform: string;
       };
+      shell: {
+        openExternal: (url: string) => Promise<boolean>;
+      };
       config: {
         get: () => Promise<Record<string, any>>;
         set: (key: string, value: any) => Promise<Record<string, any>>;

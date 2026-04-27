@@ -8,6 +8,7 @@ import UpdateNotifier from './components/UpdateNotifier';
 import ConfirmModal from './components/ConfirmModal';
 import { useSettings } from './hooks/useSettings';
 import { initScrollbarHover } from './utils/scrollbarHover';
+import { initExternalLinks } from './utils/externalLinks';
 import { useWhatsNew } from './hooks/useWhatsNew';
 import { useUpdateNotifier } from './hooks/useUpdateNotifier';
 import type { AIProvider, ContextMode, TabState, TrustLevel } from './types';
@@ -41,6 +42,7 @@ export default function App() {
   }, []);
 
   useEffect(() => initScrollbarHover(), []);
+  useEffect(() => initExternalLinks(), []);
 
   useEffect(() => {
     if (!configLoaded || configApplied.current) return;

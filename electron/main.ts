@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -74,6 +74,17 @@ function createWindow() {
 
   if (state.maximized) mainWindow.maximize();
 
+  const devOrigin = process.env.VITE_DEV_SERVER_URL ? new URL(process.env.VITE_DEV_SERVER_URL).origin : null;
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (devOrigin && url.startsWith(devOrigin)) return;
+    if (url.startsWith('file://')) return;
+    event.preventDefault();
+  });
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
   mainWindow.on('maximize', () => mainWindow?.webContents.send('window:maximized-change', true));
   mainWindow.on('unmaximize', () => mainWindow?.webContents.send('window:maximized-change', false));
 
@@ -137,6 +148,12 @@ function writeConfig(config: Record<string, any>) {
 }
 
 ipcMain.handle('system:hostname', () => process.env.HOSTNAME || os.hostname());
+
+ipcMain.handle('shell:openExternal', async (_event, url: string) => {
+  if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return false;
+  await shell.openExternal(url);
+  return true;
+});
 
 ipcMain.handle('config:get', () => readConfig());
 ipcMain.handle('config:set', (_event, key: string, value: any) => {
