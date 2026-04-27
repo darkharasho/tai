@@ -53,4 +53,5 @@ export interface TabState {
   sshTarget: string | null;
   remoteExecMode: 'auto' | 'local';
   aiProvider: AIProvider;
+  aiWorking?: boolean;
 }
