@@ -117,6 +117,14 @@ export default function App() {
     setTabs(prev => prev.map(t => t.id === tabId ? { ...t, remoteExecMode: mode } : t));
   }, []);
 
+  const handleAiWorkingChange = useCallback((tabId: string, working: boolean) => {
+    setTabs(prev => {
+      const tab = prev.find(t => t.id === tabId);
+      if (!tab || tab.aiWorking === working) return prev;
+      return prev.map(t => t.id === tabId ? { ...t, aiWorking: working } : t);
+    });
+  }, []);
+
   const handleTrustLevelChange = useCallback((level: TrustLevel) => {
     setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, trustLevel: level } : t));
     setSetting('ai.trustLevel', level);
@@ -190,6 +198,7 @@ export default function App() {
             onRemoteChange={(isRemote, sshTarget) => handleRemoteChange(tab.id, isRemote, sshTarget)}
             remoteExecMode={tab.remoteExecMode}
             onRemoteExecModeChange={(mode) => handleRemoteExecModeChange(tab.id, mode)}
+            onAiWorkingChange={(working) => handleAiWorkingChange(tab.id, working)}
             onTrustLevelChange={(level) => {
               setTabs(prev => prev.map(t => t.id === tab.id ? { ...t, trustLevel: level } : t));
             }}
