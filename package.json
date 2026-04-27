@@ -1,6 +1,6 @@
 {
   "name": "tai",
-  "version": "1.2.9",
+  "version": "1.2.10",
   "description": "An AI-native terminal that understands what you're doing.",
   "main": "dist-electron/main.js",
   "scripts": {
