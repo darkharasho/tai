@@ -270,3 +270,19 @@
   background: rgba(255, 255, 255, 0.06);
   color: #8a9090;
 }
+
+/* ── AI working indicator ────────────────────────────────── */
+.workingDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-agent);
+  box-shadow: 0 0 6px var(--color-agent);
+  animation: tabDotPulse 1.4s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes tabDotPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.8); }
+}
