@@ -188,11 +188,15 @@ function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, perm
 
   proc.on('exit', (code, signal) => {
     console.log(`[daemon] claude process exited code=${code} signal=${signal}`);
+    const wasBusy = state.busy;
     state.process = null;
     state.busy = false;
     state.pendingToolUses.clear();
     for (const p of [mcpServerPath, mcpConfigPath, sshConfigPath]) {
       if (p) try { fs.unlinkSync(p); } catch {}
+    }
+    if (wasBusy) {
+      safeSend(win, 'ai:message', key, { type: 'done' });
     }
   });
 
