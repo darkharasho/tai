@@ -14,6 +14,7 @@ import { createCodexProvider } from '@/providers/codex';
 import { createGeminiProvider } from '@/providers/gemini';
 import { useSettings } from '@/hooks/useSettings';
 import type { AIProvider, ContextMode, TrustLevel, AIEntry } from '@/types';
+import { hasActiveAi } from '@/utils/hasActiveAi';
 
 interface TerminalSessionProps {
   tabId: string;
@@ -27,6 +28,7 @@ interface TerminalSessionProps {
   remoteExecMode: 'auto' | 'local';
   onRemoteExecModeChange: (mode: 'auto' | 'local') => void;
   onTrustLevelChange: (level: TrustLevel) => void;
+  onAiWorkingChange?: (working: boolean) => void;
 }
 
 function createProvider(provider: AIProvider, tabId: string) {
@@ -41,7 +43,7 @@ function nextBlockId(): string {
   return `tm-${crypto.randomUUID()}`;
 }
 
-export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustLevel, aiProvider, onContextModeChange, onRemoteChange, remoteExecMode, onRemoteExecModeChange, onTrustLevelChange }: TerminalSessionProps) {
+export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustLevel, aiProvider, onContextModeChange, onRemoteChange, remoteExecMode, onRemoteExecModeChange, onTrustLevelChange, onAiWorkingChange }: TerminalSessionProps) {
   const { config } = useSettings();
   const claudeModel = config['claude.model'] || 'sonnet';
   const claudeEffort = config['claude.effort'] || 'auto';
@@ -208,6 +210,11 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
     const interval = setInterval(poll, 1500);
     return () => { cancelled = true; clearInterval(interval); };
   }, [displayItems.some(item => item.type === 'command' && item.active), ptyId]);
+
+  const aiWorking = hasActiveAi(displayItems);
+  useEffect(() => {
+    onAiWorkingChange?.(aiWorking);
+  }, [aiWorking, onAiWorkingChange]);
 
   useEffect(() => {
     if (ptyId === null) return;
