@@ -66,7 +66,7 @@ interface TerminalInputProps {
 
 export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>(function TerminalInput({ onSubmit, mode, onModeChange, disabled, cwd, promptInfo, history = [], onClear, initialValue, remoteExecMode, onRemoteExecModeChange, aiProvider, trustLevel, onTrustLevelChange }, ref) {
   const [value, setValue] = useState(initialValue || '');
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const historyIndexRef = useRef(-1);
   const savedInputRef = useRef('');
   const manualOverrideRef = useRef(false);
@@ -75,9 +75,16 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
   const tabPrefixRef = useRef('');
 
   const prediction = useMemo(
-    () => mode === 'shell' && value.length >= 5 ? predictCommand(value, history) : null,
+    () => mode === 'shell' && value.length >= 5 && !value.includes('\n') ? predictCommand(value, history) : null,
     [value, history, mode],
   );
+
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
 
   useImperativeHandle(ref, () => ({
     paste: (text: string) => {
@@ -215,9 +222,9 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
       }
       return;
     }
-    if (e.key === 'Enter' && value.trim()) {
+    if (e.key === 'Enter' && !e.shiftKey && value.trim()) {
       e.preventDefault();
-      onSubmit(value.trim());
+      onSubmit(value);
       setValue('');
       manualOverrideRef.current = false;
       historyIndexRef.current = -1;
@@ -229,7 +236,7 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newVal = e.target.value;
     setValue(newVal);
     setTabCompletions([]);
@@ -308,7 +315,7 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
                 <span style={{ visibility: 'hidden' }}>{value}</span>{prediction.slice(value.length)}
               </span>
             )}
-            <input
+            <textarea
               ref={inputRef}
               className={styles.field}
               value={value}
@@ -318,6 +325,7 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
               disabled={disabled}
               spellCheck={false}
               autoComplete="off"
+              rows={1}
             />
           </div>
           {isAI && aiProvider && trustLevel && onTrustLevelChange && (
