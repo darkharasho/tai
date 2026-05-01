@@ -10,12 +10,13 @@ function isScrollable(el: Element): boolean {
 }
 
 function onEnter(e: Event) {
-  const el = e.target as Element;
-  if (el && isScrollable(el)) el.setAttribute('data-scrollhover', '');
+  const el = e.target;
+  if (el instanceof Element && isScrollable(el)) el.setAttribute('data-scrollhover', '');
 }
 
 function onLeave(e: Event) {
-  (e.target as Element)?.removeAttribute('data-scrollhover');
+  const el = e.target;
+  if (el instanceof Element) el.removeAttribute('data-scrollhover');
 }
 
 export function initScrollbarHover() {

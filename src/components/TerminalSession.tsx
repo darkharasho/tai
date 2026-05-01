@@ -378,8 +378,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
 
   const handleAIRequest = useCallback((prompt: string) => {
     if (aiCleanupRef.current) {
-      providerRef.current.stop();
-      aiCleanupRef.current();
+      try { providerRef.current.stop(); } catch (err) { console.error('AI provider stop failed:', err); }
+      try { aiCleanupRef.current(); } catch (err) { console.error('AI cleanup failed:', err); }
       const staleBlockId = aiBlockIdRef.current;
       if (staleBlockId) {
         setDisplayItems(prev => prev.map(item =>
