@@ -41,6 +41,10 @@ export default function App() {
     return window.tai?.window?.onMaximizedChange?.((m: boolean) => setMaximized(m));
   }, []);
 
+  useEffect(() => {
+    window.tai?.notify?.setActiveTab(activeTabId);
+  }, [activeTabId]);
+
   useEffect(() => initScrollbarHover(), []);
   useEffect(() => initExternalLinks(), []);
 
@@ -189,6 +193,7 @@ export default function App() {
         >
           <TerminalSession
             tabId={tab.id}
+            tabLabel={tab.label}
             ptyId={tab.ptyId}
             cwd={tab.cwd}
             visible={tab.id === activeTabId}
@@ -226,6 +231,8 @@ export default function App() {
         onClaudeEffortChange={(effort) => setSetting('claude.effort', effort)}
         expandToolCalls={!!config['ai.expandToolCalls']}
         onExpandToolCallsChange={(value) => setSetting('ai.expandToolCalls', value)}
+        systemNotifications={!!config['systemNotifications']}
+        onSystemNotificationsChange={(value) => setSetting('systemNotifications', value)}
       />
       <UpdateNotifier
         state={updater.state}

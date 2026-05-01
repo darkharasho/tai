@@ -7,6 +7,7 @@ import { setupPtyService, destroyAllTerminals } from './services/pty';
 import { setupClaudeService, destroyAllClaude } from './services/claude';
 import { setupCodexService, destroyAllCodex } from './services/codex';
 import { setupGeminiService, destroyAllGemini } from './services/gemini';
+import { initFocusTracking, setupNotifyService } from './services/notify';
 import { registerUpdater } from './services/updater';
 
 if (process.env.VITE_DEV_SERVER_URL) {
@@ -103,11 +104,13 @@ function createWindow() {
 
 app.whenReady().then(() => {
   createWindow();
+  if (mainWindow) initFocusTracking(mainWindow);
   registerUpdater(mainWindow!);
   setupPtyService(() => mainWindow);
   setupClaudeService(() => mainWindow);
   setupCodexService(() => mainWindow);
   setupGeminiService(() => mainWindow);
+  setupNotifyService(() => mainWindow);
 });
 
 app.on('before-quit', () => {

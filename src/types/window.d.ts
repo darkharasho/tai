@@ -52,6 +52,18 @@ declare global {
       shell: {
         openExternal: (url: string) => Promise<boolean>;
       };
+      notify: {
+        setActiveTab: (tabId: string) => void;
+        completion: (info: {
+          kind: 'command' | 'ai';
+          tabId: string;
+          tabLabel?: string;
+          provider?: string;
+          command?: string;
+          duration?: number;
+          summary?: string;
+        }) => void;
+      };
       config: {
         get: () => Promise<Record<string, any>>;
         set: (key: string, value: any) => Promise<Record<string, any>>;

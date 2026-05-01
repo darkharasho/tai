@@ -18,6 +18,7 @@ import { hasActiveAi } from '@/utils/hasActiveAi';
 
 interface TerminalSessionProps {
   tabId: string;
+  tabLabel?: string;
   ptyId: number | null;
   cwd: string;
   visible: boolean;
@@ -43,7 +44,7 @@ function nextBlockId(): string {
   return `tm-${crypto.randomUUID()}`;
 }
 
-export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustLevel, aiProvider, onContextModeChange, onRemoteChange, remoteExecMode, onRemoteExecModeChange, onTrustLevelChange, onAiWorkingChange }: TerminalSessionProps) {
+export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visible, trustLevel, aiProvider, onContextModeChange, onRemoteChange, remoteExecMode, onRemoteExecModeChange, onTrustLevelChange, onAiWorkingChange }: TerminalSessionProps) {
   const { config } = useSettings();
   const claudeModel = config['claude.model'] || 'sonnet';
   const claudeEffort = config['claude.effort'] || 'auto';
@@ -73,6 +74,9 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
     currentVersion?: string;
     newVersion?: string;
   } | null>(null);
+
+  const tabLabelRef = useRef(tabLabel);
+  tabLabelRef.current = tabLabel;
 
   const segmenterRef = useRef(new BlockSegmenter());
   const hiddenXtermRef = useRef<HiddenXtermHandle>(null);
@@ -247,6 +251,15 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
         }
         return [...prev, { type: 'command', block: fixedBlock, aiSuggested: isSuggested }];
       });
+      if (pending) {
+        window.tai?.notify?.completion({
+          kind: 'command',
+          tabId,
+          tabLabel: tabLabelRef.current,
+          command: fixedBlock.command,
+          duration: fixedBlock.duration,
+        });
+      }
       refreshCwd(ptyId);
     });
 
@@ -633,6 +646,14 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
         handleInputModeChange('shell');
         cleanup();
         finalize();
+        window.tai?.notify?.completion({
+          kind: 'ai',
+          tabId,
+          tabLabel: tabLabelRef.current,
+          provider: aiProvider,
+          duration: Date.now() - aiStartTime,
+          summary: lastTextEntry,
+        });
       }
     });
 

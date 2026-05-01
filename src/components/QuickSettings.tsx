@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Settings, X, ChevronDown, Check, RefreshCw } from 'lucide-react';
 import type { TrustLevel, AIProvider } from '@/types';
+import { Toggle } from './Toggle';
 import styles from './QuickSettings.module.css';
 
 interface QuickSettingsProps {
@@ -18,6 +19,8 @@ interface QuickSettingsProps {
   onClaudeEffortChange: (effort: string) => void;
   expandToolCalls: boolean;
   onExpandToolCallsChange: (value: boolean) => void;
+  systemNotifications: boolean;
+  onSystemNotificationsChange: (value: boolean) => void;
 }
 
 type Category = 'general' | 'claude';
@@ -106,7 +109,7 @@ function CustomDropdown({ value, options, onChange }: {
   );
 }
 
-export function QuickSettings({ visible, onClose, colorMode, onColorModeChange, trustLevel, onTrustLevelChange, aiProvider, onAIProviderChange, claudeModel, onClaudeModelChange, claudeEffort, onClaudeEffortChange, expandToolCalls, onExpandToolCallsChange }: QuickSettingsProps) {
+export function QuickSettings({ visible, onClose, colorMode, onColorModeChange, trustLevel, onTrustLevelChange, aiProvider, onAIProviderChange, claudeModel, onClaudeModelChange, claudeEffort, onClaudeEffortChange, expandToolCalls, onExpandToolCallsChange, systemNotifications, onSystemNotificationsChange }: QuickSettingsProps) {
   const [category, setCategory] = useState<Category>('general');
   const [version, setVersion] = useState('');
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'up-to-date' | 'available' | 'error'>('idle');
@@ -192,7 +195,12 @@ export function QuickSettings({ visible, onClose, colorMode, onColorModeChange, 
 
                 <div className={styles.settingRow}>
                   <span className={styles.settingLabel}>Expand Tool Calls</span>
-                  <input type="checkbox" checked={expandToolCalls} onChange={e => onExpandToolCallsChange(e.target.checked)} />
+                  <Toggle checked={expandToolCalls} onChange={onExpandToolCallsChange} ariaLabel="Expand tool calls" />
+                </div>
+
+                <div className={styles.settingRow}>
+                  <span className={styles.settingLabel}>Notify on Completion</span>
+                  <Toggle checked={systemNotifications} onChange={onSystemNotificationsChange} ariaLabel="Notify on completion" />
                 </div>
 
                 <div className={styles.settingRow}>

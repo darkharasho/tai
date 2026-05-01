@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { X, Settings } from 'lucide-react';
+import { Toggle } from './Toggle';
 import styles from './SettingsOverlay.module.css';
 
 interface SettingsOverlayProps {
@@ -64,6 +65,10 @@ export function SettingsOverlay({ visible, onClose, config, onSet }: SettingsOve
                     <option value="underline">Underline</option>
                   </select>
                 } />
+                <SettingRow label="System notifications on completion" value={
+                  <Toggle checked={!!config['systemNotifications']}
+                    onChange={v => onSet('systemNotifications', v)} />
+                } />
               </SettingsGroup>
             )}
             {category === 'ai' && (
@@ -97,12 +102,12 @@ export function SettingsOverlay({ visible, onClose, config, onSet }: SettingsOve
             {category === 'appearance' && (
               <SettingsGroup>
                 <SettingRow label="Expand tool calls by default" value={
-                  <input type="checkbox" checked={!!config['ai.expandToolCalls']}
-                    onChange={e => onSet('ai.expandToolCalls', e.target.checked)} />
+                  <Toggle checked={!!config['ai.expandToolCalls']}
+                    onChange={v => onSet('ai.expandToolCalls', v)} />
                 } />
                 <SettingRow label="Gradient Border" value={
-                  <input type="checkbox" checked={config['appearance.gradientBorder']}
-                    onChange={e => onSet('appearance.gradientBorder', e.target.checked)} />
+                  <Toggle checked={!!config['appearance.gradientBorder']}
+                    onChange={v => onSet('appearance.gradientBorder', v)} />
                 } />
                 <SettingRow label="Animation Speed (seconds)" value={
                   <input type="number" value={config['appearance.animationSpeed']}

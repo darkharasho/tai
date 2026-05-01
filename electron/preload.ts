@@ -77,6 +77,18 @@ contextBridge.exposeInMainWorld('tai', {
   shell: {
     openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
   },
+  notify: {
+    setActiveTab: (tabId: string) => ipcRenderer.send('notify:setActiveTab', tabId),
+    completion: (info: {
+      kind: 'command' | 'ai';
+      tabId: string;
+      tabLabel?: string;
+      provider?: string;
+      command?: string;
+      duration?: number;
+      summary?: string;
+    }) => ipcRenderer.send('notify:completion', info),
+  },
   daemon: {
     check: (target: string) => ipcRenderer.invoke('tai:daemon:check', target),
     install: (target: string) => ipcRenderer.invoke('tai:daemon:install', target),
