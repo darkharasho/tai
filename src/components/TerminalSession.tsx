@@ -332,9 +332,12 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
 
   const handleSubmit = useCallback((value: string) => {
     if (inputMode === 'shell') {
+      const toRun = value.includes('\n')
+        ? `bash -c '${value.replace(/'/g, `'\\''`)}'`
+        : value.trim();
       const pendingBlock = {
         id: 'pending',
-        command: value,
+        command: toRun,
         output: '',
         rawOutput: '',
         promptText: promptInfo?.text ?? '',
@@ -342,7 +345,7 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
         duration: 0,
         isRemote: promptInfo?.isRemote ?? false,
       };
-      pendingCommandRef.current = { command: value, startTime: Date.now() };
+      pendingCommandRef.current = { command: toRun, startTime: Date.now() };
       setDisplayItems(prev => {
         const cleaned = prev.map(item =>
           item.type === 'command' && item.block.id === 'pending'
@@ -351,7 +354,7 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
         );
         return [...cleaned, { type: 'command' as const, block: pendingBlock, active: true }];
       });
-      executeCommand(value);
+      executeCommand(toRun);
       setEditValue(undefined);
     } else {
       handleAIRequest(value);
