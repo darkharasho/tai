@@ -133,9 +133,9 @@
 .cmd {
   font-family: var(--font-mono);
   color: var(--text-primary);
-  white-space: nowrap;
+  white-space: pre-wrap;
   overflow: hidden;
-  text-overflow: ellipsis;
+  word-break: break-word;
 }
 
 .cmdDim {

@@ -332,12 +332,14 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
 
   const handleSubmit = useCallback((value: string) => {
     if (inputMode === 'shell') {
-      const toRun = value.includes('\n')
+      const isMultiline = value.includes('\n');
+      const display = isMultiline ? value : value.trim();
+      const toRun = isMultiline
         ? `bash -c '${value.replace(/'/g, `'\\''`)}'`
         : value.trim();
       const pendingBlock = {
         id: 'pending',
-        command: toRun,
+        command: display,
         output: '',
         rawOutput: '',
         promptText: promptInfo?.text ?? '',
@@ -345,7 +347,7 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
         duration: 0,
         isRemote: promptInfo?.isRemote ?? false,
       };
-      pendingCommandRef.current = { command: toRun, startTime: Date.now() };
+      pendingCommandRef.current = { command: display, startTime: Date.now() };
       setDisplayItems(prev => {
         const cleaned = prev.map(item =>
           item.type === 'command' && item.block.id === 'pending'
@@ -650,10 +652,11 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
     navigator.clipboard.writeText(text);
   }, []);
 
-  const handleRerun = useCallback((command: string) => {
+  const handleRerun = useCallback((command: string, displayCommand?: string) => {
+    const display = displayCommand ?? command;
     const pendingBlock = {
       id: 'pending',
-      command,
+      command: display,
       output: '',
       rawOutput: '',
       promptText: promptInfo?.text ?? '',
@@ -661,7 +664,7 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
       duration: 0,
       isRemote: promptInfo?.isRemote ?? false,
     };
-    pendingCommandRef.current = { command, startTime: Date.now() };
+    pendingCommandRef.current = { command: display, startTime: Date.now() };
     setDisplayItems(prev => [...prev, { type: 'command' as const, block: pendingBlock, active: true }]);
     executeCommand(command);
   }, [executeCommand, promptInfo]);
@@ -807,7 +810,7 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
               ? `bash -c '${cmd.replace(/'/g, `'\\''`)}'`
               : cmd;
             aiSuggestedCommands.current.add(toRun);
-            handleRerun(toRun);
+            handleRerun(toRun, cmd);
           }}
           onToolApprove={handleToolApprove}
           onToolReject={handleToolReject}
