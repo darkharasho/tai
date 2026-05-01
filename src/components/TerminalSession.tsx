@@ -800,8 +800,11 @@ export function TerminalSession({ tabId, ptyId, cwd: initialCwd, visible, trustL
           onAskAI={handleAskAI}
           onRerun={handleRerun}
           onRunSuggested={(cmd) => {
-            aiSuggestedCommands.current.add(cmd);
-            handleRerun(cmd);
+            const toRun = cmd.includes('\n')
+              ? `bash -c '${cmd.replace(/'/g, `'\\''`)}'`
+              : cmd;
+            aiSuggestedCommands.current.add(toRun);
+            handleRerun(toRun);
           }}
           onToolApprove={handleToolApprove}
           onToolReject={handleToolReject}
