@@ -266,6 +266,58 @@
   color: var(--text-primary);
 }
 
+/* Markdown tables — terminal/data-grid aesthetic */
+:global(.ai-content) table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+
+:global(.ai-content) th {
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 6px 10px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--text-muted);
+  text-align: left;
+}
+
+:global(.ai-content) td {
+  padding: 6px 10px;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  vertical-align: top;
+}
+
+:global(.ai-content) tbody tr + tr td {
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+:global(.ai-content) tbody tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+:global(.ai-content) tbody tr.summary td {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.025);
+  font-weight: 600;
+}
+
+:global(.ai-content) td.num,
+:global(.ai-content) th.num {
+  font-family: var(--font-mono);
+  text-align: right;
+  font-size: 12px;
+}
+
 /* Tool call rows */
 .tool {
   font-size: 12px;

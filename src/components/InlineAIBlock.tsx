@@ -117,6 +117,17 @@ export function InlineAIBlock({
         </div>
       );
     },
+    td({ children, ...props }: React.HTMLAttributes<HTMLTableCellElement>) {
+      const text = extractText(children).trim();
+      const isNumeric = text.length > 0 && /^[\d,.\s$%+\-/x×]+$/.test(text);
+      return <td className={isNumeric ? 'num' : undefined} {...props}>{children}</td>;
+    },
+    tr({ children, ...props }: React.HTMLAttributes<HTMLTableRowElement>) {
+      const childArr = React.Children.toArray(children);
+      const firstCellText = extractText(childArr[0]).trim();
+      const isSummary = /^(total|totals|sum|subtotal|grand total|average|avg|mean)\b/i.test(firstCellText);
+      return <tr className={isSummary ? 'summary' : undefined} {...props}>{children}</tr>;
+    },
   };
 
   return (
