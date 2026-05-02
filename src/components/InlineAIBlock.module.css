@@ -23,6 +23,69 @@
   font-size: 12px;
   font-weight: 400;
   line-height: 1.5;
+  min-width: 0;
+  flex: 1;
+}
+
+.promptText > :first-child {
+  margin-top: 0;
+}
+
+.promptText > :last-child {
+  margin-bottom: 0;
+}
+
+.promptText p {
+  margin: 0 0 6px;
+}
+
+.promptText code {
+  font-family: var(--font-mono);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 11.5px;
+}
+
+.promptText pre {
+  font-family: var(--font-mono);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin: 6px 0;
+  overflow-x: auto;
+  font-size: 12px;
+}
+
+.promptText pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: 12px;
+}
+
+.promptText ul,
+.promptText ol {
+  margin: 4px 0;
+  padding-left: 18px;
+}
+
+.promptText li {
+  margin-bottom: 2px;
+}
+
+.promptText strong {
+  font-weight: 600;
+}
+
+.promptText a {
+  color: #58a6ff;
+  text-decoration: none;
+}
+
+.promptText a:hover {
+  text-decoration: underline;
 }
 
 /* Card treatment */

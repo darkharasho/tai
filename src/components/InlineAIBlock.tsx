@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
 import { Terminal, Copy, Sparkles, Square, Check, X, Circle, FileText, Pencil, FolderSearch, Search, Globe, ChevronRight, ChevronDown, type LucideIcon } from 'lucide-react';
 import type { AIEntry, AIProvider } from '@/types';
 import styles from './InlineAIBlock.module.css';
@@ -52,6 +53,7 @@ function ToolIcon({ name }: { name: string }) {
   const Icon = TOOL_ICONS[name] || Circle;
   return <Icon size={10} />;
 }
+
 
 export function InlineAIBlock({
   question,
@@ -135,7 +137,11 @@ export function InlineAIBlock({
       {question && (
         <div className={styles.prompt}>
           <Sparkles size={13} className={styles.promptIcon} />
-          <span className={styles.promptText}>{question}</span>
+          <div className={styles.promptText}>
+            <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+              {question}
+            </ReactMarkdown>
+          </div>
         </div>
       )}
       {(streaming || content || (entries && entries.length > 0)) && (
