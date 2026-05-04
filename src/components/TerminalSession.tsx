@@ -626,7 +626,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           setDisplayItems(prev => prev.filter(item => !(item.type === 'ai' && item.id === currentAiId)));
           aiCleanupRef.current = null;
           aiBlockIdRef.current = null;
-          handleInputModeChange('shell');
+          if (queuedPromptsRef.current.length === 0) {
+            handleInputModeChange('shell');
+          }
           cleanup();
           drainQueue();
           return;
@@ -638,7 +640,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         ));
         aiCleanupRef.current = null;
         aiBlockIdRef.current = null;
-        handleInputModeChange('shell');
+        if (queuedPromptsRef.current.length === 0) {
+          handleInputModeChange('shell');
+        }
         cleanup();
         finalize();
         window.tai?.notify?.completion({
