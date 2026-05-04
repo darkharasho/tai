@@ -25,6 +25,9 @@ interface BlockListProps {
   onStopAI?: () => void;
   onSendInput?: (data: string) => void;
   aiProvider?: AIProvider;
+  queuedPrompts?: { id: string; text: string }[];
+  onEditQueued?: (id: string, text: string) => void;
+  onRemoveQueued?: (id: string) => void;
 }
 
 export function BlockList({
@@ -41,6 +44,9 @@ export function BlockList({
   onStopAI,
   onSendInput,
   aiProvider,
+  queuedPrompts,
+  onEditQueued,
+  onRemoveQueued,
 }: BlockListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [manualCollapsed, setManualCollapsed] = useState<Set<string>>(new Set());
@@ -124,6 +130,9 @@ export function BlockList({
                 onCopy={onCopy}
                 onStop={item.streaming ? onStopAI : undefined}
                 aiProvider={aiProvider}
+                queuedPrompts={item.streaming ? queuedPrompts : undefined}
+                onEditQueued={item.streaming ? onEditQueued : undefined}
+                onRemoveQueued={item.streaming ? onRemoveQueued : undefined}
               />
             </div>
           );
