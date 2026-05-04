@@ -75,6 +75,10 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const [awaitingInput, setAwaitingInput] = useState(false);
   const [passwordPrompt, setPasswordPrompt] = useState(false);
   const [editValue, setEditValue] = useState<string | undefined>(undefined);
+  const editValueRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    editValueRef.current = editValue;
+  }, [editValue]);
   const [queuedPrompts, setQueuedPrompts] = useState<QueuedPrompt[]>([]);
   const queuedPromptsRef = useRef<QueuedPrompt[]>([]);
 
@@ -385,7 +389,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         const combined = joinQueuedPrompts(queuedPromptsRef.current);
         setQueuedPrompts([]);
         queuedPromptsRef.current = [];
-        setEditValue(combined);
+        const existing = editValueRef.current;
+        setEditValue(existing && existing.trim() ? `${existing}\n\n${combined}` : combined);
       }
     };
 
