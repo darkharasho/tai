@@ -20,6 +20,7 @@ import {
   addQueuedPrompt,
   editQueuedPrompt,
   removeQueuedPrompt,
+  joinQueuedPrompts,
 } from '@/utils/queuedPrompts';
 
 interface TerminalSessionProps {
@@ -369,6 +370,15 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     const aiStartTime = Date.now();
     let gotContent = false;
 
+    const drainQueue = () => {
+      if (queuedPromptsRef.current.length > 0) {
+        const combined = joinQueuedPrompts(queuedPromptsRef.current);
+        setQueuedPrompts([]);
+        queuedPromptsRef.current = [];
+        handleAIRequest(combined);
+      }
+    };
+
     setDisplayItems(prev => [...prev,
       { type: 'ai' as const, id: aiId, question: prompt, content: '', suggestedCommands: [], streaming: true },
     ]);
@@ -606,6 +616,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           aiBlockIdRef.current = null;
           handleInputModeChange('shell');
           cleanup();
+          drainQueue();
           return;
         }
         setDisplayItems(prev => prev.map(item =>
@@ -626,6 +637,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           duration: Date.now() - aiStartTime,
           summary: lastTextEntry,
         });
+        drainQueue();
       }
     });
 
