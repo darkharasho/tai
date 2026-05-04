@@ -623,11 +623,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
 
       if (msg.type === 'done') {
         if (!gotContent) {
-          setDisplayItems(prev => prev.map(item =>
-            item.type === 'ai' && item.id === currentAiId
-              ? { ...item, streaming: false }
-              : item
-          ));
+          setDisplayItems(prev => prev.filter(item => !(item.type === 'ai' && item.id === currentAiId)));
           aiCleanupRef.current = null;
           aiBlockIdRef.current = null;
           handleInputModeChange('shell');
