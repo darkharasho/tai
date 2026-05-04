@@ -11,8 +11,9 @@ function newId(): string {
 }
 
 export function addQueuedPrompt(queue: QueuedPrompt[], text: string): QueuedPrompt[] {
-  if (!text.trim()) return queue;
-  return [...queue, { id: newId(), text }];
+  const trimmed = text.trim();
+  if (!trimmed) return queue;
+  return [...queue, { id: newId(), text: trimmed }];
 }
 
 export function editQueuedPrompt(
@@ -20,8 +21,9 @@ export function editQueuedPrompt(
   id: string,
   text: string,
 ): QueuedPrompt[] {
-  if (!text.trim()) return removeQueuedPrompt(queue, id);
-  return queue.map(q => (q.id === id ? { ...q, text } : q));
+  const trimmed = text.trim();
+  if (!trimmed) return removeQueuedPrompt(queue, id);
+  return queue.map(q => (q.id === id ? { ...q, text: trimmed } : q));
 }
 
 export function removeQueuedPrompt(queue: QueuedPrompt[], id: string): QueuedPrompt[] {

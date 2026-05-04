@@ -25,6 +25,11 @@ describe('queuedPrompts', () => {
     expect(addQueuedPrompt([], '\n\n')).toHaveLength(0);
   });
 
+  it('addQueuedPrompt trims surrounding whitespace before storing', () => {
+    const result = addQueuedPrompt([], '  hello  ');
+    expect(result[0].text).toBe('hello');
+  });
+
   it('editQueuedPrompt updates only the matching id', () => {
     const seed = addQueuedPrompt(addQueuedPrompt([], 'one'), 'two');
     const edited = editQueuedPrompt(seed, seed[0].id, 'ONE');
