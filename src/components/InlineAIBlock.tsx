@@ -6,6 +6,7 @@ import { Terminal, Copy, Sparkles, Square, Check, X, Circle, FileText, Pencil, F
 import type { AIEntry, AIProvider } from '@/types';
 import styles from './InlineAIBlock.module.css';
 import ToolCallBody, { formatToolLabel } from './ToolCallBody';
+import { QueuedChip } from './QueuedChip';
 import { useSettings } from '@/hooks/useSettings';
 
 const PROVIDER_NAMES: Record<AIProvider, string> = {
@@ -36,6 +37,9 @@ interface InlineAIBlockProps {
   onCopy?: (text: string) => void;
   onStop?: () => void;
   aiProvider?: AIProvider;
+  queuedPrompts?: { id: string; text: string }[];
+  onEditQueued?: (id: string, text: string) => void;
+  onRemoveQueued?: (id: string) => void;
 }
 
 const TOOL_ICONS: Record<string, LucideIcon> = {
@@ -66,6 +70,9 @@ export function InlineAIBlock({
   onCopy,
   onStop,
   aiProvider = 'claude',
+  queuedPrompts,
+  onEditQueued,
+  onRemoveQueued,
 }: InlineAIBlockProps) {
   const runnableCommands = new Set(suggestedCommands ?? []);
   const { config } = useSettings();
@@ -227,6 +234,20 @@ export function InlineAIBlock({
                 </div>
               ) : null}
             </div>
+
+            {queuedPrompts && queuedPrompts.length > 0 && onEditQueued && onRemoveQueued && (
+              <div className={styles.queueRow}>
+                <span className={styles.queueLabel}>Queued</span>
+                {queuedPrompts.map(q => (
+                  <QueuedChip
+                    key={q.id}
+                    text={q.text}
+                    onSave={(text) => onEditQueued(q.id, text)}
+                    onRemove={() => onRemoveQueued(q.id)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

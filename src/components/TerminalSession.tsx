@@ -15,6 +15,13 @@ import { createGeminiProvider } from '@/providers/gemini';
 import { useSettings } from '@/hooks/useSettings';
 import type { AIProvider, ContextMode, TrustLevel, AIEntry } from '@/types';
 import { hasActiveAi } from '@/utils/hasActiveAi';
+import {
+  type QueuedPrompt,
+  addQueuedPrompt,
+  editQueuedPrompt,
+  removeQueuedPrompt,
+  joinQueuedPrompts,
+} from '@/utils/queuedPrompts';
 
 interface TerminalSessionProps {
   tabId: string;
@@ -68,6 +75,24 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const [awaitingInput, setAwaitingInput] = useState(false);
   const [passwordPrompt, setPasswordPrompt] = useState(false);
   const [editValue, setEditValue] = useState<string | undefined>(undefined);
+  const editValueRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    editValueRef.current = editValue;
+  }, [editValue]);
+  const [queuedPrompts, setQueuedPrompts] = useState<QueuedPrompt[]>([]);
+  const queuedPromptsRef = useRef<QueuedPrompt[]>([]);
+
+  useEffect(() => {
+    queuedPromptsRef.current = queuedPrompts;
+  }, [queuedPrompts]);
+
+  const handleEditQueued = useCallback((id: string, text: string) => {
+    setQueuedPrompts(prev => editQueuedPrompt(prev, id, text));
+  }, []);
+
+  const handleRemoveQueued = useCallback((id: string) => {
+    setQueuedPrompts(prev => removeQueuedPrompt(prev, id));
+  }, []);
   const [daemonCardState, setDaemonCardState] = useState<{
     show: boolean;
     mode: 'install' | 'update';
@@ -83,6 +108,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const inputRef = useRef<TerminalInputHandle>(null);
   const providerRef = useRef(createProvider(aiProvider, tabId));
   const aiCleanupRef = useRef<(() => void) | null>(null);
+  const isAiActive = () => aiCleanupRef.current !== null;
   const aiBlockIdRef = useRef<string | null>(null);
   const aiSuggestedCommands = useRef<Set<string>>(new Set());
   const pendingCommandRef = useRef<{ command: string; startTime: number } | null>(null);
@@ -343,59 +369,30 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     window.tai?.pty?.write(ptyId, command + '\n');
   }, [ptyId]);
 
-  const handleSubmit = useCallback((value: string) => {
-    if (inputMode === 'shell') {
-      const isMultiline = value.includes('\n');
-      const display = isMultiline ? value : value.trim();
-      const toRun = isMultiline
-        ? `bash -c '${value.replace(/'/g, `'\\''`)}'`
-        : value.trim();
-      const pendingBlock = {
-        id: 'pending',
-        command: display,
-        output: '',
-        rawOutput: '',
-        promptText: promptInfo?.text ?? '',
-        startTime: Date.now(),
-        duration: 0,
-        isRemote: promptInfo?.isRemote ?? false,
-      };
-      pendingCommandRef.current = { command: display, startTime: Date.now() };
-      setDisplayItems(prev => {
-        const cleaned = prev.map(item =>
-          item.type === 'command' && item.block.id === 'pending'
-            ? { ...item, active: false, block: { ...item.block, id: `stale-${Date.now()}` } }
-            : item
-        );
-        return [...cleaned, { type: 'command' as const, block: pendingBlock, active: true }];
-      });
-      executeCommand(toRun);
-      setEditValue(undefined);
-    } else {
-      handleAIRequest(value);
-    }
-  }, [inputMode, executeCommand, promptInfo]);
-
   const handleAIRequest = useCallback((prompt: string) => {
-    if (aiCleanupRef.current) {
-      try { providerRef.current.stop(); } catch (err) { console.error('AI provider stop failed:', err); }
-      try { aiCleanupRef.current(); } catch (err) { console.error('AI cleanup failed:', err); }
-      const staleBlockId = aiBlockIdRef.current;
-      if (staleBlockId) {
-        setDisplayItems(prev => prev.map(item =>
-          item.type === 'ai' && item.id === staleBlockId
-            ? { ...item, streaming: false }
-            : item
-        ));
-      }
-      aiCleanupRef.current = null;
-      aiBlockIdRef.current = null;
-    }
-
     handleInputModeChange('ai');
     const aiId = nextBlockId();
     const aiStartTime = Date.now();
     let gotContent = false;
+
+    const drainQueue = () => {
+      if (queuedPromptsRef.current.length > 0) {
+        const combined = joinQueuedPrompts(queuedPromptsRef.current);
+        setQueuedPrompts([]);
+        queuedPromptsRef.current = [];
+        handleAIRequestRef.current(combined);
+      }
+    };
+
+    const fallbackQueueToInput = () => {
+      if (queuedPromptsRef.current.length > 0) {
+        const combined = joinQueuedPrompts(queuedPromptsRef.current);
+        setQueuedPrompts([]);
+        queuedPromptsRef.current = [];
+        const existing = editValueRef.current;
+        setEditValue(existing && existing.trim() ? `${existing}\n\n${combined}` : combined);
+      }
+    };
 
     setDisplayItems(prev => [...prev,
       { type: 'ai' as const, id: aiId, question: prompt, content: '', suggestedCommands: [], streaming: true },
@@ -601,6 +598,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         }
         lastTextEntry = errorText;
         updateItem();
+        fallbackQueueToInput();
         return;
       }
 
@@ -625,15 +623,14 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
 
       if (msg.type === 'done') {
         if (!gotContent) {
-          setDisplayItems(prev => prev.map(item =>
-            item.type === 'ai' && item.id === currentAiId
-              ? { ...item, streaming: false }
-              : item
-          ));
+          setDisplayItems(prev => prev.filter(item => !(item.type === 'ai' && item.id === currentAiId)));
           aiCleanupRef.current = null;
           aiBlockIdRef.current = null;
-          handleInputModeChange('shell');
+          if (queuedPromptsRef.current.length === 0) {
+            handleInputModeChange('shell');
+          }
           cleanup();
+          drainQueue();
           return;
         }
         setDisplayItems(prev => prev.map(item =>
@@ -643,7 +640,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         ));
         aiCleanupRef.current = null;
         aiBlockIdRef.current = null;
-        handleInputModeChange('shell');
+        if (queuedPromptsRef.current.length === 0) {
+          handleInputModeChange('shell');
+        }
         cleanup();
         finalize();
         window.tai?.notify?.completion({
@@ -654,6 +653,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           duration: Date.now() - aiStartTime,
           summary: lastTextEntry,
         });
+        drainQueue();
       }
     });
 
@@ -662,6 +662,47 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
 
     providerRef.current.send(fullPrompt, cwd, trustLevel, claudeModel, claudeEffort);
   }, [cwd, trustLevel, handleInputModeChange, promptInfo, remoteExecMode, claudeModel, claudeEffort]);
+
+  const handleAIRequestRef = useRef(handleAIRequest);
+  useEffect(() => {
+    handleAIRequestRef.current = handleAIRequest;
+  }, [handleAIRequest]);
+
+  const handleSubmit = useCallback((value: string) => {
+    if (inputMode === 'shell') {
+      const isMultiline = value.includes('\n');
+      const display = isMultiline ? value : value.trim();
+      const toRun = isMultiline
+        ? `bash -c '${value.replace(/'/g, `'\\''`)}'`
+        : value.trim();
+      const pendingBlock = {
+        id: 'pending',
+        command: display,
+        output: '',
+        rawOutput: '',
+        promptText: promptInfo?.text ?? '',
+        startTime: Date.now(),
+        duration: 0,
+        isRemote: promptInfo?.isRemote ?? false,
+      };
+      pendingCommandRef.current = { command: display, startTime: Date.now() };
+      setDisplayItems(prev => {
+        const cleaned = prev.map(item =>
+          item.type === 'command' && item.block.id === 'pending'
+            ? { ...item, active: false, block: { ...item.block, id: `stale-${Date.now()}` } }
+            : item
+        );
+        return [...cleaned, { type: 'command' as const, block: pendingBlock, active: true }];
+      });
+      executeCommand(toRun);
+      setEditValue(undefined);
+    } else if (aiWorking || isAiActive()) {
+      setQueuedPrompts(prev => addQueuedPrompt(prev, value));
+      setEditValue('');
+    } else {
+      handleAIRequest(value);
+    }
+  }, [inputMode, executeCommand, promptInfo, aiWorking, handleAIRequest]);
 
   const handleAskAI = useCallback((block: import('@/types').SegmentedBlock) => {
     const prompt = `The following command ran:\n\n\`\`\`\n$ ${block.command}\n${block.output}\n\`\`\`\n\nAnalyze this and suggest a fix if needed. If you suggest a command, put it in a \`\`\`bash code block.`;
@@ -706,6 +747,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       aiBlockIdRef.current = null;
       handleInputModeChange('shell');
     }
+    setQueuedPrompts([]);
+    queuedPromptsRef.current = [];
   }, [handleInputModeChange]);
 
   const handleToolApprove = useCallback((item: DisplayItem & { type: 'approval' }) => {
@@ -837,6 +880,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           onToolReject={handleToolReject}
           onStopAI={handleStopAI}
           onSendInput={handleSendInput}
+          queuedPrompts={queuedPrompts}
+          onEditQueued={handleEditQueued}
+          onRemoveQueued={handleRemoveQueued}
           aiProvider={aiProvider}
         />
       )}
