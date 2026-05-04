@@ -376,7 +376,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         const combined = joinQueuedPrompts(queuedPromptsRef.current);
         setQueuedPrompts([]);
         queuedPromptsRef.current = [];
-        handleAIRequest(combined);
+        handleAIRequestRef.current(combined);
       }
     };
 
@@ -657,6 +657,11 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
 
     providerRef.current.send(fullPrompt, cwd, trustLevel, claudeModel, claudeEffort);
   }, [cwd, trustLevel, handleInputModeChange, promptInfo, remoteExecMode, claudeModel, claudeEffort]);
+
+  const handleAIRequestRef = useRef(handleAIRequest);
+  useEffect(() => {
+    handleAIRequestRef.current = handleAIRequest;
+  }, [handleAIRequest]);
 
   const handleSubmit = useCallback((value: string) => {
     if (inputMode === 'shell') {
