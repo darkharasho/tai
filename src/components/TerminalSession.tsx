@@ -857,6 +857,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           onToolReject={handleToolReject}
           onStopAI={handleStopAI}
           onSendInput={handleSendInput}
+          queuedPrompts={queuedPrompts}
+          onEditQueued={handleEditQueued}
+          onRemoveQueued={handleRemoveQueued}
           aiProvider={aiProvider}
         />
       )}
