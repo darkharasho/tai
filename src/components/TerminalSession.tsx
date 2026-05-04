@@ -726,6 +726,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       aiBlockIdRef.current = null;
       handleInputModeChange('shell');
     }
+    setQueuedPrompts([]);
+    queuedPromptsRef.current = [];
   }, [handleInputModeChange]);
 
   const handleToolApprove = useCallback((item: DisplayItem & { type: 'approval' }) => {
