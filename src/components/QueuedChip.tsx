@@ -12,6 +12,7 @@ export function QueuedChip({ text, onSave, onRemove }: QueuedChipProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(text);
   const inputRef = useRef<HTMLInputElement>(null);
+  const cancellingRef = useRef(false);
 
   useEffect(() => {
     if (isEditing) {
@@ -25,11 +26,16 @@ export function QueuedChip({ text, onSave, onRemove }: QueuedChipProps) {
   }, [text, isEditing]);
 
   const commit = () => {
+    if (cancellingRef.current) {
+      cancellingRef.current = false;
+      return;
+    }
     setIsEditing(false);
     if (draft !== text) onSave(draft);
   };
 
   const cancel = () => {
+    cancellingRef.current = true;
     setDraft(text);
     setIsEditing(false);
   };
