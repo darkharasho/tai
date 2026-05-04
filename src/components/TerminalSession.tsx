@@ -379,6 +379,15 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       }
     };
 
+    const fallbackQueueToInput = () => {
+      if (queuedPromptsRef.current.length > 0) {
+        const combined = joinQueuedPrompts(queuedPromptsRef.current);
+        setQueuedPrompts([]);
+        queuedPromptsRef.current = [];
+        setEditValue(combined);
+      }
+    };
+
     setDisplayItems(prev => [...prev,
       { type: 'ai' as const, id: aiId, question: prompt, content: '', suggestedCommands: [], streaming: true },
     ]);
@@ -583,6 +592,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         }
         lastTextEntry = errorText;
         updateItem();
+        fallbackQueueToInput();
         return;
       }
 
