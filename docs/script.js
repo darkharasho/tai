@@ -131,16 +131,42 @@ document.addEventListener("DOMContentLoaded", () => {
       await typeInto(ui.textEl, "fix the failing auth test", 28);
       await sleep(reduced ? 0 : 500);
 
-      // Frame 3: input clears, command block runs (echo of question) and AI block appears
+      // Frame 3: input clears, Claude responds in markdown, then suggestion appears
       renderInput({ mode: "ai", text: "", ghost: "", showCursor: true });
-      block({
-        aiName: "claude · sonnet 4.6",
-        dur: "1.2s",
-        variant: "ai",
-        output:
-          '<div><span class="t-dim">I see one failing test in </span><span style="color:#bec6d0">tests/auth.test.ts</span><span class="t-dim">. Running it scoped should reproduce it.</span></div>',
-      });
-      await sleep(reduced ? 0 : 700);
+      const claudeBlock = document.createElement("div");
+      claudeBlock.className = "t-block t-block--ai";
+      claudeBlock.innerHTML =
+        '<div class="t-block__header">' +
+          '<span class="t-claude-logo">C</span>' +
+          '<span class="t-ai-name">Claude</span>' +
+          '<span class="t-stream-dot"></span>' +
+        '</div>' +
+        '<div class="t-block__body t-md" id="claude-md"></div>';
+      body.appendChild(claudeBlock);
+      const md = claudeBlock.querySelector("#claude-md");
+      scrollBottom();
+
+      const paragraphs = [
+        '<p>Looks like there\'s one failing test in <code>tests/auth.test.ts</code>. Two likely culprits:</p>',
+        '<ul>' +
+          '<li>The token refresh path is comparing against <code>Date.now()</code> in seconds rather than ms.</li>' +
+          '<li>The mock <strong>jwt.verify</strong> isn\'t restored between cases, so state bleeds across tests.</li>' +
+        '</ul>',
+        '<p>Want me to run it scoped first so we can confirm the failure before patching?</p>',
+      ];
+      for (const p of paragraphs) {
+        const div = document.createElement("div");
+        div.innerHTML = p;
+        while (div.firstChild) md.appendChild(div.firstChild);
+        scrollBottom();
+        await sleep(reduced ? 0 : 550);
+      }
+      claudeBlock.querySelector(".t-stream-dot")?.remove();
+      const dur = document.createElement("span");
+      dur.className = "t-duration";
+      dur.textContent = "1.4s";
+      claudeBlock.querySelector(".t-block__header").appendChild(dur);
+      await sleep(reduced ? 0 : 400);
 
       const suggest = block({
         aiName: "suggested command",
@@ -150,8 +176,6 @@ document.addEventListener("DOMContentLoaded", () => {
           '<div><span class="t-dollar">$</span> <span style="color:#bec6d0">npm test -- --workspace=app tests/auth.test.ts</span></div>',
         actions: true,
       });
-      // Replace empty duration pill with nothing visually
-      suggest.querySelector(".t-duration").remove();
       await sleep(reduced ? 0 : 1400);
 
       // Frame 4: approve → real shell block with PASS output
