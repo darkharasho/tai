@@ -726,6 +726,11 @@ button { font: inherit; cursor: pointer; }
   font-weight: 600;
 }
 .t-ai-name--agent { color: var(--tai-agent); }
+.t-provider-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
 
 .t-question {
   display: flex;
