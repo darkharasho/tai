@@ -80,6 +80,21 @@ document.addEventListener("DOMContentLoaded", () => {
     loop();
   }
 
+  const reveals = document.querySelectorAll(".reveal");
+  if (reveals.length && "IntersectionObserver" in window) {
+    const io = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("is-visible");
+          io.unobserve(entry.target);
+        }
+      }
+    }, { rootMargin: "0px 0px -10% 0px", threshold: 0.05 });
+    reveals.forEach((el) => io.observe(el));
+  } else {
+    reveals.forEach((el) => el.classList.add("is-visible"));
+  }
+
   document.querySelectorAll(".copy").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const code = btn.parentElement.querySelector("code");
