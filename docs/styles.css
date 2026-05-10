@@ -272,3 +272,48 @@ button { font: inherit; cursor: pointer; }
   .hero__inner { grid-template-columns: 1fr; gap: 40px; }
   .terminal__body { min-height: 280px; }
 }
+
+.t-prompt { color: var(--accent); }
+.t-user { color: #e6e6ee; }
+.t-ghost { color: rgba(255, 255, 255, 0.22); }
+.t-dim { color: var(--text-dim); }
+.t-ai { color: #c4b5fd; }
+.t-ok { color: #4ade80; }
+.t-err { color: #f87171; }
+.t-banner {
+  display: inline-block;
+  margin: 8px 0;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(139, 92, 246, 0.16);
+  color: #c4b5fd;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.t-kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  margin: 0 2px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  font-size: 11px;
+}
+.t-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 1.1em;
+  background: var(--accent);
+  vertical-align: text-bottom;
+  margin-left: 1px;
+  animation: blink 1s steps(2, end) infinite;
+}
+@keyframes blink {
+  to { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-cursor { animation: none; }
+}
