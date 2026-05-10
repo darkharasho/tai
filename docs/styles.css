@@ -523,8 +523,10 @@ button { font: inherit; cursor: pointer; }
 .t-block::after {
   content: "";
   position: absolute;
-  width: 60px;
-  height: 60px;
+  width: 50%;
+  height: 50%;
+  max-width: 140px;
+  max-height: 140px;
   pointer-events: none;
 }
 .t-block::before {
