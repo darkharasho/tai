@@ -88,6 +88,33 @@ document.addEventListener("DOMContentLoaded", () => {
       return div;
     }
 
+    const toolIcons = {
+      Read: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+      Grep: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
+      Bash: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>',
+      Edit: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>',
+    };
+    const okSVG = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+
+    function addTool(parent, { name, label }) {
+      const div = document.createElement("div");
+      div.className = "t-tool is-active";
+      div.innerHTML =
+        `<span class="t-tool__chevron"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>` +
+        `<span class="t-tool__icon">${toolIcons[name] || toolIcons.Bash}</span>` +
+        `<span class="t-tool__name">${name}</span>` +
+        `<span class="t-tool__label">${label}</span>` +
+        `<span class="t-tool__status"><span class="t-tool__spin"></span></span>`;
+      parent.appendChild(div);
+      scrollBottom();
+      return div;
+    }
+    function finishTool(toolEl) {
+      toolEl.classList.remove("is-active");
+      const status = toolEl.querySelector(".t-tool__status");
+      if (status) status.innerHTML = `<span class="t-tool__status--ok">${okSVG}</span>`;
+    }
+
     function questionRow(text) {
       const div = document.createElement("div");
       div.className = "t-question";
@@ -183,10 +210,33 @@ document.addEventListener("DOMContentLoaded", () => {
       const claude = claudeBlock();
       const md = claude.querySelector("#claude-md");
 
+      // First paragraph
+      const p1 = document.createElement("p");
+      p1.innerHTML = 'Let me check what\'s happening in <code>tests/auth.test.ts</code>.';
+      md.appendChild(p1);
+      scrollBottom();
+      await sleep(reduced ? 0 : 500);
+
+      // Tool calls stream one at a time
+      const t1 = addTool(md, { name: "Read", label: "tests/auth.test.ts" });
+      await sleep(reduced ? 0 : 700);
+      finishTool(t1);
+      await sleep(reduced ? 0 : 300);
+
+      const t2 = addTool(md, { name: "Grep", label: '"Date.now" · src/auth' });
+      await sleep(reduced ? 0 : 650);
+      finishTool(t2);
+      await sleep(reduced ? 0 : 300);
+
+      const t3 = addTool(md, { name: "Read", label: "src/auth/token.ts" });
+      await sleep(reduced ? 0 : 550);
+      finishTool(t3);
+      await sleep(reduced ? 0 : 400);
+
       const paragraphs = [
-        '<p>Looks like there\'s one failing test in <code>tests/auth.test.ts</code>. Two likely culprits:</p>',
+        '<p>Found two likely culprits:</p>',
         '<ul>' +
-          '<li>The token refresh path is comparing against <code>Date.now()</code> in seconds rather than ms.</li>' +
+          '<li>The token refresh path compares against <code>Date.now()</code> in seconds rather than ms.</li>' +
           '<li>The mock <strong>jwt.verify</strong> isn\'t restored between cases, so state bleeds across tests.</li>' +
         '</ul>',
         '<p>Want me to run it scoped first so we can confirm before patching?</p>',
@@ -196,7 +246,7 @@ document.addEventListener("DOMContentLoaded", () => {
         tmp.innerHTML = p;
         while (tmp.firstChild) md.appendChild(tmp.firstChild);
         scrollBottom();
-        await sleep(reduced ? 0 : 550);
+        await sleep(reduced ? 0 : 500);
       }
       claude.querySelector(".t-stream-dot")?.remove();
       const dur = document.createElement("span");

@@ -579,6 +579,45 @@ button { font: inherit; cursor: pointer; }
   0%, 100% { opacity: 0.3; }
   50% { opacity: 1; }
 }
+
+.t-tool {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  margin-bottom: 3px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--tai-text-muted);
+}
+.t-tool:last-child { margin-bottom: 0; }
+.t-tool__chevron { color: var(--tai-text-muted); display: inline-flex; opacity: 0.6; flex-shrink: 0; }
+.t-tool__icon { color: var(--tai-ai); display: inline-flex; flex-shrink: 0; }
+.t-tool__name {
+  color: var(--tai-text-secondary);
+  font-weight: 500;
+  font-family: var(--tai-font-sans);
+  flex-shrink: 0;
+}
+.t-tool.is-active .t-tool__name { color: var(--tai-ai); }
+.t-tool__label {
+  font-family: var(--tai-font-mono);
+  opacity: 0.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+.t-tool__status { display: inline-flex; flex-shrink: 0; }
+.t-tool__status--ok { color: #00ff88; }
+.t-tool__status--err { color: #ef4444; }
+.t-tool__spin {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--tai-ai);
+  animation: aiPulse 1.2s ease-in-out infinite;
+}
 .t-block__header {
   display: flex;
   align-items: center;
