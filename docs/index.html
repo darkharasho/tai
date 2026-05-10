@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=16" />
+  <link rel="stylesheet" href="styles.css?v=17" />
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -43,8 +43,8 @@
           <h1 class="hero__title">Your terminal,<br /><span class="grad">but smarter.</span></h1>
           <p class="hero__sub">Type a command, run it. Type a question, get an answer. No mode switching, no separate windows, no copy-pasting. TAI figures out which one you meant.</p>
           <div class="hero__cta">
-            <a class="btn btn--primary" href="https://github.com/darkharasho/tai/releases/latest">
-              Download for Linux
+            <a class="btn btn--primary" id="hero-download" href="https://github.com/darkharasho/tai/releases/latest" data-os-label>
+              Download
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
             </a>
             <a class="btn btn--ghost" href="https://github.com/darkharasho/tai">
@@ -200,13 +200,16 @@
         <div class="install">
           <div class="install__col">
             <h3 class="install__title">Download</h3>
-            <p class="install__lede">Latest AppImage for Linux:</p>
-            <div class="codeblock">
-              <pre><code>curl -L https://github.com/darkharasho/tai/releases/latest \
-  -o tai.AppImage
-chmod +x tai.AppImage
-./tai.AppImage</code></pre>
-              <button class="copy" type="button" aria-label="Copy install command">Copy</button>
+            <p class="install__lede" id="install-lede">We detected your platform — grab the build that matches.</p>
+            <a class="btn btn--primary btn--lg" id="install-download" href="https://github.com/darkharasho/tai/releases/latest" data-os-label>
+              Download
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
+            </a>
+            <div class="install__alts" id="install-alts">
+              <span class="install__alts-label">Other platforms:</span>
+              <a href="https://github.com/darkharasho/tai/releases/latest" data-platform="mac">macOS</a>
+              <a href="https://github.com/darkharasho/tai/releases/latest" data-platform="win">Windows</a>
+              <a href="https://github.com/darkharasho/tai/releases/latest" data-platform="linux">Linux</a>
             </div>
             <p class="install__note">First, install the <a href="https://docs.anthropic.com/en/docs/claude-code">Claude CLI</a> and authenticate it.</p>
           </div>
@@ -241,6 +244,6 @@ npm run dist     # build distributable</code></pre>
       </nav>
     </div>
   </footer>
-  <script src="script.js?v=16" defer></script>
+  <script src="script.js?v=17" defer></script>
 </body>
 </html>

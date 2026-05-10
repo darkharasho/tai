@@ -302,6 +302,55 @@ document.addEventListener("DOMContentLoaded", () => {
     reveals.forEach((el) => el.classList.add("is-visible"));
   }
 
+  // OS detection + dynamic download links
+  (function setupDownloads() {
+    const ua = navigator.userAgent;
+    const platform = (navigator.userAgentData?.platform || navigator.platform || "").toLowerCase();
+    let os = "linux";
+    let label = "Linux";
+    if (/win/i.test(ua) || /win/.test(platform)) { os = "win"; label = "Windows"; }
+    else if (/mac/i.test(ua) || /mac/.test(platform) || /iphone|ipad|ipod/i.test(ua)) { os = "mac"; label = "macOS"; }
+    else if (/linux/i.test(ua) || /linux/.test(platform)) { os = "linux"; label = "Linux"; }
+
+    document.querySelectorAll("[data-os-label]").forEach((el) => {
+      const icon = el.querySelector("svg");
+      el.innerHTML = "Download for " + label + " ";
+      if (icon) el.appendChild(icon);
+    });
+
+    document.querySelectorAll(".install__alts a[data-platform]").forEach((a) => {
+      if (a.dataset.platform === os) a.classList.add("is-current");
+    });
+
+    const lede = document.getElementById("install-lede");
+    if (lede) lede.textContent = "Detected " + label + ". Grab the build that matches your platform.";
+
+    function pickAsset(assets) {
+      const find = (re) => assets.find((a) => re.test(a.name))?.browser_download_url;
+      const macAsset = find(/\.dmg$/i);
+      const winAsset = find(/Setup.*\.exe$/i) || find(/\.exe$/i);
+      const linuxAsset = find(/\.AppImage$/i);
+      return { mac: macAsset, win: winAsset, linux: linuxAsset };
+    }
+
+    fetch("https://api.github.com/repos/darkharasho/tai/releases/latest", { headers: { Accept: "application/vnd.github+json" } })
+      .then((r) => r.ok ? r.json() : null)
+      .then((rel) => {
+        if (!rel || !rel.assets) return;
+        const urls = pickAsset(rel.assets);
+        const primary = urls[os] || rel.html_url;
+        const heroBtn = document.getElementById("hero-download");
+        const installBtn = document.getElementById("install-download");
+        if (heroBtn && primary) heroBtn.href = primary;
+        if (installBtn && primary) installBtn.href = primary;
+        document.querySelectorAll(".install__alts a[data-platform]").forEach((a) => {
+          const u = urls[a.dataset.platform];
+          if (u) a.href = u;
+        });
+      })
+      .catch(() => { /* fall back to releases page links */ });
+  })();
+
   document.querySelectorAll(".copy").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const code = btn.parentElement.querySelector("code");

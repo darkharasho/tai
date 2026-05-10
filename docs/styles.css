@@ -226,6 +226,7 @@ button { font: inherit; cursor: pointer; }
   box-shadow: var(--shadow-glow);
 }
 .btn--primary:hover { transform: translateY(-1px); background: #14c39a; }
+.btn--lg { padding: 14px 22px; font-size: 16px; }
 .btn--ghost {
   background: rgba(255, 255, 255, 0.04);
   border-color: var(--border-strong);
@@ -962,7 +963,29 @@ button { font: inherit; cursor: pointer; }
   font-weight: 600;
 }
 .install__lede { margin: 0 0 16px; color: var(--text-muted); font-size: 14.5px; }
-.install__note { margin: 14px 0 0; color: var(--text-dim); font-size: 13px; }
+.install__note { margin: 18px 0 0; color: var(--text-dim); font-size: 13px; }
+.install__alts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.install__alts-label { color: var(--text-dim); }
+.install__alts a {
+  color: var(--text-muted);
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.12);
+  padding-bottom: 1px;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.install__alts a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+.install__alts a.is-current {
+  color: var(--accent);
+  border-bottom-color: transparent;
+  font-weight: 500;
+}
 .install__note a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
 
 .codeblock {
