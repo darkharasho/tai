@@ -172,6 +172,43 @@
         </div>
       </div>
     </section>
+
+    <section id="install" class="section section--alt">
+      <div class="container">
+        <header class="section__header">
+          <span class="eyebrow">Quick start</span>
+          <h2 class="section__title">Up and running in a minute.</h2>
+          <p class="section__sub">Grab the AppImage, or build from source. TAI uses the Claude CLI as its AI backend — install it first.</p>
+        </header>
+        <div class="install">
+          <div class="install__col">
+            <h3 class="install__title">Download</h3>
+            <p class="install__lede">Latest AppImage for Linux:</p>
+            <div class="codeblock">
+              <pre><code>curl -L https://github.com/darkharasho/tai/releases/latest \
+  -o tai.AppImage
+chmod +x tai.AppImage
+./tai.AppImage</code></pre>
+              <button class="copy" type="button" aria-label="Copy install command">Copy</button>
+            </div>
+            <p class="install__note">First, install the <a href="https://docs.anthropic.com/en/docs/claude-code">Claude CLI</a> and authenticate it.</p>
+          </div>
+          <div class="install__col">
+            <h3 class="install__title">Build from source</h3>
+            <p class="install__lede">Node 20+ recommended.</p>
+            <div class="codeblock">
+              <pre><code>git clone https://github.com/darkharasho/tai.git
+cd tai
+npm install
+npm run dev      # development
+npm run dist     # build distributable</code></pre>
+              <button class="copy" type="button" aria-label="Copy build command">Copy</button>
+            </div>
+            <p class="install__note">Releases are built and signed in CI on every tag.</p>
+          </div>
+        </div>
+      </div>
+    </section>
   </main>
   <footer id="footer"></footer>
   <script src="script.js" defer></script>

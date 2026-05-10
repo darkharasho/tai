@@ -79,4 +79,24 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     loop();
   }
+
+  document.querySelectorAll(".copy").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const code = btn.parentElement.querySelector("code");
+      if (!code) return;
+      try {
+        await navigator.clipboard.writeText(code.textContent.trim());
+        const orig = btn.textContent;
+        btn.textContent = "Copied";
+        btn.classList.add("is-copied");
+        setTimeout(() => {
+          btn.textContent = orig;
+          btn.classList.remove("is-copied");
+        }, 1600);
+      } catch {
+        btn.textContent = "Press Ctrl+C";
+        setTimeout(() => (btn.textContent = "Copy"), 1600);
+      }
+    });
+  });
 });
