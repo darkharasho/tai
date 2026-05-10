@@ -236,13 +236,13 @@ button { font: inherit; cursor: pointer; }
 
 .terminal {
   position: relative;
-  background: #141719;
+  background: #0a0c0d;
   border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 10px;
   box-shadow: var(--shadow-lg), 0 0 0 1px rgba(255, 255, 255, 0.02) inset;
   overflow: hidden;
   font-family: "Fira Code", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 13px;
+  font-size: 12.5px;
   line-height: 1.6;
   color: #bec6d0;
 }
@@ -254,7 +254,7 @@ button { font: inherit; cursor: pointer; }
   background: linear-gradient(90deg, #00a884, #8b5cf6, #ea580c, #00a884);
   background-size: 200% 100%;
   animation: shimmer 8s linear infinite;
-  z-index: 2;
+  z-index: 3;
 }
 @keyframes shimmer {
   0% { background-position: 0% 0; }
@@ -263,29 +263,101 @@ button { font: inherit; cursor: pointer; }
 .terminal__bar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  padding: 11px 14px;
-  background: #0c0f11;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 8px 6px 8px 10px;
+  background: #0a0c0d;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  min-height: 38px;
 }
-.terminal__dot {
-  width: 11px; height: 11px;
-  border-radius: 50%;
-  display: inline-block;
-}
-.terminal__title {
-  margin-left: 10px;
-  color: #6b7480;
+.terminal__tabs { display: flex; gap: 4px; }
+.terminal__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 6px;
   font-family: "Geist", system-ui, sans-serif;
   font-size: 12px;
-  letter-spacing: 0.01em;
+  color: #bec6d0;
+  background: transparent;
+  border: 1px solid transparent;
 }
+.terminal__tab.is-active {
+  background: rgba(0, 168, 132, 0.08);
+  border-color: rgba(0, 168, 132, 0.25);
+}
+.terminal__tab-num { color: #6b7480; }
+.terminal__tab-icon { color: #00a884; }
+.terminal__controls { display: flex; align-items: center; gap: 2px; }
+.terminal__ctl {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px; height: 28px;
+  background: transparent;
+  border: 0;
+  color: #6b7480;
+  border-radius: 5px;
+  cursor: default;
+}
+.terminal__ctl:hover { background: rgba(255, 255, 255, 0.04); color: #bec6d0; }
+.terminal__ctl--close:hover { background: #ef4444; color: #fff; }
+
 .terminal__body {
-  padding: 20px 22px;
-  min-height: 400px;
-  white-space: pre-wrap;
-  word-break: break-word;
+  padding: 18px 16px 12px;
+  min-height: 460px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
+
+.terminal__input-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin: 0 14px 14px;
+  background: #141719;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  position: relative;
+  min-height: 38px;
+}
+.terminal__input-row::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+  padding: 1px;
+  background: linear-gradient(90deg, rgba(0, 168, 132, 0.4), rgba(139, 92, 246, 0.4));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.terminal__input-row.is-focused::before { opacity: 1; }
+.terminal__input-text { flex: 1; min-width: 0; }
+.terminal__mode-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-family: "Geist", system-ui, sans-serif;
+  font-size: 10.5px;
+  color: #6b7480;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.terminal__mode-pill.is-ai { color: #c4b5fd; background: rgba(139, 92, 246, 0.12); border-color: rgba(139, 92, 246, 0.3); }
+.terminal__mode-key {
+  font-size: 10px;
+  color: #6b7480;
+  margin-right: 6px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .terminal::before { animation: none; }
 }
@@ -296,65 +368,88 @@ button { font: inherit; cursor: pointer; }
   .terminal__body { min-height: 280px; }
 }
 
-.t-user-name { color: #00a884; font-weight: 500; }
-.t-ai-name { color: #8b5cf6; font-weight: 500; }
+.t-user-name { color: #00a884; }
+.t-host { color: #b58900; }
 .t-path { color: #11B7D4; }
 .t-dollar { color: #00a884; }
 .t-sparkle { color: #8b5cf6; }
 .t-user { color: #bec6d0; }
-.t-ghost { color: rgba(255, 255, 255, 0.15); }
+.t-ghost { color: rgba(255, 255, 255, 0.18); }
 .t-dim { color: #6b7480; }
 .t-ai { color: #c4b5fd; }
 .t-ok { color: #00ff88; }
 .t-err { color: #ef4444; }
+.t-key { color: #c084fc; }
+.t-str { color: #86efac; }
+
 .t-block {
-  margin: 10px 0;
-  padding: 10px 12px 10px 14px;
-  background: rgba(255, 255, 255, 0.02);
+  background: #141719;
   border: 1px solid rgba(255, 255, 255, 0.05);
-  border-left: 2px solid #00a884;
-  border-radius: 8px;
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
 }
-.t-block--ai { border-left-color: #8b5cf6; }
-.t-block--suggest { border-left-color: #ea580c; background: rgba(234, 88, 12, 0.06); }
+.t-block--ai { border-left: 2px solid #8b5cf6; }
+.t-block--suggest { border-left: 2px solid #ea580c; }
 .t-block__header {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-family: "Geist", system-ui, sans-serif;
-  font-size: 11px;
-  color: #6b7480;
-  margin-bottom: 6px;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.015);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
+.t-block__cmd {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.t-block__body {
+  padding: 10px 14px 12px;
+}
+.t-block__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px 10px;
+}
+
 .t-pulse {
   display: inline-block;
-  width: 7px; height: 7px;
+  width: 6px; height: 6px;
   border-radius: 50%;
   background: #00a884;
-  box-shadow: 0 0 8px rgba(0, 168, 132, 0.6);
+  box-shadow: 0 0 6px rgba(0, 168, 132, 0.6);
   animation: pulse 1.6s ease-in-out infinite;
+  flex-shrink: 0;
 }
-.t-pulse--ai { background: #8b5cf6; box-shadow: 0 0 8px rgba(139, 92, 246, 0.6); }
+.t-pulse--ai { background: #8b5cf6; box-shadow: 0 0 6px rgba(139, 92, 246, 0.6); }
+.t-pulse--orange { background: #ea580c; box-shadow: 0 0 6px rgba(234, 88, 12, 0.6); }
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
 .t-duration {
-  margin-left: auto;
-  padding: 1px 7px;
+  flex-shrink: 0;
+  padding: 1px 8px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  font-family: "Geist", system-ui, sans-serif;
   font-size: 10.5px;
   color: #6b7480;
 }
+
 .t-approve {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 10px;
+  padding: 4px 12px;
   background: #00a884;
   color: #04130f;
-  border-radius: 5px;
+  border-radius: 6px;
   font-family: "Geist", system-ui, sans-serif;
   font-size: 11px;
   font-weight: 600;
@@ -363,11 +458,11 @@ button { font: inherit; cursor: pointer; }
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 10px;
+  padding: 4px 12px;
   background: transparent;
   color: #ef4444;
   border: 1px solid rgba(239, 68, 68, 0.4);
-  border-radius: 5px;
+  border-radius: 6px;
   font-family: "Geist", system-ui, sans-serif;
   font-size: 11px;
   font-weight: 500;
@@ -376,29 +471,20 @@ button { font: inherit; cursor: pointer; }
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 10px;
+  padding: 4px 12px;
   background: transparent;
   color: #9ca3af;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 5px;
+  border-radius: 6px;
   font-family: "Geist", system-ui, sans-serif;
   font-size: 11px;
   font-weight: 500;
 }
-.t-actions { display: flex; gap: 6px; margin-top: 8px; }
-.t-banner {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin: 8px 0;
-  padding: 3px 9px;
-  border-radius: 999px;
-  background: rgba(139, 92, 246, 0.12);
-  border: 1px solid rgba(139, 92, 246, 0.3);
-  color: #c4b5fd;
+.t-actions { display: flex; gap: 6px; margin-top: 10px; }
+.t-ai-name {
   font-family: "Geist", system-ui, sans-serif;
   font-size: 11px;
-  letter-spacing: 0.02em;
+  color: #c4b5fd;
 }
 .t-kbd {
   display: inline-block;
