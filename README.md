@@ -9,6 +9,7 @@
 </p>
 
 <p align="center">
+  <a href="https://darkharasho.github.io/tai/"><img src="https://img.shields.io/badge/website-darkharasho.github.io%2Ftai-00a884?style=flat-square" alt="Website" /></a>
   <a href="https://github.com/darkharasho/tai/releases/latest"><img src="https://img.shields.io/github/v/release/darkharasho/tai?style=flat-square&color=00a884" alt="Latest Release" /></a>
   <a href="https://github.com/darkharasho/tai/blob/main/LICENSE"><img src="https://img.shields.io/github/license/darkharasho/tai?style=flat-square" alt="License" /></a>
   <a href="https://github.com/darkharasho/tai/releases"><img src="https://img.shields.io/github/downloads/darkharasho/tai/total?style=flat-square&color=00a884" alt="Downloads" /></a>
