@@ -730,6 +730,7 @@ button { font: inherit; cursor: pointer; }
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
+  color: var(--tai-ai);
 }
 
 .t-question {
