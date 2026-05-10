@@ -158,11 +158,16 @@ button { font: inherit; cursor: pointer; }
 }
 .hero__inner {
   position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
-  gap: 56px;
+  display: flex;
+  flex-direction: column;
   align-items: center;
+  gap: 56px;
+  text-align: center;
 }
+.hero__copy { max-width: 760px; }
+.hero__cta { justify-content: center; }
+.hero__meta { justify-content: center; }
+.hero__demo { width: 100%; max-width: 1280px; }
 .eyebrow {
   display: inline-block;
   font-family: var(--font-mono);
@@ -192,8 +197,8 @@ button { font: inherit; cursor: pointer; }
 .hero__sub {
   font-size: 18px;
   color: var(--text-muted);
-  max-width: 540px;
-  margin: 0 0 32px;
+  max-width: 600px;
+  margin: 0 auto 32px;
 }
 .hero__cta {
   display: flex;
@@ -408,7 +413,12 @@ button { font: inherit; cursor: pointer; }
 }
 .t-block__body {
   padding: 10px 14px 12px;
+  overflow-x: auto;
+  white-space: pre;
 }
+.t-block__body > div { white-space: pre; }
+.t-block__body::-webkit-scrollbar { height: 6px; }
+.t-block__body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
 .t-block__row {
   display: flex;
   align-items: center;
