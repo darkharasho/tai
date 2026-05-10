@@ -36,20 +36,39 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
-    function block({ cmd, dur = "0.1s", output = "", variant = "", aiName = "", suggest = false, actions = false }) {
+    function scrollBottom() { body.scrollTop = body.scrollHeight; }
+
+    function block({ cmd, dur = "0.1s", output = "", variant = "", aiName = "", actions = false }) {
       const div = document.createElement("div");
       div.className = "t-block" + (variant ? " t-block--" + variant : "");
       const pulseClass = variant === "ai" ? "t-pulse t-pulse--ai" : variant === "suggest" ? "t-pulse t-pulse--orange" : "t-pulse";
+      const durHTML = dur ? `<span class="t-duration">${dur}</span>` : "";
       const header = aiName
-        ? `<div class="t-block__header"><span class="${pulseClass}"></span><span class="t-ai-name">${aiName}</span><span class="t-duration">${dur}</span></div>`
-        : `<div class="t-block__header"><span class="t-block__cmd">${prompt(cmd)}</span><span class="t-duration">${dur}</span></div>`;
+        ? `<div class="t-block__header"><span class="${pulseClass}"></span><span class="t-ai-name">${aiName}</span>${durHTML}</div>`
+        : `<div class="t-block__header"><span class="t-block__cmd">${prompt(cmd)}</span>${durHTML}</div>`;
       let bodyHTML = output ? `<div class="t-block__body">${output}</div>` : "";
       if (actions) {
         bodyHTML += `<div class="t-block__body" style="padding-top:0"><div class="t-actions"><span class="t-approve">Enter · approve</span><span class="t-edit">E · edit</span><span class="t-reject">Esc · reject</span></div></div>`;
       }
       div.innerHTML = header + bodyHTML;
       body.appendChild(div);
+      scrollBottom();
       return div;
+    }
+
+    const tab = document.getElementById("demo-tab");
+    const tabIcon = document.getElementById("demo-tab-icon");
+    const chevronSVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>';
+    const sparkleSVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 5.4L19 9l-5.4 1.6L12 16l-1.6-5.4L5 9l5.4-1.6z"/></svg>';
+    function setTabMode(mode) {
+      if (!tab) return;
+      if (mode === "ai") {
+        tab.classList.add("is-ai");
+        if (tabIcon) tabIcon.innerHTML = sparkleSVG;
+      } else {
+        tab.classList.remove("is-ai");
+        if (tabIcon) tabIcon.innerHTML = chevronSVG;
+      }
     }
 
     function addHistory() {
@@ -73,7 +92,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function renderInput({ mode = "shell", text = "", ghost = "", showCursor = true, focused = true }) {
-      input.className = "terminal__input-row" + (focused ? " is-focused" : "");
+      setTabMode(mode);
+      input.className = "terminal__input-row" + (focused ? " is-focused" : "") + (mode === "ai" ? " is-ai" : "");
       const promptHTML = mode === "ai"
         ? '<span class="t-sparkle">✦</span> <span class="t-path">~/projects/tai</span> '
         : prompt() + ' ';
@@ -86,6 +106,7 @@ document.addEventListener("DOMContentLoaded", () => {
           (ghost ? '<span class="t-ghost" id="in-ghost">' + ghost + '</span>' : '') +
           (showCursor ? '<span class="t-cursor"></span>' : '') +
         '</div>' +
+        '<span class="terminal__default-pill"><span class="terminal__default-dot"></span>Default</span>' +
         '<span class="terminal__mode-key">Shift+Tab</span>' +
         '<span class="' + modeClass + '">' + modeLabel + '</span>';
       return {

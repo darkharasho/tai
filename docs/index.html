@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=4" />
+  <link rel="stylesheet" href="styles.css?v=5" />
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -62,10 +62,12 @@
           <div class="terminal" id="demo-terminal" aria-label="Animated TAI terminal demo" role="img">
             <div class="terminal__bar">
               <div class="terminal__tabs">
-                <div class="terminal__tab is-active">
+                <div class="terminal__tab is-active" id="demo-tab">
                   <span class="terminal__tab-num">1:</span>
                   <span>zsh</span>
-                  <svg class="terminal__tab-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                  <span class="terminal__tab-icon" id="demo-tab-icon" aria-hidden="true">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                  </span>
                 </div>
               </div>
               <div class="terminal__controls" aria-hidden="true">
@@ -235,6 +237,6 @@ npm run dist     # build distributable</code></pre>
       </nav>
     </div>
   </footer>
-  <script src="script.js?v=4" defer></script>
+  <script src="script.js?v=5" defer></script>
 </body>
 </html>
