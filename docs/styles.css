@@ -318,12 +318,12 @@ button { font: inherit; cursor: pointer; }
 .terminal__ctl--close:hover { background: #ef4444; color: #fff; }
 
 .terminal__body {
-  padding: 18px 16px 12px;
+  padding: 18px 16px 20px;
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   overflow-y: auto;
 }
 .terminal__body::-webkit-scrollbar { width: 8px; }
@@ -427,31 +427,28 @@ button { font: inherit; cursor: pointer; }
   overflow: hidden;
   position: relative;
 }
-.t-block--ai { border-left: 2px solid #ea580c; }
+.t-block--ai { border-left: 2px solid #8b5cf6; }
 .t-block--suggest { border-left: 2px solid #ea580c; }
-.t-claude-logo {
+.t-claude-name {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 16px; height: 16px;
-  border-radius: 4px;
-  background: #ea580c;
-  color: #1a0a02;
-  font-weight: 700;
-  font-size: 10px;
+  gap: 6px;
   font-family: "Geist", system-ui, sans-serif;
-  flex-shrink: 0;
+  font-size: 12px;
+  color: #c4b5fd;
+  font-weight: 500;
 }
+.t-claude-name .t-sparkle { color: #8b5cf6; font-size: 13px; }
 .t-md p { margin: 0 0 10px; color: #d6d8de; font-family: "Geist", system-ui, sans-serif; font-size: 13px; line-height: 1.65; }
 .t-md p:last-child { margin-bottom: 0; }
 .t-md code {
   font-family: "Fira Code", "JetBrains Mono", ui-monospace, monospace;
   font-size: 12px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(139, 92, 246, 0.10);
+  border: 1px solid rgba(139, 92, 246, 0.20);
   padding: 1px 6px;
   border-radius: 4px;
-  color: #c4eaff;
+  color: #c4b5fd;
 }
 .t-md ul { margin: 0 0 10px; padding-left: 0; list-style: none; }
 .t-md li {
@@ -469,14 +466,14 @@ button { font: inherit; cursor: pointer; }
   left: 4px; top: 9px;
   width: 5px; height: 5px;
   border-radius: 50%;
-  background: #ea580c;
+  background: #8b5cf6;
 }
 .t-md strong { color: #f4f4f7; font-weight: 600; }
 .t-stream-dot {
   display: inline-block;
   width: 6px; height: 6px;
   border-radius: 50%;
-  background: #ea580c;
+  background: #8b5cf6;
   margin-left: 6px;
   animation: pulse 1.2s ease-in-out infinite;
 }
@@ -491,10 +488,11 @@ button { font: inherit; cursor: pointer; }
 .t-block__cmd {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-x: auto;
   white-space: nowrap;
+  scrollbar-width: none;
 }
+.t-block__cmd::-webkit-scrollbar { display: none; }
 .t-block__body {
   padding: 10px 14px 12px;
   overflow-x: auto;

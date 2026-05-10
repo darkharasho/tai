@@ -137,8 +137,7 @@ document.addEventListener("DOMContentLoaded", () => {
       claudeBlock.className = "t-block t-block--ai";
       claudeBlock.innerHTML =
         '<div class="t-block__header">' +
-          '<span class="t-claude-logo">C</span>' +
-          '<span class="t-ai-name">Claude</span>' +
+          '<span class="t-claude-name"><span class="t-sparkle">✦</span> Claude</span>' +
           '<span class="t-stream-dot"></span>' +
         '</div>' +
         '<div class="t-block__body t-md" id="claude-md"></div>';
