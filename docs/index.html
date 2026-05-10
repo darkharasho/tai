@@ -17,7 +17,23 @@
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
-  <header id="nav"></header>
+  <header id="nav" class="nav">
+    <div class="container nav__inner">
+      <a class="nav__brand" href="#top" aria-label="TAI home">
+        <img src="favicon.png" alt="" width="28" height="28" />
+        <span>TAI</span>
+      </a>
+      <button class="nav__toggle" aria-expanded="false" aria-controls="nav-links" aria-label="Toggle navigation">
+        <span></span><span></span><span></span>
+      </button>
+      <nav id="nav-links" class="nav__links">
+        <a href="#features">Features</a>
+        <a href="#shortcuts">Shortcuts</a>
+        <a href="#install">Download</a>
+        <a href="https://github.com/darkharasho/tai" rel="noopener">GitHub</a>
+      </nav>
+    </div>
+  </header>
   <main id="main"></main>
   <footer id="footer"></footer>
   <script src="script.js" defer></script>
