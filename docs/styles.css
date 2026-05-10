@@ -523,26 +523,25 @@ button { font: inherit; cursor: pointer; }
 .t-block::after {
   content: "";
   position: absolute;
-  width: 140px;
-  height: 140px;
+  width: 120px;
+  height: 120px;
   pointer-events: none;
-  border-radius: 10px;
 }
 .t-block::before {
   top: -1px; left: -1px;
   border-top: 2px solid var(--tai-accent);
   border-left: 2px solid var(--tai-accent);
   border-top-left-radius: 10px;
-  -webkit-mask: linear-gradient(135deg, #000 0%, #000 25%, transparent 70%);
-          mask: linear-gradient(135deg, #000 0%, #000 25%, transparent 70%);
+  -webkit-mask: linear-gradient(135deg, #000 0%, transparent 80%);
+          mask: linear-gradient(135deg, #000 0%, transparent 80%);
 }
 .t-block::after {
   bottom: -1px; right: -1px;
   border-bottom: 2px solid var(--tai-accent);
   border-right: 2px solid var(--tai-accent);
   border-bottom-right-radius: 10px;
-  -webkit-mask: linear-gradient(135deg, transparent 30%, #000 75%, #000 100%);
-          mask: linear-gradient(135deg, transparent 30%, #000 75%, #000 100%);
+  -webkit-mask: linear-gradient(135deg, transparent 20%, #000 100%);
+          mask: linear-gradient(135deg, transparent 20%, #000 100%);
 }
 .t-md {
   font-family: var(--tai-font-sans);
