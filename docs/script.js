@@ -29,7 +29,7 @@ document.addEventListener("DOMContentLoaded", () => {
       '<span class="t-dollar">$</span>' +
       (cmd ? ' <span class="t-user">' + cmd + '</span>' : '');
 
-    async function typeInto(el, text, speed = 32) {
+    async function typeInto(el, text, speed = 30) {
       for (const ch of text) {
         el.textContent += ch;
         if (!reduced) await sleep(speed + Math.random() * 30);
@@ -38,41 +38,85 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function scrollBottom() { body.scrollTop = body.scrollHeight; }
 
-    function block({ cmd, dur = "0.1s", output = "", variant = "", aiName = "", actions = false }) {
+    function makeBlock(variant = "") {
       const div = document.createElement("div");
       div.className = "t-block" + (variant ? " t-block--" + variant : "");
-      const pulseClass = variant === "ai" ? "t-pulse t-pulse--ai" : variant === "suggest" ? "t-pulse t-pulse--orange" : "t-pulse";
-      const durHTML = dur ? `<span class="t-duration">${dur}</span>` : "";
-      const header = aiName
-        ? `<div class="t-block__header"><span class="${pulseClass}"></span><span class="t-ai-name">${aiName}</span>${durHTML}</div>`
-        : `<div class="t-block__header"><span class="t-block__cmd">${prompt(cmd)}</span>${durHTML}</div>`;
-      let bodyHTML = output ? `<div class="t-block__body">${output}</div>` : "";
-      if (actions) {
-        bodyHTML += `<div class="t-block__body" style="padding-top:0"><div class="t-actions"><span class="t-approve">Enter · approve</span><span class="t-edit">E · edit</span><span class="t-reject">Esc · reject</span></div></div>`;
-      }
-      div.innerHTML = header + bodyHTML;
+      body.appendChild(div);
+      return div;
+    }
+
+    function shellBlock({ cmd, dur = "0.1s", output = "" }) {
+      const div = makeBlock();
+      div.innerHTML =
+        `<div class="t-block__header">` +
+          `<span class="t-pulse"></span>` +
+          `<span class="t-block__cmd">${prompt(cmd)}</span>` +
+          `<span class="t-duration">${dur}</span>` +
+        `</div>` +
+        `<div class="t-block__sep"></div>` +
+        (output ? `<div class="t-block__body">${output}</div>` : "");
+      scrollBottom();
+      return div;
+    }
+
+    function claudeBlock() {
+      const div = makeBlock("ai");
+      div.innerHTML =
+        `<div class="t-block__header">` +
+          `<span class="t-ai-name">Claude</span>` +
+          `<span class="t-stream-dot"></span>` +
+        `</div>` +
+        `<div class="t-block__sep"></div>` +
+        `<div class="t-md" id="claude-md"></div>`;
+      scrollBottom();
+      return div;
+    }
+
+    function suggestBlock(command) {
+      const div = makeBlock("suggest");
+      div.innerHTML =
+        `<div class="t-block__header">` +
+          `<span class="t-ai-name t-ai-name--agent">Approve to run</span>` +
+        `</div>` +
+        `<div class="t-cmd-preview"><span class="t-cmd-preview__accent">❯</span>${command}</div>` +
+        `<div class="t-actions">` +
+          `<button class="t-btn"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>Edit<span class="t-btn-hint">(e)</span></button>` +
+          `<button class="t-btn t-btn--approve"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Approve<span class="t-btn-hint">(↵)</span></button>` +
+          `<button class="t-btn t-btn--reject"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>Reject<span class="t-btn-hint">(esc)</span></button>` +
+        `</div>`;
+      scrollBottom();
+      return div;
+    }
+
+    function questionRow(text) {
+      const div = document.createElement("div");
+      div.className = "t-question";
+      div.innerHTML =
+        `<span class="t-question__icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.5L19 10l-5.1 1.5L12 17l-1.9-5.5L5 10l5.1-1.5z"/><path d="M19 3v3"/><path d="M21 4.5h-3"/></svg></span>` +
+        `<span class="t-question__text">${text}</span>`;
       body.appendChild(div);
       scrollBottom();
       return div;
     }
 
     const tab = document.getElementById("demo-tab");
-    const tabIcon = document.getElementById("demo-tab-icon");
-    const chevronSVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>';
-    const sparkleSVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.6 5.4L19 9l-5.4 1.6L12 16l-1.6-5.4L5 9l5.4-1.6z"/></svg>';
+    const tabBadge = document.getElementById("demo-tab-badge");
+    const tabMode = document.getElementById("demo-tab-mode");
+    const chevronSVG = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>';
+    const sparkleSVG = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.5L19 10l-5.1 1.5L12 17l-1.9-5.5L5 10l5.1-1.5z"/><path d="M19 3v3"/><path d="M21 4.5h-3"/></svg>';
     function setTabMode(mode) {
       if (!tab) return;
       if (mode === "ai") {
         tab.classList.add("is-ai");
-        if (tabIcon) tabIcon.innerHTML = sparkleSVG;
+        if (tabBadge) tabBadge.innerHTML = sparkleSVG + '<span>AI</span>';
       } else {
         tab.classList.remove("is-ai");
-        if (tabIcon) tabIcon.innerHTML = chevronSVG;
+        if (tabBadge) tabBadge.innerHTML = chevronSVG + '<span>Terminal</span>';
       }
     }
 
     function addHistory() {
-      block({
+      shellBlock({
         cmd: "cat package.json | head -6",
         dur: "0.1s",
         output:
@@ -83,7 +127,7 @@ document.addEventListener("DOMContentLoaded", () => {
           '<div>  <span class="t-key">"main"</span>: <span class="t-str">"dist-electron/main.js"</span>,</div>' +
           '<div>  <span class="t-key">"scripts"</span>: {</div>',
       });
-      block({
+      shellBlock({
         cmd: 'ls --color=auto src/',
         dur: "0.1s",
         output:
@@ -91,24 +135,25 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
+    const shieldCheckSVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>';
+
     function renderInput({ mode = "shell", text = "", ghost = "", showCursor = true, focused = true }) {
       setTabMode(mode);
       input.className = "terminal__input-row" + (focused ? " is-focused" : "") + (mode === "ai" ? " is-ai" : "");
       const promptHTML = mode === "ai"
-        ? '<span class="t-sparkle">✦</span> <span class="t-path">~/projects/tai</span> '
-        : prompt() + ' ';
+        ? '<span class="t-sparkle" style="font-size:14px">✦</span> <span class="t-path t-path--input">~/projects/tai</span> '
+        : '<span class="t-user-name">alex</span><span class="t-host">@fedora</span> <span class="t-path t-path--input">~/projects/tai</span> <span class="t-dollar">$</span> ';
       const modeLabel = mode === "ai" ? "AI" : "Shell";
-      const modeClass = mode === "ai" ? "terminal__mode-pill is-ai" : "terminal__mode-pill";
       input.innerHTML =
+        '<span class="terminal__perm-pill" tabindex="-1">' + shieldCheckSVG + 'Default</span>' +
         '<div class="terminal__input-text">' +
           promptHTML +
           '<span class="t-user" id="in-text">' + text + '</span>' +
           (ghost ? '<span class="t-ghost" id="in-ghost">' + ghost + '</span>' : '') +
           (showCursor ? '<span class="t-cursor"></span>' : '') +
         '</div>' +
-        '<span class="terminal__default-pill"><span class="terminal__default-dot"></span>Default</span>' +
-        '<span class="terminal__mode-key">Shift+Tab</span>' +
-        '<span class="' + modeClass + '">' + modeLabel + '</span>';
+        '<span class="terminal__mode-kbd">Shift+Tab</span>' +
+        '<span class="terminal__mode-label">' + modeLabel + '</span>';
       return {
         textEl: input.querySelector("#in-text"),
         ghostEl: input.querySelector("#in-ghost"),
@@ -121,29 +166,22 @@ document.addEventListener("DOMContentLoaded", () => {
       addHistory();
 
       // Frame 1: ghost-text prediction in shell mode
-      let ui = renderInput({ mode: "shell", text: "", ghost: "", showCursor: true });
+      let ui = renderInput({ mode: "shell", text: "", ghost: "" });
       await typeInto(ui.textEl, "npm te");
-      ui = renderInput({ mode: "shell", text: "npm te", ghost: "st -- --watch", showCursor: true });
+      renderInput({ mode: "shell", text: "npm te", ghost: "st -- --watch" });
       await sleep(reduced ? 0 : 900);
 
       // Frame 2: switch to AI mode, type a question
-      ui = renderInput({ mode: "ai", text: "", ghost: "", showCursor: true });
+      ui = renderInput({ mode: "ai", text: "", ghost: "" });
       await typeInto(ui.textEl, "fix the failing auth test", 28);
       await sleep(reduced ? 0 : 500);
 
-      // Frame 3: input clears, Claude responds in markdown, then suggestion appears
-      renderInput({ mode: "ai", text: "", ghost: "", showCursor: true });
-      const claudeBlock = document.createElement("div");
-      claudeBlock.className = "t-block t-block--ai";
-      claudeBlock.innerHTML =
-        '<div class="t-block__header">' +
-          '<span class="t-claude-name"><span class="t-sparkle">✦</span> Claude</span>' +
-          '<span class="t-stream-dot"></span>' +
-        '</div>' +
-        '<div class="t-block__body t-md" id="claude-md"></div>';
-      body.appendChild(claudeBlock);
-      const md = claudeBlock.querySelector("#claude-md");
-      scrollBottom();
+      // Frame 3: question echoes as a row, Claude streams a markdown response
+      const question = "fix the failing auth test";
+      renderInput({ mode: "ai", text: "", ghost: "" });
+      questionRow(question);
+      const claude = claudeBlock();
+      const md = claude.querySelector("#claude-md");
 
       const paragraphs = [
         '<p>Looks like there\'s one failing test in <code>tests/auth.test.ts</code>. Two likely culprits:</p>',
@@ -151,35 +189,29 @@ document.addEventListener("DOMContentLoaded", () => {
           '<li>The token refresh path is comparing against <code>Date.now()</code> in seconds rather than ms.</li>' +
           '<li>The mock <strong>jwt.verify</strong> isn\'t restored between cases, so state bleeds across tests.</li>' +
         '</ul>',
-        '<p>Want me to run it scoped first so we can confirm the failure before patching?</p>',
+        '<p>Want me to run it scoped first so we can confirm before patching?</p>',
       ];
       for (const p of paragraphs) {
-        const div = document.createElement("div");
-        div.innerHTML = p;
-        while (div.firstChild) md.appendChild(div.firstChild);
+        const tmp = document.createElement("div");
+        tmp.innerHTML = p;
+        while (tmp.firstChild) md.appendChild(tmp.firstChild);
         scrollBottom();
         await sleep(reduced ? 0 : 550);
       }
-      claudeBlock.querySelector(".t-stream-dot")?.remove();
+      claude.querySelector(".t-stream-dot")?.remove();
       const dur = document.createElement("span");
       dur.className = "t-duration";
       dur.textContent = "1.4s";
-      claudeBlock.querySelector(".t-block__header").appendChild(dur);
-      await sleep(reduced ? 0 : 400);
+      claude.querySelector(".t-block__header").appendChild(dur);
+      await sleep(reduced ? 0 : 350);
 
-      const suggest = block({
-        aiName: "suggested command",
-        dur: "",
-        variant: "suggest",
-        output:
-          '<div><span class="t-dollar">$</span> <span style="color:#bec6d0">npm test -- --workspace=app tests/auth.test.ts</span></div>',
-        actions: true,
-      });
-      await sleep(reduced ? 0 : 1400);
+      // Frame 4: suggestion block with Approve/Edit/Reject
+      const suggest = suggestBlock("npm test -- --workspace=app tests/auth.test.ts");
+      await sleep(reduced ? 0 : 1500);
 
-      // Frame 4: approve → real shell block with PASS output
+      // Frame 5: approved → shell block with PASS output, return to shell mode
       suggest.remove();
-      block({
+      shellBlock({
         cmd: "npm test -- --workspace=app tests/auth.test.ts",
         dur: "0.4s",
         output:
@@ -188,9 +220,9 @@ document.addEventListener("DOMContentLoaded", () => {
           '<div>  <span class="t-ok">✓</span> refreshes on expiry <span class="t-dim">(8ms)</span></div>' +
           '<div class="t-dim" style="margin-top:6px">Tests: 2 passed · Time: 0.4s</div>',
       });
-      renderInput({ mode: "shell", text: "", ghost: "", showCursor: true });
+      renderInput({ mode: "shell", text: "", ghost: "" });
 
-      await sleep(reduced ? 5000 : 4200);
+      await sleep(reduced ? 5000 : 4500);
     }
 
     async function loop() {
