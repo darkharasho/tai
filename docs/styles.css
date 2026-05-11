@@ -15,7 +15,7 @@
   --rule: linear-gradient(90deg, #00a884, #8b5cf6 50%, #ea580c);
   --radius: 8px;
   --radius-lg: 12px;
-  --font-display: "Instrument Serif", "Iowan Old Style", "Apple Garamond", Georgia, serif;
+  --font-display: "Fraunces", "Iowan Old Style", "Apple Garamond", Georgia, serif;
   --font-sans: "Geist", "Söhne", system-ui, -apple-system, "Helvetica Neue", sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, "SF Mono", Menlo, monospace;
   --shadow-lg: 0 30px 60px -20px rgba(0, 0, 0, 0.65);
@@ -104,8 +104,9 @@ button { font: inherit; cursor: pointer; }
   gap: 10px;
   font-family: var(--font-display);
   font-style: italic;
+  font-weight: 600;
   font-size: 22px;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
   color: var(--text);
 }
 .nav__links {
@@ -236,9 +237,9 @@ button { font: inherit; cursor: pointer; }
 .hero__title em {
   font-family: var(--font-display);
   font-style: italic;
-  font-weight: 400;
-  font-size: 1.1em;
-  letter-spacing: -0.02em;
+  font-weight: 600;
+  font-size: 1em;
+  letter-spacing: -0.025em;
   background: linear-gradient(120deg, #00a884 0%, #14b8a6 35%, #8b5cf6 100%);
   -webkit-background-clip: text;
   background-clip: text;
@@ -247,8 +248,8 @@ button { font: inherit; cursor: pointer; }
 .grad {
   font-family: var(--font-display);
   font-style: italic;
-  font-weight: 400;
-  font-size: 1.1em;
+  font-weight: 600;
+  font-size: 1em;
   background: linear-gradient(120deg, #00a884 0%, #14b8a6 35%, #8b5cf6 100%);
   -webkit-background-clip: text;
   background-clip: text;
@@ -874,9 +875,9 @@ button { font: inherit; cursor: pointer; }
 .section__title em {
   font-family: var(--font-display);
   font-style: italic;
-  font-weight: 400;
-  font-size: 1.12em;
-  letter-spacing: -0.015em;
+  font-weight: 600;
+  font-size: 1em;
+  letter-spacing: -0.02em;
   background: linear-gradient(120deg, #00a884 0%, #14b8a6 35%, #8b5cf6 100%);
   -webkit-background-clip: text;
   background-clip: text;
@@ -944,8 +945,8 @@ button { font: inherit; cursor: pointer; }
 .card h3 em {
   font-family: var(--font-display);
   font-style: italic;
-  font-weight: 400;
-  font-size: 1.15em;
+  font-weight: 600;
+  font-size: 1.08em;
   color: var(--accent);
   margin-right: 2px;
 }
@@ -996,7 +997,7 @@ button { font: inherit; cursor: pointer; }
   display: flex;
   flex-direction: column;
   gap: 56px;
-  max-width: 1280px;
+  max-width: 1000px;
   margin: 0 auto;
 }
 .shot {
@@ -1125,9 +1126,9 @@ button { font: inherit; cursor: pointer; }
   font-family: var(--font-display);
   margin: 0 0 8px;
   font-size: 28px;
-  font-weight: 400;
+  font-weight: 600;
   font-style: italic;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
   color: var(--text);
 }
 .install__lede { margin: 0 0 16px; color: var(--text-muted); font-size: 14.5px; }
@@ -1236,8 +1237,9 @@ button { font: inherit; cursor: pointer; }
   gap: 10px;
   font-family: var(--font-display);
   font-style: italic;
+  font-weight: 600;
   font-size: 20px;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
 }
 .footer__tagline {
   margin: 0;
