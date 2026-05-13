@@ -1,7 +1,7 @@
 import { stripAnsi } from '@/utils/stripAnsi';
 import type { SegmentedBlock } from '@/types';
 
-const PROMPT_RE = /(\S+[@:]\S+.*[\$#%>❯]|[\$#%❯])\s*$/;
+const PROMPT_RE = /(\S+[@:]\S+.*[\$#%>❯→➜]|[→➜]\s+\S+|[\$#%>❯→➜])\s*$/;
 const SSH_TARGET_RE = /(\S+)@(\S+?)[\s:]/;
 const SSH_CMD_RE = /^ssh\s+(?:.*\s)?(?:(\S+)@)?(\S+)\s*$/;
 const ALT_SCREEN_ENTER_SEQS = ['\x1b[?1049h', '\x1b[?47h', '\x1b[?1047h'];
@@ -149,8 +149,15 @@ export class BlockSegmenter {
       this._partialRawLine = rawRemainder;
 
       for (let i = 0; i < newCompleteLines.length; i++) {
-        this._pendingLines.push(newCompleteLines[i]);
-        this._pendingRawLines.push(newRawCompleteLines[i] ?? newCompleteLines[i]);
+        let line = newCompleteLines[i];
+        let rawLine = newRawCompleteLines[i] ?? line;
+        // Handle \r (carriage return) in completed lines — keep only text after the last \r
+        const cr = line.lastIndexOf('\r');
+        if (cr !== -1) line = line.substring(cr + 1);
+        const rawCr = rawLine.lastIndexOf('\r');
+        if (rawCr !== -1) rawLine = rawLine.substring(rawCr + 1);
+        this._pendingLines.push(line);
+        this._pendingRawLines.push(rawLine);
       }
     }
 
@@ -169,8 +176,9 @@ export class BlockSegmenter {
     if (this._seenFirstPrompt && this._pendingLines.length >= 1) {
       const outputLines = this._pendingLines.slice(1);
       const rawOutputLines = this._pendingRawLines.slice(1);
-      const partialSuffix = this._partialLine ? '\n' + this._partialLine : '';
-      const rawPartialSuffix = this._partialRawLine ? '\n' + this._partialRawLine : '';
+      const isPrompt = this._partialLine && PROMPT_RE.test(this._partialLine);
+      const partialSuffix = this._partialLine && !isPrompt ? '\n' + this._partialLine : '';
+      const rawPartialSuffix = this._partialRawLine && !isPrompt ? '\n' + this._partialRawLine : '';
       const output = outputLines.map(l => l.trimEnd()).join('\n').trim() + partialSuffix;
       const rawOutput = rawOutputLines.join('\n').trim() + rawPartialSuffix;
       if (output) {
