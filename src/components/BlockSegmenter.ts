@@ -1,7 +1,7 @@
 import { stripAnsi } from '@/utils/stripAnsi';
 import type { SegmentedBlock } from '@/types';
 
-const PROMPT_RE = /(\S+[@:]\S+[\$#%>❯]|[\$#%❯])\s*$/;
+const PROMPT_RE = /(\S+[@:]\S+.*[\$#%>❯]|[\$#%❯])\s*$/;
 const SSH_TARGET_RE = /(\S+)@(\S+?)[\s:]/;
 const SSH_CMD_RE = /^ssh\s+(?:.*\s)?(?:(\S+)@)?(\S+)\s*$/;
 const ALT_SCREEN_ENTER_SEQS = ['\x1b[?1049h', '\x1b[?47h', '\x1b[?1047h'];

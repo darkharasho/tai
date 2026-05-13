@@ -115,7 +115,7 @@ export function CommandBlock({
     <div
       className={styles.block}
       style={{ '--accent-color': modeColor } as React.CSSProperties}
-      onClick={() => { if (active && onSendInput) interactiveRef.current?.focus(); }}
+      onClick={() => { if (active && awaitingInput && onSendInput) interactiveRef.current?.focus(); }}
     >
       <div className={styles.promptLine} onClick={() => onToggleCollapse?.()}>
         <div className={styles.promptLeft}>
@@ -179,7 +179,7 @@ export function CommandBlock({
         </>
       )}
 
-      {active && onSendInput && (
+      {active && awaitingInput && onSendInput && (
         <input
           ref={interactiveRef}
           type="text"
