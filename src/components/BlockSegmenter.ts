@@ -105,10 +105,6 @@ export class BlockSegmenter {
   }
 
   feed(rawData: string): void {
-    if (rawData.includes('\x1b]')) {
-      // eslint-disable-next-line no-console
-      console.log('[tai feed]', JSON.stringify(rawData));
-    }
     if (rawData.includes('\x1b]133;')) {
       rawData = this._consumeOsc133(rawData);
       if (!rawData) return;
@@ -409,8 +405,6 @@ export class BlockSegmenter {
   }
 
   private _handleOsc133Marker(kind: 'A' | 'B' | 'C' | 'D', payload: string): void {
-    // eslint-disable-next-line no-console
-    console.log('[tai osc133]', kind, payload || '', 'phase=', this._osc133Phase, 'cmd=', JSON.stringify(this._osc133RawCommand.slice(-40)), 'out=', JSON.stringify(this._osc133RawOutput.slice(-40)));
     if (!this._integrationActive) {
       this._integrationActive = true;
       // Discard any partial state accumulated by the legacy regex path.
@@ -459,11 +453,13 @@ export class BlockSegmenter {
         break;
       }
       case 'C': {
+        // Only honor C when transitioning from the command line. Ptyxis/GNOME
+        // Terminal's bash integration emits a stray C inside the prompt area
+        // (non-spec, looks like an "end of prior output" sentinel); ignoring
+        // it there prevents the prompt characters from leaking into outputBuf.
+        if (this._osc133Phase !== 'command') break;
         this._osc133Phase = 'output';
         this._commandActive = true;
-        // If this command is an `ssh ...`, flag the segmenter as in a degraded
-        // sub-session until D — the remote shell owns the byte stream and
-        // (usually) won't emit OSC 133 markers.
         const cmdMatch = stripAnsi(this._osc133RawCommand).trim().match(SSH_CMD_RE);
         if (cmdMatch) {
           const user = cmdMatch[1] || '';
@@ -543,9 +539,25 @@ export class BlockSegmenter {
   }
 
   private _finalizeIntegratedBlock(): void {
-    const command = stripAnsi(this._osc133RawCommand).trim();
-    const output = stripAnsi(this._osc133RawOutput).trimEnd();
-    const rawOutput = this._osc133RawOutput.trimEnd();
+    let rawCommand = this._osc133RawCommand;
+    let rawOutputBytes = this._osc133RawOutput;
+
+    // Fallback for shell integrations that don't emit a C marker between the
+    // typed-input echo and the command output (Ptyxis/GNOME Terminal uses
+    // OSC 3008 instead, which we don't currently parse). Split the command
+    // buffer at the first newline: the line the user typed is the command,
+    // anything after is output.
+    if (!rawOutputBytes && rawCommand) {
+      const nl = rawCommand.match(/\r?\n/);
+      if (nl && nl.index !== undefined) {
+        rawOutputBytes = rawCommand.slice(nl.index + nl[0].length);
+        rawCommand = rawCommand.slice(0, nl.index);
+      }
+    }
+
+    const command = stripAnsi(rawCommand).trim();
+    const output = stripAnsi(rawOutputBytes).trimEnd();
+    const rawOutput = rawOutputBytes.trimEnd();
     const promptText = stripAnsi(this._osc133RawPrompt) || this._currentPrompt;
 
     // Skip empty bootstrap "blocks" (e.g. the synthetic prompt that fires
