@@ -7,6 +7,7 @@ import { TerminalInput } from './TerminalInput';
 import type { TerminalInputHandle } from './TerminalInput';
 import { PasswordPrompt } from './PasswordPrompt';
 import { DaemonInstallCard } from './DaemonInstallCard';
+import { ShellIntegrationInstallCard } from './ShellIntegrationInstallCard';
 import { DAEMON_VERSION } from '../daemonVersion';
 import { BlockSegmenter } from './BlockSegmenter';
 import { createClaudeProvider } from '@/providers/claude';
@@ -68,6 +69,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const [promptInfo, setPromptInfo] = useState<{ text: string; isRemote: boolean; sshTarget?: string } | null>(null);
   const [shellIntegrated, setShellIntegrated] = useState(false);
   const [sshSessionActive, setSshSessionActive] = useState(false);
+  const [sshSessionTarget, setSshSessionTarget] = useState<string | null>(null);
+  const [shellIntegrationCard, setShellIntegrationCard] = useState<{ target: string } | null>(null);
   const [remoteSystemInfo, setRemoteSystemInfo] = useState<string>('');
   const remoteSystemInfoRef = useRef('');
   const [daemonToast, setDaemonToast] = useState<{ message: string; ok: boolean } | null>(null);
@@ -358,9 +361,10 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       setShellIntegrated(active);
     });
 
-    segmenter.onSshSession((active) => {
+    segmenter.onSshSession((active, target) => {
       if (cancelled) return;
       setSshSessionActive(active);
+      setSshSessionTarget(active ? target : null);
     });
 
     const cleanupData = window.tai?.pty?.onData((id: number, data: string) => {
@@ -380,8 +384,35 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       segmenter.reset();
       setShellIntegrated(false);
       setSshSessionActive(false);
+      setSshSessionTarget(null);
+      setShellIntegrationCard(null);
     };
   }, [ptyId, refreshCwd]);
+
+  // When an SSH session has been active for a couple seconds without OSC 133
+  // markers arriving from the remote shell, offer to install integration there.
+  // Per-target "don't ask again" lives in localStorage.
+  useEffect(() => {
+    if (!sshSessionActive || !sshSessionTarget) {
+      setShellIntegrationCard(null);
+      return;
+    }
+    const dismissKey = `tai:si:dismissed:${sshSessionTarget}`;
+    if (localStorage.getItem(dismissKey)) return;
+
+    let cancelled = false;
+    // Only ask if remote stays markerless. shellIntegrated would flip true if
+    // the remote shell is emitting OSC 133.
+    const t = setTimeout(async () => {
+      if (cancelled) return;
+      const result = await window.tai.shellIntegration.checkRemote(sshSessionTarget);
+      if (cancelled) return;
+      if (!result.installed) {
+        setShellIntegrationCard({ target: sshSessionTarget });
+      }
+    }, 2500);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [sshSessionActive, sshSessionTarget]);
 
   const executeCommand = useCallback((command: string) => {
     if (ptyId === null) return;
@@ -887,6 +918,18 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           newVersion={daemonCardState.newVersion}
           onInstall={handleDaemonInstall}
           onDismiss={handleDaemonDismiss}
+        />
+      )}
+      {!showXterm && shellIntegrationCard && (
+        <ShellIntegrationInstallCard
+          target={shellIntegrationCard.target}
+          onInstalled={() => { /* Will activate on the user's next reconnect. */ }}
+          onDismiss={() => {
+            if (shellIntegrationCard) {
+              localStorage.setItem(`tai:si:dismissed:${shellIntegrationCard.target}`, '1');
+            }
+            setShellIntegrationCard(null);
+          }}
         />
       )}
       {!showXterm && (

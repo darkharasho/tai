@@ -34,6 +34,10 @@ declare global {
         check: (target: string) => Promise<{ installed: boolean; version?: string }>;
         install: (target: string) => Promise<{ success: boolean; error?: string }>;
       };
+      shellIntegration: {
+        checkRemote: (target: string) => Promise<{ installed: boolean }>;
+        installRemote: (target: string) => Promise<{ ok: boolean; error?: string }>;
+      };
       codex: {
         send: (key: string, cwd: string, message: string, permMode: string, model: string) => Promise<boolean>;
         stop: (key: string) => void;

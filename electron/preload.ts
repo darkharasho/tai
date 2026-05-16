@@ -93,6 +93,10 @@ contextBridge.exposeInMainWorld('tai', {
     check: (target: string) => ipcRenderer.invoke('tai:daemon:check', target),
     install: (target: string) => ipcRenderer.invoke('tai:daemon:install', target),
   },
+  shellIntegration: {
+    checkRemote: (target: string) => ipcRenderer.invoke('shellIntegration:checkRemote', target),
+    installRemote: (target: string) => ipcRenderer.invoke('shellIntegration:installRemote', target),
+  },
   config: {
     get: () => ipcRenderer.invoke('config:get'),
     set: (key: string, value: any) => ipcRenderer.invoke('config:set', key, value),

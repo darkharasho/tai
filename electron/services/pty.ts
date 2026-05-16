@@ -3,7 +3,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { execFile } from 'child_process';
+import { execFile, spawn } from 'child_process';
 import { isWindows } from './platform';
 
 // Resolves the on-disk directory holding the OSC 133 shell integration
@@ -278,6 +278,78 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
       } catch { continue; }
     }
     return [];
+  });
+
+  // Shell integration check/install for a remote host. Used by the renderer
+  // when an SSH session is detected without OSC 133 markers, so we can offer
+  // the user one-click install of the integration over there.
+  const SSH_TARGET_RE = /^[\w.-]+(@[\w.-]+)?$/;
+  ipcMain.handle('shellIntegration:checkRemote', async (_event, target: string) => {
+    if (!SSH_TARGET_RE.test(target)) return { installed: false };
+    return new Promise<{ installed: boolean }>((resolve) => {
+      const check = 'if [ -f "$HOME/.config/tai/shell-integration.sh" ] || [ -f "$HOME/.config/tai/shell-integration.zsh" ]; then echo OK; fi';
+      execFile('ssh', ['-o', 'ConnectTimeout=3', '-o', 'BatchMode=yes', target, check], { timeout: 5000 }, (err, stdout) => {
+        resolve({ installed: !err && stdout.trim() === 'OK' });
+      });
+    });
+  });
+
+  ipcMain.handle('shellIntegration:installRemote', async (_event, target: string) => {
+    if (!SSH_TARGET_RE.test(target)) {
+      return { ok: false, error: 'Invalid SSH target' };
+    }
+    const dir = shellIntegrationDir();
+    if (!dir) return { ok: false, error: 'Local integration scripts not found' };
+
+    let bashScript: string;
+    let zshScript: string;
+    try {
+      bashScript = fs.readFileSync(path.join(dir, 'tai-bash.sh'), 'utf8');
+      zshScript = fs.readFileSync(path.join(dir, 'tai-zsh.zsh'), 'utf8');
+    } catch (e) {
+      return { ok: false, error: `Could not read integration scripts: ${(e as Error).message}` };
+    }
+
+    const sshArgs = (cmd: string) => [
+      '-o', 'ConnectTimeout=5',
+      '-o', 'BatchMode=yes',
+      target,
+      cmd,
+    ];
+
+    const sshWithStdin = (cmd: string, input: string) => new Promise<{ code: number; stderr: string }>((resolve) => {
+      const child = spawn('ssh', sshArgs(cmd));
+      let stderr = '';
+      const timer = setTimeout(() => { child.kill('SIGTERM'); }, 10000);
+      child.stderr.on('data', (d) => { stderr += d.toString(); });
+      child.on('close', (code) => { clearTimeout(timer); resolve({ code: code ?? -1, stderr: stderr.trim() }); });
+      child.stdin.on('error', () => {});
+      child.stdin.end(input);
+    });
+
+    // 1. mkdir and write the bash integration via stdin.
+    const r1 = await sshWithStdin(`mkdir -p "$HOME/.config/tai" && cat > "$HOME/.config/tai/shell-integration.sh" && chmod 644 "$HOME/.config/tai/shell-integration.sh"`, bashScript);
+    if (r1.code !== 0) return { ok: false, error: r1.stderr || `ssh exited ${r1.code}` };
+
+    // 2. Write the zsh integration.
+    const r2 = await sshWithStdin(`cat > "$HOME/.config/tai/shell-integration.zsh" && chmod 644 "$HOME/.config/tai/shell-integration.zsh"`, zshScript);
+    if (r2.code !== 0) return { ok: false, error: r2.stderr || `ssh exited ${r2.code}` };
+
+    // 3. Idempotently append source-lines to ~/.bashrc / ~/.zshrc.
+    const rcAppender = `for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+  [ -e "$rc" ] || continue
+  if ! grep -q 'tai shell integration' "$rc"; then
+    case "$rc" in
+      *.bashrc) f="$HOME/.config/tai/shell-integration.sh" ;;
+      *.zshrc)  f="$HOME/.config/tai/shell-integration.zsh" ;;
+    esac
+    printf '\\n# tai shell integration\\n[ -f %s ] && . %s\\n' "$f" "$f" >> "$rc"
+  fi
+done`;
+    const r3 = await sshWithStdin(rcAppender, '');
+    if (r3.code !== 0) return { ok: false, error: r3.stderr || `ssh exited ${r3.code}` };
+
+    return { ok: true };
   });
 
   ipcMain.handle('pty:getRemoteShellHistory', async (_event, target: string, count: number) => {
