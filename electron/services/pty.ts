@@ -111,25 +111,48 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
 
     allTerminals.set(id, term);
 
-    term.onData((data) => safeSend('pty:data', id, data));
     term.onExit(() => { allTerminals.delete(id); });
 
-    if (!isWindows) {
-      const shellName = detectShellName(process.env.SHELL || '/bin/bash');
-      const script = shellName ? integrationScriptFor(shellName) : null;
-      if (script) {
-        const quoted = quoteForShell(script);
-        // Bash/zsh source with `.`; fish uses `source`. All three accept `source`,
-        // but `.` is more portable for the POSIX shells.
-        const cmd = shellName === 'fish'
-          ? `source ${quoted}\n`
-          : `. ${quoted} 2>/dev/null\n`;
-        // Defer slightly to let the shell finish its own rc loading and print
-        // its initial prompt before we layer integration on top.
-        setTimeout(() => {
+    // Inject shell integration once bash/zsh/fish has finished its rc files
+    // and is sitting at an interactive prompt. We can't write at spawn time:
+    // the TTY echoes the bytes back but the shell hasn't entered its REPL yet,
+    // so the source command is silently discarded.
+    //
+    // Heuristic: relay all PTY data to the renderer, and track byte arrival
+    // times. When the stream goes idle for ~200ms (meaning the prompt has
+    // rendered and the shell is waiting for input), write the source line.
+    // Bounded by a hard ceiling so we don't wait forever on weirdly chatty rc.
+    let integrationInjected = false;
+    let lastDataAt = Date.now();
+
+    const shellPath = process.env.SHELL || '/bin/bash';
+    const shellName = isWindows ? null : detectShellName(shellPath);
+    const script = shellName ? integrationScriptFor(shellName) : null;
+
+    term.onData((data) => {
+      lastDataAt = Date.now();
+      safeSend('pty:data', id, data);
+    });
+
+    if (!isWindows && script) {
+      const quoted = quoteForShell(script);
+      const cmd = shellName === 'fish'
+        ? `source ${quoted}\n`
+        : `. ${quoted}\n`;
+      const startedAt = Date.now();
+      const tryInject = () => {
+        if (integrationInjected) return;
+        if (!allTerminals.has(id)) return;
+        const idle = Date.now() - lastDataAt;
+        const elapsed = Date.now() - startedAt;
+        if (idle >= 200 || elapsed >= 5000) {
+          integrationInjected = true;
           try { term.write(cmd); } catch {}
-        }, 50);
-      }
+          return;
+        }
+        setTimeout(tryInject, 100);
+      };
+      setTimeout(tryInject, 250);
     }
 
     return id;

@@ -13,6 +13,11 @@ __tai_precmd() {
     __TAI_CMD_ACTIVE=
   fi
   __tai_osc133 "A"
+  # Re-inject the prompt-end marker every precmd so themes that rebuild PS1
+  # (powerlevel10k, starship) can't strip it permanently.
+  if [[ "$PS1" != *$'\e]133;B\a'* ]]; then
+    PS1=$'%{\e]133;B\a%}'"$PS1"
+  fi
 }
 
 __tai_preexec() {
