@@ -216,6 +216,36 @@ describe('BlockSegmenter', () => {
       expect(intCb).toHaveBeenCalledWith(true);
     });
 
+    it('ignores a stray C marker emitted inside the prompt area', () => {
+      // Ptyxis/GNOME Terminal's bash integration emits A → (stray C) → B
+      // during prompt rendering. The C should not flip phase to "output", or
+      // the visible prompt characters end up in the command output buffer.
+      const segmenter = new BlockSegmenter();
+      const blockCb = vi.fn();
+      segmenter.onBlock(blockCb);
+
+      segmenter.feed(`${A}${C}user@host:~$ ${B}whoami\nmstephens\n${D(0)}${A}`);
+      expect(blockCb).toHaveBeenCalledTimes(1);
+      const block = blockCb.mock.calls[0][0];
+      expect(block.command).toBe('whoami');
+      expect(block.output).toBe('mstephens');
+      expect(block.promptText).toBe('user@host:~$ ');
+    });
+
+    it('splits command buffer at first newline when no C marker arrives', () => {
+      // Same Ptyxis-style integration emits no C between typed-input echo and
+      // command output (it uses OSC 3008 for that boundary, which we don't
+      // parse). The first newline in the command buffer is the boundary.
+      const segmenter = new BlockSegmenter();
+      const blockCb = vi.fn();
+      segmenter.onBlock(blockCb);
+
+      segmenter.feed(`${A}user@host:~$ ${B}pwd\n/home/user\n${D(0)}${A}`);
+      expect(blockCb).toHaveBeenCalledTimes(1);
+      expect(blockCb.mock.calls[0][0].command).toBe('pwd');
+      expect(blockCb.mock.calls[0][0].output).toBe('/home/user');
+    });
+
     it('flags an ssh sub-session as degraded between C and D', () => {
       const segmenter = new BlockSegmenter();
       const sshCb = vi.fn();

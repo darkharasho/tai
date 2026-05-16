@@ -134,8 +134,6 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
       safeSend('pty:data', id, data);
     });
 
-    console.log('[tai] integration:', { shellPath, shellName, found: !!script });
-
     if (!isWindows && script) {
       const quoted = quoteForShell(script);
       const cmd = shellName === 'fish'
@@ -154,11 +152,8 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
         const elapsed = Date.now() - startedAt;
         if (idle >= 600 || elapsed >= 8000) {
           integrationInjected = true;
-          try {
-            term.write(cmd);
-            console.log(`[tai] integration: injected (idle=${idle}ms, elapsed=${elapsed}ms)`);
-          } catch (e) {
-            console.warn('[tai] integration: write failed', e);
+          try { term.write(cmd); } catch (e) {
+            console.warn('[tai] shell-integration injection failed', e);
           }
           return;
         }
