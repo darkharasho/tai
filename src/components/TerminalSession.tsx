@@ -66,6 +66,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   }, [onContextModeChange]);
   const [cwd, setCwd] = useState(initialCwd);
   const [promptInfo, setPromptInfo] = useState<{ text: string; isRemote: boolean; sshTarget?: string } | null>(null);
+  const [shellIntegrated, setShellIntegrated] = useState(false);
   const [remoteSystemInfo, setRemoteSystemInfo] = useState<string>('');
   const remoteSystemInfoRef = useRef('');
   const [daemonToast, setDaemonToast] = useState<{ message: string; ok: boolean } | null>(null);
@@ -344,6 +345,11 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       onRemoteChange(isRemote, sshTarget);
     });
 
+    segmenter.onShellIntegration((active) => {
+      if (cancelled) return;
+      setShellIntegrated(active);
+    });
+
     const cleanupData = window.tai?.pty?.onData((id: number, data: string) => {
       if (cancelled) return;
       if (id !== ptyId) return;
@@ -359,6 +365,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       cleanupData?.();
       if (outputRafId !== null) cancelAnimationFrame(outputRafId);
       segmenter.reset();
+      setShellIntegrated(false);
     };
   }, [ptyId, refreshCwd]);
 
@@ -911,6 +918,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
             onModeChange={handleInputModeChange}
             cwd={cwd}
             promptInfo={promptInfo}
+            shellIntegrated={shellIntegrated}
             initialValue={editValue}
             disabled={inputDisabled}
             history={inputHistory}

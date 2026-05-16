@@ -54,6 +54,7 @@ interface TerminalInputProps {
   disabled?: boolean;
   cwd: string;
   promptInfo?: { text: string; isRemote: boolean; sshTarget?: string } | null;
+  shellIntegrated?: boolean;
   history?: string[];
   onClear?: () => void;
   initialValue?: string;
@@ -64,7 +65,7 @@ interface TerminalInputProps {
   onTrustLevelChange?: (level: TrustLevel) => void;
 }
 
-export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>(function TerminalInput({ onSubmit, mode, onModeChange, disabled, cwd, promptInfo, history = [], onClear, initialValue, remoteExecMode, onRemoteExecModeChange, aiProvider, trustLevel, onTrustLevelChange }, ref) {
+export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>(function TerminalInput({ onSubmit, mode, onModeChange, disabled, cwd, promptInfo, shellIntegrated, history = [], onClear, initialValue, remoteExecMode, onRemoteExecModeChange, aiProvider, trustLevel, onTrustLevelChange }, ref) {
   const [value, setValue] = useState(initialValue || '');
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const historyIndexRef = useRef(-1);
@@ -285,6 +286,13 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
       )}
       <div className={`${styles.box} ${isAI ? styles.boxAi : ''} ${promptIsRemote ? styles.boxRemote : ''}`}>
         <div className={styles.row}>
+          <span
+            className={`${styles.integrationDot} ${shellIntegrated ? styles.integrationDotActive : ''}`}
+            title={shellIntegrated
+              ? 'Shell integration active \u2014 block boundaries are deterministic.'
+              : 'Shell integration not detected \u2014 falling back to prompt-text heuristics. Block boundaries may be flaky.'}
+            aria-label={shellIntegrated ? 'Shell integration active' : 'Shell integration not detected'}
+          />
           {isAI ? (
             <>
               <span className={styles.promptAi}>{'\u2726'}</span>
