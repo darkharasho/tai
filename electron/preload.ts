@@ -17,6 +17,12 @@ contextBridge.exposeInMainWorld('tai', {
       ipcRenderer.on('pty:data', listener);
       return () => ipcRenderer.removeListener('pty:data', listener);
     },
+    onResized: (callback: (id: number, cols: number, rows: number) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, id: number, cols: number, rows: number) =>
+        callback(id, cols, rows);
+      ipcRenderer.on('pty:resized', listener);
+      return () => ipcRenderer.removeListener('pty:resized', listener);
+    },
   },
   window: {
     minimize: () => ipcRenderer.send('window:minimize'),
