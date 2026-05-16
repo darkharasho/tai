@@ -420,6 +420,10 @@ export class BlockSegmenter {
         if (this._osc133Phase !== 'idle' && this._osc133Phase !== 'prompt') {
           this._finalizeIntegratedBlock();
         }
+        // Reaching a new local prompt is unambiguous proof we're back at the
+        // local shell, so clear any SSH-session flag that didn't get cleared
+        // by a D (network drop, kill -9, user reload, etc).
+        if (this._inSshSession) this._setSshSession(false, null);
         this._osc133Phase = 'prompt';
         this._osc133RawPrompt = '';
         this._osc133RawCommand = '';
