@@ -128,9 +128,30 @@ export const HiddenXterm = forwardRef<HiddenXtermHandle, HiddenXtermProps>(
       };
     }, []);
 
+    const pendingAckRef = useRef(0);
+    const ackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const scheduleAck = () => {
+      if (ackTimerRef.current) return;
+      ackTimerRef.current = setTimeout(() => {
+        ackTimerRef.current = null;
+        const n = pendingAckRef.current;
+        pendingAckRef.current = 0;
+        if (n > 0) window.tai?.pty?.dataAck?.(ptyId, n);
+      }, 0);
+    };
+
     useImperativeHandle(ref, () => ({
       write(data: string) {
-        xtermRef.current?.write(data);
+        const term = xtermRef.current;
+        if (!term) {
+          onData?.(data);
+          return;
+        }
+        term.write(data, () => {
+          pendingAckRef.current += data.length;
+          scheduleAck();
+        });
         onData?.(data);
       },
       sendInput(data: string) {
@@ -161,6 +182,12 @@ export const HiddenXterm = forwardRef<HiddenXtermHandle, HiddenXtermProps>(
         return lines.slice(start, end).join('\n');
       },
     }), [ptyId, onData]);
+
+    useEffect(() => {
+      return () => {
+        if (ackTimerRef.current) clearTimeout(ackTimerRef.current);
+      };
+    }, []);
 
     const style: React.CSSProperties = visible
       ? {
