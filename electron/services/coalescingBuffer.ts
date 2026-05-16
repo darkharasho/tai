@@ -5,16 +5,26 @@ export interface CoalescingBuffer {
   forceFlush(): void;
 }
 
+const MAX_CHUNK = 64 * 1024;
+
 export function createCoalescingBuffer(flush: FlushFn): CoalescingBuffer {
   let pending = '';
   let scheduled = false;
 
   function doFlush() {
-    scheduled = false;
-    if (pending.length === 0) return;
-    const out = pending;
-    pending = '';
-    flush(out);
+    if (pending.length === 0) {
+      scheduled = false;
+      return;
+    }
+    const slice = pending.slice(0, MAX_CHUNK);
+    pending = pending.slice(MAX_CHUNK);
+    flush(slice);
+    if (pending.length > 0) {
+      scheduled = true;
+      setImmediate(doFlush);
+    } else {
+      scheduled = false;
+    }
   }
 
   return {
@@ -26,7 +36,12 @@ export function createCoalescingBuffer(flush: FlushFn): CoalescingBuffer {
       }
     },
     forceFlush() {
-      doFlush();
+      while (pending.length > 0) {
+        const slice = pending.slice(0, MAX_CHUNK);
+        pending = pending.slice(MAX_CHUNK);
+        flush(slice);
+      }
+      scheduled = false;
     },
   };
 }
