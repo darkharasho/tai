@@ -405,6 +405,8 @@ export class BlockSegmenter {
   }
 
   private _handleOsc133Marker(kind: 'A' | 'B' | 'C' | 'D', payload: string): void {
+    // eslint-disable-next-line no-console
+    console.log('[tai osc133]', kind, payload || '', 'phase=', this._osc133Phase, 'cmd=', JSON.stringify(this._osc133RawCommand.slice(-40)), 'out=', JSON.stringify(this._osc133RawOutput.slice(-40)));
     if (!this._integrationActive) {
       this._integrationActive = true;
       // Discard any partial state accumulated by the legacy regex path.
