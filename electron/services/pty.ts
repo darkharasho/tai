@@ -9,8 +9,8 @@ import { createResizeQueue, type ResizeQueue } from './resizeQueue';
 import { createCoalescingBuffer, type CoalescingBuffer } from './coalescingBuffer';
 import { createBackpressureGate, type BackpressureGate } from './backpressureGate';
 
-const BACKPRESSURE_HIGH = 4 * 1024 * 1024;
-const BACKPRESSURE_LOW = 1 * 1024 * 1024;
+const BACKPRESSURE_HIGH = 512 * 1024;
+const BACKPRESSURE_LOW = 128 * 1024;
 
 // Resolves the on-disk directory holding the OSC 133 shell integration
 // scripts. In dev they live under the source tree; in packaged builds they're
