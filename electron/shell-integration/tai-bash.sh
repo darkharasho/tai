@@ -21,10 +21,13 @@ __tai_prompt_invoke() {
   fi
   __tai_osc133 "A"
   # Re-inject the prompt-end marker every precmd so themes that rebuild PS1
-  # (powerlevel10k, starship, oh-my-bash) can't strip it permanently.
+  # (powerlevel10k, starship, oh-my-bash) can't strip it permanently. B marks
+  # the END of the prompt (boundary between prompt text and the command line),
+  # so it must be appended, not prepended — otherwise visible prompt chars
+  # land in the command buffer instead of the prompt buffer.
   case "$PS1" in
-    *$'\001\033]133;B\007\002'*) ;;
-    *) PS1='\[\033]133;B\007\]'"$PS1" ;;
+    *'\[\033]133;B\007\]'*) ;;
+    *) PS1="${PS1}"'\[\033]133;B\007\]' ;;
   esac
   # Replay user's original PROMPT_COMMAND inside our state — DEBUG fires here
   # are still suppressed because __TAI_INTERACTIVE_MODE is empty.

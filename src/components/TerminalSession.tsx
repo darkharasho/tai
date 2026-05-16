@@ -685,10 +685,13 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const handleSubmit = useCallback((value: string) => {
     if (inputMode === 'shell') {
       const isMultiline = value.includes('\n');
+      // Multi-line inputs are sent raw — bash handles each line as a separate
+      // command (or as a continuation for heredocs/loops), and each gets its
+      // own block via OSC 133 markers. Wrapping in `bash -c '...'` would
+      // collapse everything into one block AND pollute the output buffer with
+      // PS2 echoes from the outer shell's multi-line readline.
       const display = isMultiline ? value : value.trim();
-      const toRun = isMultiline
-        ? `bash -c '${value.replace(/'/g, `'\\''`)}'`
-        : value.trim();
+      const toRun = isMultiline ? value : value.trim();
       const pendingBlock = {
         id: 'pending',
         command: display,
@@ -699,13 +702,18 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         duration: 0,
         isRemote: promptInfo?.isRemote ?? false,
       };
-      pendingCommandRef.current = { command: display, startTime: Date.now() };
+      // Only show a pending placeholder for single-line commands; multi-line
+      // would otherwise show one big pending card while N real blocks arrive.
+      if (!isMultiline) {
+        pendingCommandRef.current = { command: display, startTime: Date.now() };
+      }
       setDisplayItems(prev => {
         const cleaned = prev.map(item =>
           item.type === 'command' && item.block.id === 'pending'
             ? { ...item, active: false, block: { ...item.block, id: `stale-${Date.now()}` } }
             : item
         );
+        if (isMultiline) return cleaned;
         return [...cleaned, { type: 'command' as const, block: pendingBlock, active: true }];
       });
       executeCommand(toRun);
