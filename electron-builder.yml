@@ -5,6 +5,10 @@ directories:
 files:
   - dist
   - dist-electron
+extraResources:
+  - from: electron/shell-integration
+    to: shell-integration
+    filter: ["**/*"]
 asar: true
 asarUnpack:
   - node_modules/node-pty/**/*

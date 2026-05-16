@@ -1,10 +1,47 @@
 import * as pty from 'node-pty';
-import { BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { execFile } from 'child_process';
 import { isWindows } from './platform';
+
+// Resolves the on-disk directory holding the OSC 133 shell integration
+// snippets. In dev the scripts live under the source tree; in packaged builds
+// they're copied to resources/ via electron-builder's extraResources.
+function shellIntegrationDir(): string | null {
+  const candidates = [
+    path.join(process.resourcesPath || '', 'shell-integration'),
+    path.join(__dirname, '..', 'electron', 'shell-integration'),
+    path.join(app.getAppPath?.() || '', 'electron', 'shell-integration'),
+  ];
+  for (const c of candidates) {
+    if (c && fs.existsSync(c)) return c;
+  }
+  return null;
+}
+
+function detectShellName(shellPath: string): 'bash' | 'zsh' | 'fish' | null {
+  const base = path.basename(shellPath).toLowerCase();
+  if (base.includes('bash')) return 'bash';
+  if (base.includes('zsh')) return 'zsh';
+  if (base.includes('fish')) return 'fish';
+  return null;
+}
+
+function integrationScriptFor(shellName: 'bash' | 'zsh' | 'fish'): string | null {
+  const dir = shellIntegrationDir();
+  if (!dir) return null;
+  const file = shellName === 'bash' ? 'tai-bash.sh'
+    : shellName === 'zsh' ? 'tai-zsh.zsh'
+    : 'tai-fish.fish';
+  const full = path.join(dir, file);
+  return fs.existsSync(full) ? full : null;
+}
+
+function quoteForShell(p: string): string {
+  return `'${p.replace(/'/g, `'\\''`)}'`;
+}
 
 let hasSystemdRun: boolean | undefined;
 function detectSystemdScope(): boolean {
@@ -76,6 +113,24 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
 
     term.onData((data) => safeSend('pty:data', id, data));
     term.onExit(() => { allTerminals.delete(id); });
+
+    if (!isWindows) {
+      const shellName = detectShellName(process.env.SHELL || '/bin/bash');
+      const script = shellName ? integrationScriptFor(shellName) : null;
+      if (script) {
+        const quoted = quoteForShell(script);
+        // Bash/zsh source with `.`; fish uses `source`. All three accept `source`,
+        // but `.` is more portable for the POSIX shells.
+        const cmd = shellName === 'fish'
+          ? `source ${quoted}\n`
+          : `. ${quoted} 2>/dev/null\n`;
+        // Defer slightly to let the shell finish its own rc loading and print
+        // its initial prompt before we layer integration on top.
+        setTimeout(() => {
+          try { term.write(cmd); } catch {}
+        }, 50);
+      }
+    }
 
     return id;
   });

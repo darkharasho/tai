@@ -13,6 +13,7 @@ export interface SegmentedBlock {
   startTime: number;
   duration: number;
   isRemote: boolean;
+  exitCode?: number;
 }
 
 export interface AIEntry {

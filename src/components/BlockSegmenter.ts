@@ -17,6 +17,11 @@ type AltScreenCallback = (entered: boolean) => void;
 type InteractiveModeCallback = (entered: boolean, fullscreen?: boolean) => void;
 type PasswordPromptCallback = () => void;
 type PromptChangeCallback = (prompt: string, isRemote: boolean, sshTarget: string | null) => void;
+type ShellIntegrationCallback = (active: boolean) => void;
+
+// OSC 133 markers: ESC ] 133 ; <X>[;...] (BEL | ESC \)
+// We only care about the trailing payload for the D marker (exit code).
+const OSC133_RE = /\x1b\]133;([ABCD])([^\x07\x1b]*)?(?:\x07|\x1b\\)/g;
 
 export class BlockSegmenter {
   private _idCounter = 0;
@@ -35,12 +40,27 @@ export class BlockSegmenter {
   private _interactiveCallbacks: InteractiveModeCallback[] = [];
   private _passwordCallbacks: PasswordPromptCallback[] = [];
   private _promptChangeCallbacks: PromptChangeCallback[] = [];
+  private _integrationCallbacks: ShellIntegrationCallback[] = [];
   private _seenFirstPrompt = false;
   private _inAltScreen = false;
   private _inInteractiveMode = false;
   private _interactiveFullscreen = false;
   private _commandActive = false;
   private _passwordPromptFired = false;
+
+  // OSC 133 (shell integration) state. When `_integrationActive` is true, the
+  // regex-based prompt heuristic is bypassed and segmentation is driven entirely
+  // by markers emitted by the shell.
+  private _integrationActive = false;
+  private _osc133Phase: 'idle' | 'prompt' | 'command' | 'output' = 'idle';
+  private _osc133Prompt = '';
+  private _osc133RawPrompt = '';
+  private _osc133Command = '';
+  private _osc133RawCommand = '';
+  private _osc133Output = '';
+  private _osc133RawOutput = '';
+  private _osc133ExitCode: number | null = null;
+  private _osc133BlockStart = 0;
 
   private _nextId(): string {
     return `seg-block-${++this._idCounter}`;
@@ -52,9 +72,11 @@ export class BlockSegmenter {
   onInteractiveMode(cb: InteractiveModeCallback): void { this._interactiveCallbacks.push(cb); }
   onPasswordPrompt(cb: PasswordPromptCallback): void { this._passwordCallbacks.push(cb); }
   onPromptChange(cb: PromptChangeCallback): void { this._promptChangeCallbacks.push(cb); }
+  onShellIntegration(cb: ShellIntegrationCallback): void { this._integrationCallbacks.push(cb); }
 
   get currentPrompt(): string { return this._currentPrompt; }
   get seenFirstPrompt(): boolean { return this._seenFirstPrompt; }
+  get shellIntegrationActive(): boolean { return this._integrationActive; }
 
   markCommandSent(): void {
     this._commandActive = true;
@@ -75,6 +97,18 @@ export class BlockSegmenter {
   }
 
   feed(rawData: string): void {
+    if (rawData.includes('\x1b]133;')) {
+      rawData = this._consumeOsc133(rawData);
+      if (!rawData) return;
+    }
+    if (this._integrationActive) {
+      this._feedIntegrated(rawData);
+      return;
+    }
+    this._feedLegacy(rawData);
+  }
+
+  private _feedLegacy(rawData: string): void {
     const hasAltEnter = ALT_SCREEN_ENTER_SEQS.some(s => rawData.includes(s));
     const altExitSeq = ALT_SCREEN_EXIT_SEQS.find(s => rawData.includes(s));
 
@@ -341,6 +375,174 @@ export class BlockSegmenter {
     this._promptChangeCallbacks.forEach(cb => cb(prompt, isRemote, sshTarget));
   }
 
+  private _consumeOsc133(rawData: string): string {
+    OSC133_RE.lastIndex = 0;
+    let out = '';
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = OSC133_RE.exec(rawData)) !== null) {
+      const before = rawData.slice(lastIndex, match.index);
+      out += before;
+      if (before) this._routeChunk(before);
+      this._handleOsc133Marker(match[1] as 'A' | 'B' | 'C' | 'D', match[2] || '');
+      lastIndex = OSC133_RE.lastIndex;
+    }
+    out += rawData.slice(lastIndex);
+    if (lastIndex === 0) return rawData; // no markers actually matched
+    const tail = rawData.slice(lastIndex);
+    if (tail && this._integrationActive) {
+      this._routeChunk(tail);
+      // Tail has been routed; tell caller "nothing more to do" by returning ''.
+      return '';
+    }
+    return tail;
+  }
+
+  private _handleOsc133Marker(kind: 'A' | 'B' | 'C' | 'D', payload: string): void {
+    if (!this._integrationActive) {
+      this._integrationActive = true;
+      // Discard any partial state accumulated by the legacy regex path.
+      this._pendingLines = [];
+      this._pendingRawLines = [];
+      this._partialLine = '';
+      this._partialRawLine = '';
+      this._integrationCallbacks.forEach(cb => cb(true));
+    }
+
+    switch (kind) {
+      case 'A': {
+        // New prompt is starting. If we already have a command in flight,
+        // finalize it as a block.
+        if (this._osc133Phase !== 'idle' && this._osc133Phase !== 'prompt') {
+          this._finalizeIntegratedBlock();
+        }
+        this._osc133Phase = 'prompt';
+        this._osc133Prompt = '';
+        this._osc133RawPrompt = '';
+        this._osc133Command = '';
+        this._osc133RawCommand = '';
+        this._osc133Output = '';
+        this._osc133RawOutput = '';
+        this._osc133ExitCode = null;
+        this._osc133BlockStart = Date.now();
+        this._passwordPromptFired = false;
+        break;
+      }
+      case 'B': {
+        // Prompt rendered; what follows is the command line.
+        this._osc133Phase = 'command';
+        const promptText = stripAnsi(this._osc133Prompt);
+        if (promptText && promptText !== this._currentPrompt) {
+          this._currentPrompt = promptText;
+          if (!this._seenFirstPrompt) {
+            this._initialPrompt = promptText;
+            this._seenFirstPrompt = true;
+          }
+          this._firePromptChange(promptText);
+        } else if (!this._seenFirstPrompt && promptText) {
+          this._seenFirstPrompt = true;
+          this._currentPrompt = promptText;
+          this._initialPrompt = promptText;
+          this._firePromptChange(promptText);
+        }
+        break;
+      }
+      case 'C': {
+        // Command starts executing; what follows is output.
+        this._osc133Phase = 'output';
+        this._commandActive = true;
+        break;
+      }
+      case 'D': {
+        // Command finished. Exit code in payload (";<n>").
+        const m = payload.match(/^;(-?\d+)/);
+        if (m) this._osc133ExitCode = parseInt(m[1], 10);
+        // Stay in output phase until the next A — trailing newlines or
+        // shell-emitted text before the next prompt belong to this block.
+        this._commandActive = false;
+        break;
+      }
+    }
+  }
+
+  private _routeChunk(chunk: string): void {
+    if (!this._integrationActive) return;
+    const clean = stripAnsi(chunk);
+    switch (this._osc133Phase) {
+      case 'prompt':
+        this._osc133Prompt += clean;
+        this._osc133RawPrompt += chunk;
+        break;
+      case 'command':
+        this._osc133Command += clean;
+        this._osc133RawCommand += chunk;
+        break;
+      case 'output':
+        this._osc133Output += clean;
+        this._osc133RawOutput += chunk;
+        if (this._osc133Output.trim()) {
+          const out = this._osc133Output.trim();
+          const raw = this._osc133RawOutput;
+          this._outputCallbacks.forEach(cb => cb(out, raw));
+        }
+        break;
+      case 'idle':
+        // Pre-first-marker bytes; ignore.
+        break;
+    }
+  }
+
+  private _feedIntegrated(rawData: string): void {
+    // Alt-screen and password-prompt detection are still useful in integrated
+    // mode (TUIs, sudo prompts) — they don't conflict with OSC 133.
+    const hasAltEnter = ALT_SCREEN_ENTER_SEQS.some(s => rawData.includes(s));
+    const altExitSeq = ALT_SCREEN_EXIT_SEQS.find(s => rawData.includes(s));
+    if (hasAltEnter) this._altScreenCallbacks.forEach(cb => cb(true));
+    if (altExitSeq) this._altScreenCallbacks.forEach(cb => cb(false));
+
+    if (!this._passwordPromptFired && /(?:password|passphrase).*:\s*$/i.test(stripAnsi(rawData))) {
+      this._passwordPromptFired = true;
+      this._passwordCallbacks.forEach(cb => cb());
+    }
+
+    this._routeChunk(rawData);
+  }
+
+  private _finalizeIntegratedBlock(): void {
+    const command = this._osc133Command.trim();
+    const output = this._osc133Output.trimEnd();
+    const rawOutput = this._osc133RawOutput.trimEnd();
+    const promptText = stripAnsi(this._osc133Prompt) || this._currentPrompt;
+
+    // Skip empty bootstrap "blocks" (e.g. the synthetic prompt that fires
+    // right after we source the integration script with no command run).
+    if (!command && !output) {
+      return;
+    }
+
+    const block: SegmentedBlock = {
+      id: this._nextId(),
+      command,
+      output,
+      rawOutput,
+      promptText,
+      startTime: this._osc133BlockStart || Date.now(),
+      duration: Date.now() - (this._osc133BlockStart || Date.now()),
+      isRemote: this._isRemotePrompt(promptText),
+      ...(this._osc133ExitCode !== null ? { exitCode: this._osc133ExitCode } : {}),
+    };
+
+    const sshMatch = command.match(SSH_CMD_RE);
+    if (sshMatch) {
+      const user = sshMatch[1] || '';
+      const host = sshMatch[2];
+      this._sshConnectionTarget = user ? `${user}@${host}` : host;
+    }
+
+    this._blockCallbacks.forEach(cb => cb(block));
+    this._commandActive = false;
+  }
+
   reset(): void {
     this._currentPrompt = '';
     this._initialPrompt = '';
@@ -363,5 +565,16 @@ export class BlockSegmenter {
     this._interactiveCallbacks = [];
     this._passwordCallbacks = [];
     this._promptChangeCallbacks = [];
+    this._integrationCallbacks = [];
+    this._integrationActive = false;
+    this._osc133Phase = 'idle';
+    this._osc133Prompt = '';
+    this._osc133RawPrompt = '';
+    this._osc133Command = '';
+    this._osc133RawCommand = '';
+    this._osc133Output = '';
+    this._osc133RawOutput = '';
+    this._osc133ExitCode = null;
+    this._osc133BlockStart = 0;
   }
 }
