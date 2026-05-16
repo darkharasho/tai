@@ -623,4 +623,18 @@ export class BlockSegmenter {
     this._osc133ExitCode = null;
     this._osc133BlockStart = 0;
   }
+
+  /**
+   * Treat a PTY resize as an implicit line boundary: flush any partial
+   * line out to pendingLines so subsequent bytes (re-tokenized by xterm.js
+   * against the new geometry) don't get glued to pre-resize state.
+   */
+  onResize(_cols: number, _rows: number): void {
+    if (this._partialLine.length > 0 || this._partialRawLine.length > 0) {
+      this._pendingLines.push(this._partialLine);
+      this._pendingRawLines.push(this._partialRawLine);
+      this._partialLine = '';
+      this._partialRawLine = '';
+    }
+  }
 }
