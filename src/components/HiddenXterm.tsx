@@ -96,24 +96,62 @@ export const HiddenXterm = forwardRef<HiddenXtermHandle, HiddenXtermProps>(
 
     useEffect(() => {
       if (!containerRef.current) return;
+      let timer: ReturnType<typeof setTimeout> | null = null;
       const observer = new ResizeObserver(() => {
         if (!visible) return;
-        requestAnimationFrame(() => {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          timer = null;
           try {
             fitRef.current?.fit();
             if (xtermRef.current) {
               window.tai?.pty?.resize(ptyId, xtermRef.current.cols, xtermRef.current.rows);
             }
           } catch { /* ignore */ }
-        });
+        }, 50);
       });
       observer.observe(containerRef.current);
-      return () => observer.disconnect();
+      return () => {
+        observer.disconnect();
+        if (timer) clearTimeout(timer);
+      };
     }, [ptyId, visible]);
+
+    useEffect(() => {
+      const onWindowFocus = () => xtermRef.current?.focus();
+      const onWindowBlur = () => xtermRef.current?.blur();
+      window.addEventListener('focus', onWindowFocus);
+      window.addEventListener('blur', onWindowBlur);
+      return () => {
+        window.removeEventListener('focus', onWindowFocus);
+        window.removeEventListener('blur', onWindowBlur);
+      };
+    }, []);
+
+    const pendingAckRef = useRef(0);
+    const ackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const scheduleAck = () => {
+      if (ackTimerRef.current) return;
+      ackTimerRef.current = setTimeout(() => {
+        ackTimerRef.current = null;
+        const n = pendingAckRef.current;
+        pendingAckRef.current = 0;
+        if (n > 0) window.tai?.pty?.dataAck?.(ptyId, n);
+      }, 0);
+    };
 
     useImperativeHandle(ref, () => ({
       write(data: string) {
-        xtermRef.current?.write(data);
+        const term = xtermRef.current;
+        if (!term) {
+          onData?.(data);
+          return;
+        }
+        term.write(data, () => {
+          pendingAckRef.current += data.length;
+          scheduleAck();
+        });
         onData?.(data);
       },
       sendInput(data: string) {
@@ -144,6 +182,12 @@ export const HiddenXterm = forwardRef<HiddenXtermHandle, HiddenXtermProps>(
         return lines.slice(start, end).join('\n');
       },
     }), [ptyId, onData]);
+
+    useEffect(() => {
+      return () => {
+        if (ackTimerRef.current) clearTimeout(ackTimerRef.current);
+      };
+    }, []);
 
     const style: React.CSSProperties = visible
       ? {

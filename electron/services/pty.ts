@@ -5,6 +5,12 @@ import * as path from 'path';
 import * as os from 'os';
 import { execFile, spawn } from 'child_process';
 import { isWindows } from './platform';
+import { createResizeQueue, type ResizeQueue } from './resizeQueue';
+import { createCoalescingBuffer, type CoalescingBuffer } from './coalescingBuffer';
+import { createBackpressureGate, type BackpressureGate } from './backpressureGate';
+
+const BACKPRESSURE_HIGH = 512 * 1024;
+const BACKPRESSURE_LOW = 128 * 1024;
 
 // Resolves the on-disk directory holding the OSC 133 shell integration
 // scripts. In dev they live under the source tree; in packaged builds they're
@@ -61,7 +67,13 @@ function detectSystemdScope(): boolean {
 
 let canUseSystemdScope = detectSystemdScope;
 
-const allTerminals = new Map<number, pty.IPty>();
+interface TerminalEntry {
+  term: pty.IPty;
+  resizeQueue: ResizeQueue;
+  buffer: CoalescingBuffer;
+  gate: BackpressureGate;
+}
+const allTerminals = new Map<number, TerminalEntry>();
 let nextId = 1;
 
 export function setupPtyService(getWindow: () => BrowserWindow | null) {
@@ -109,7 +121,23 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
       env,
     });
 
-    allTerminals.set(id, term);
+    let buffer: CoalescingBuffer;
+    const resizeQueue = createResizeQueue((cols, rows) => {
+      buffer?.forceFlush();
+      try { term.resize(cols, rows); } catch {}
+      safeSend('pty:resized', id, cols, rows);
+    });
+    const gate = createBackpressureGate({
+      high: BACKPRESSURE_HIGH,
+      low: BACKPRESSURE_LOW,
+      pause: () => { try { term.pause(); } catch {} },
+      resume: () => { try { term.resume(); } catch {} },
+    });
+    buffer = createCoalescingBuffer((chunk) => {
+      safeSend('pty:data', id, chunk);
+      gate.onSent(chunk.length);
+    });
+    allTerminals.set(id, { term, resizeQueue, buffer, gate });
 
     term.onExit(() => { allTerminals.delete(id); });
 
@@ -131,7 +159,7 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
 
     term.onData((data) => {
       lastDataAt = Date.now();
-      safeSend('pty:data', id, data);
+      buffer.push(data);
     });
 
     if (!isWindows && script) {
@@ -166,24 +194,30 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
   });
 
   ipcMain.on('pty:write', (_event, id: number, data: string) => {
-    allTerminals.get(id)?.write(data);
+    allTerminals.get(id)?.term.write(data);
   });
 
   ipcMain.on('pty:resize', (_event, id: number, cols: number, rows: number) => {
-    allTerminals.get(id)?.resize(cols, rows);
+    allTerminals.get(id)?.resizeQueue.enqueue(cols, rows);
+  });
+
+  ipcMain.on('pty:data-ack', (_event, id: number, bytes: number) => {
+    allTerminals.get(id)?.gate.onAck(bytes);
   });
 
   ipcMain.on('pty:kill', (_event, id: number) => {
-    const term = allTerminals.get(id);
-    if (term) {
-      term.kill();
+    const entry = allTerminals.get(id);
+    if (entry) {
+      entry.buffer.forceFlush();
+      entry.term.kill();
       allTerminals.delete(id);
     }
   });
 
   ipcMain.handle('pty:getProcess', (_event, id: number) => {
-    const term = allTerminals.get(id);
-    if (!term) return null;
+    const entry = allTerminals.get(id);
+    if (!entry) return null;
+    const term = entry.term;
     if (process.platform === 'linux') {
       try {
         const stat = fs.readFileSync(`/proc/${term.pid}/stat`, 'utf8');
@@ -200,8 +234,9 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
   });
 
   ipcMain.handle('pty:getCwd', (_event, id: number) => {
-    const term = allTerminals.get(id);
-    if (!term) return null;
+    const entry = allTerminals.get(id);
+    if (!entry) return null;
+    const term = entry.term;
     if (process.platform === 'linux') {
       try {
         return fs.readlinkSync(`/proc/${term.pid}/cwd`);
@@ -223,8 +258,9 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
   });
 
   ipcMain.handle('pty:isAwaitingInput', (_event, id: number) => {
-    const term = allTerminals.get(id);
-    if (!term || process.platform !== 'linux') return false;
+    const entry = allTerminals.get(id);
+    if (!entry || process.platform !== 'linux') return false;
+    const term = entry.term;
     try {
       const stat = fs.readFileSync(`/proc/${term.pid}/stat`, 'utf8');
       const closeParenIdx = stat.lastIndexOf(')');
@@ -393,6 +429,9 @@ done`;
 }
 
 export function destroyAllTerminals() {
-  for (const term of allTerminals.values()) term.kill();
+  for (const entry of allTerminals.values()) {
+    entry.buffer.forceFlush();
+    entry.term.kill();
+  }
   allTerminals.clear();
 }

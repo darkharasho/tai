@@ -322,4 +322,41 @@ describe('BlockSegmenter', () => {
       expect(blockCb.mock.calls[0][0].command).toBe("echo '$ trick'");
     });
   });
+
+  describe('onResize', () => {
+    it('flushes the partial line buffer as a complete line', () => {
+      const seg = new BlockSegmenter();
+      // Feed a partial line with no trailing newline.
+      seg.feed('partial-without-newline');
+      // Sanity: internal state is not directly observable, so we verify
+      // behaviorally — after onResize, feeding more text should NOT be
+      // appended to the prior partial.
+      seg.onResize(80, 24);
+      seg.feed('NEXT\n');
+      // After flush, the prior partial is its own line; NEXT is its own line.
+      // We assert this by feeding a prompt and watching the resulting block.
+      const blocks: any[] = [];
+      seg.onBlock(b => blocks.push(b));
+      // Drive a fake prompt to finalize a block. Use the regex-prompt path
+      // (no OSC 133 integration). Format must match PROMPT_RE.
+      seg.feed('user@host:~$ ');
+      // Now simulate a command + completion to force block emission.
+      seg.feed('echo hi\n');
+      seg.feed('hi\n');
+      seg.feed('user@host:~$ ');
+      // The pre-resize partial should appear in the captured block data, on its
+      // own line (no concatenation with NEXT).
+      // It ends up as the `command` field of the first block because the
+      // segmenter treats it as the first line after the first prompt.
+      const allText = blocks.map(b => [b.command ?? '', b.output ?? ''].join('\n')).join('\n');
+      expect(allText).toContain('partial-without-newline');
+      // And the partial must not be glued to NEXT.
+      expect(allText).not.toContain('partial-without-newlineNEXT');
+    });
+
+    it('is a no-op when there is no partial buffered', () => {
+      const seg = new BlockSegmenter();
+      expect(() => seg.onResize(100, 30)).not.toThrow();
+    });
+  });
 });

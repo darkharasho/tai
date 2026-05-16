@@ -13,6 +13,8 @@ declare global {
         getShellHistory: (count: number) => Promise<string[]>;
         getRemoteShellHistory: (target: string, count: number) => Promise<string[]>;
         onData: (callback: (id: number, data: string) => void) => () => void;
+        onResized: (callback: (id: number, cols: number, rows: number) => void) => () => void;
+        dataAck: (id: number, bytes: number) => void;
       };
       window: {
         minimize: () => void;
