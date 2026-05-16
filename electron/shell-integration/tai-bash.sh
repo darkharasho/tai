@@ -1,7 +1,10 @@
 # tai shell integration for bash — emits OSC 133 semantic prompts.
 # Sourced after the user's rc files; safe to re-source (idempotent).
 
-[ -z "$PS1" ] && return 0
+# Interactive-shell guard. Avoid testing $PS1 — some prompt managers
+# (starship, oh-my-bash, custom PROMPT_COMMAND themes) leave it empty and
+# print the prompt directly from a hook, which would otherwise make us bail.
+case "$-" in *i*) ;; *) return 0 ;; esac
 case "$TERM" in dumb) return 0 ;; esac
 [ -n "$__TAI_LOADED" ] && return 0
 __TAI_LOADED=1
@@ -20,21 +23,24 @@ __tai_prompt_invoke() {
     __TAI_CMD_ACTIVE=
   fi
   __tai_osc133 "A"
-  # Re-inject the prompt-end marker every precmd so themes that rebuild PS1
-  # (powerlevel10k, starship, oh-my-bash) can't strip it permanently. B marks
-  # the END of the prompt (boundary between prompt text and the command line),
-  # so it must be appended, not prepended — otherwise visible prompt chars
-  # land in the command buffer instead of the prompt buffer.
+  # Append the prompt-end marker to PS1 (idempotent). B must come AFTER the
+  # visible prompt characters or they'll be parsed as part of the command.
   case "$PS1" in
     *'\[\033]133;B\007\]'*) ;;
     *) PS1="${PS1}"'\[\033]133;B\007\]' ;;
   esac
-  # Replay user's original PROMPT_COMMAND inside our state — DEBUG fires here
-  # are still suppressed because __TAI_INTERACTIVE_MODE is empty.
+  # Replay the user's PROMPT_COMMAND inside our state. DEBUG fires here stay
+  # quiet because __TAI_INTERACTIVE_MODE is still empty.
   if [ -n "$__tai_user_pc" ]; then
     eval "$__tai_user_pc"
   fi
-  # Arm preexec: the *next* DEBUG trap fire is the user's typed command.
+  # Fallback for prompt managers (starship, oh-my-bash) that draw the prompt
+  # from PROMPT_COMMAND directly and leave PS1 empty. By the time we get here
+  # the prompt has already been printed, so emit B inline.
+  if [ -z "$PS1" ]; then
+    __tai_osc133 "B"
+  fi
+  # Arm preexec: the next DEBUG trap fire is the user's typed command.
   __TAI_INTERACTIVE_MODE=1
 }
 
