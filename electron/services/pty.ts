@@ -142,12 +142,17 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
         ? `source ${quoted}\n`
         : `. ${quoted}\n`;
       const startedAt = Date.now();
+      // Bash's login startup runs /etc/profile, ~/.bash_profile, etc. before
+      // entering its REPL. If we write the source command before the REPL is
+      // live the bytes are echoed by the TTY layer but never executed. So we
+      // wait for the stream to go quiet for a sustained idle period (≥600ms),
+      // bounded by an 8s ceiling so a chatty rc can't pin us forever.
       const tryInject = () => {
         if (integrationInjected) return;
         if (!allTerminals.has(id)) return;
         const idle = Date.now() - lastDataAt;
         const elapsed = Date.now() - startedAt;
-        if (idle >= 200 || elapsed >= 5000) {
+        if (idle >= 600 || elapsed >= 8000) {
           integrationInjected = true;
           try {
             term.write(cmd);
@@ -157,9 +162,9 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
           }
           return;
         }
-        setTimeout(tryInject, 100);
+        setTimeout(tryInject, 150);
       };
-      setTimeout(tryInject, 250);
+      setTimeout(tryInject, 500);
     }
 
     return id;
