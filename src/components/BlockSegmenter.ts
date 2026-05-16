@@ -18,6 +18,7 @@ type InteractiveModeCallback = (entered: boolean, fullscreen?: boolean) => void;
 type PasswordPromptCallback = () => void;
 type PromptChangeCallback = (prompt: string, isRemote: boolean, sshTarget: string | null) => void;
 type ShellIntegrationCallback = (active: boolean) => void;
+type SshSessionCallback = (active: boolean, target: string | null) => void;
 
 // OSC 133 markers: ESC ] 133 ; <X>[;...] (BEL | ESC \)
 // We only care about the trailing payload for the D marker (exit code).
@@ -41,6 +42,9 @@ export class BlockSegmenter {
   private _passwordCallbacks: PasswordPromptCallback[] = [];
   private _promptChangeCallbacks: PromptChangeCallback[] = [];
   private _integrationCallbacks: ShellIntegrationCallback[] = [];
+  private _sshSessionCallbacks: SshSessionCallback[] = [];
+  private _inSshSession = false;
+  private _sshSessionTarget: string | null = null;
   private _seenFirstPrompt = false;
   private _inAltScreen = false;
   private _inInteractiveMode = false;
@@ -73,10 +77,12 @@ export class BlockSegmenter {
   onPasswordPrompt(cb: PasswordPromptCallback): void { this._passwordCallbacks.push(cb); }
   onPromptChange(cb: PromptChangeCallback): void { this._promptChangeCallbacks.push(cb); }
   onShellIntegration(cb: ShellIntegrationCallback): void { this._integrationCallbacks.push(cb); }
+  onSshSession(cb: SshSessionCallback): void { this._sshSessionCallbacks.push(cb); }
 
   get currentPrompt(): string { return this._currentPrompt; }
   get seenFirstPrompt(): boolean { return this._seenFirstPrompt; }
   get shellIntegrationActive(): boolean { return this._integrationActive; }
+  get sshSessionActive(): boolean { return this._inSshSession; }
 
   markCommandSent(): void {
     this._commandActive = true;
@@ -451,6 +457,16 @@ export class BlockSegmenter {
         // Command starts executing; what follows is output.
         this._osc133Phase = 'output';
         this._commandActive = true;
+        // If this command is an `ssh ...`, mark the segmenter as in a degraded
+        // (no-markers) sub-session until the command ends. The remote shell
+        // owns the stream until then.
+        const cmdMatch = this._osc133Command.trim().match(SSH_CMD_RE);
+        if (cmdMatch) {
+          const user = cmdMatch[1] || '';
+          const host = cmdMatch[2];
+          const target = user ? `${user}@${host}` : host;
+          this._setSshSession(true, target);
+        }
         break;
       }
       case 'D': {
@@ -460,9 +476,17 @@ export class BlockSegmenter {
         // Stay in output phase until the next A — trailing newlines or
         // shell-emitted text before the next prompt belong to this block.
         this._commandActive = false;
+        if (this._inSshSession) this._setSshSession(false, null);
         break;
       }
     }
+  }
+
+  private _setSshSession(active: boolean, target: string | null): void {
+    if (this._inSshSession === active && this._sshSessionTarget === target) return;
+    this._inSshSession = active;
+    this._sshSessionTarget = target;
+    this._sshSessionCallbacks.forEach(cb => cb(active, target));
   }
 
   private _routeChunk(chunk: string): void {
@@ -566,6 +590,9 @@ export class BlockSegmenter {
     this._passwordCallbacks = [];
     this._promptChangeCallbacks = [];
     this._integrationCallbacks = [];
+    this._sshSessionCallbacks = [];
+    this._inSshSession = false;
+    this._sshSessionTarget = null;
     this._integrationActive = false;
     this._osc133Phase = 'idle';
     this._osc133Prompt = '';

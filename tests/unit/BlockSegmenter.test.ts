@@ -216,6 +216,35 @@ describe('BlockSegmenter', () => {
       expect(intCb).toHaveBeenCalledWith(true);
     });
 
+    it('flags an ssh sub-session as degraded between C and D', () => {
+      const segmenter = new BlockSegmenter();
+      const sshCb = vi.fn();
+      segmenter.onSshSession(sshCb);
+
+      segmenter.feed(`${A}$ ${B}ssh user@host\n${C}`);
+      expect(segmenter.sshSessionActive).toBe(true);
+      expect(sshCb).toHaveBeenCalledWith(true, 'user@host');
+
+      // Output from remote shell flows in — no markers.
+      segmenter.feed('remote prompt> ls\nfile.txt\n');
+      expect(segmenter.sshSessionActive).toBe(true);
+
+      // ssh exits, local shell emits D.
+      segmenter.feed(D(0));
+      expect(segmenter.sshSessionActive).toBe(false);
+      expect(sshCb).toHaveBeenLastCalledWith(false, null);
+    });
+
+    it('does not flag non-ssh commands as ssh sessions', () => {
+      const segmenter = new BlockSegmenter();
+      const sshCb = vi.fn();
+      segmenter.onSshSession(sshCb);
+
+      segmenter.feed(`${A}$ ${B}ls\n${C}file\n${D(0)}`);
+      expect(segmenter.sshSessionActive).toBe(false);
+      expect(sshCb).not.toHaveBeenCalled();
+    });
+
     it('bypasses the regex prompt heuristic once integration is active', () => {
       const segmenter = new BlockSegmenter();
       const blockCb = vi.fn();
