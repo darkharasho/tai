@@ -96,19 +96,25 @@ export const HiddenXterm = forwardRef<HiddenXtermHandle, HiddenXtermProps>(
 
     useEffect(() => {
       if (!containerRef.current) return;
+      let timer: ReturnType<typeof setTimeout> | null = null;
       const observer = new ResizeObserver(() => {
         if (!visible) return;
-        requestAnimationFrame(() => {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          timer = null;
           try {
             fitRef.current?.fit();
             if (xtermRef.current) {
               window.tai?.pty?.resize(ptyId, xtermRef.current.cols, xtermRef.current.rows);
             }
           } catch { /* ignore */ }
-        });
+        }, 50);
       });
       observer.observe(containerRef.current);
-      return () => observer.disconnect();
+      return () => {
+        observer.disconnect();
+        if (timer) clearTimeout(timer);
+      };
     }, [ptyId, visible]);
 
     useEffect(() => {

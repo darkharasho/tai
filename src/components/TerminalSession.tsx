@@ -377,9 +377,16 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       }
     });
 
+    const cleanupResized = window.tai?.pty?.onResized?.((id: number, cols: number, rows: number) => {
+      if (cancelled) return;
+      if (id !== ptyId) return;
+      segmenterRef.current.onResize(cols, rows);
+    });
+
     return () => {
       cancelled = true;
       cleanupData?.();
+      cleanupResized?.();
       if (outputRafId !== null) cancelAnimationFrame(outputRafId);
       segmenter.reset();
       setShellIntegrated(false);
