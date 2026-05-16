@@ -111,6 +111,17 @@ export const HiddenXterm = forwardRef<HiddenXtermHandle, HiddenXtermProps>(
       return () => observer.disconnect();
     }, [ptyId, visible]);
 
+    useEffect(() => {
+      const onWindowFocus = () => xtermRef.current?.focus();
+      const onWindowBlur = () => xtermRef.current?.blur();
+      window.addEventListener('focus', onWindowFocus);
+      window.addEventListener('blur', onWindowBlur);
+      return () => {
+        window.removeEventListener('focus', onWindowFocus);
+        window.removeEventListener('blur', onWindowBlur);
+      };
+    }, []);
+
     useImperativeHandle(ref, () => ({
       write(data: string) {
         xtermRef.current?.write(data);
