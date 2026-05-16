@@ -188,19 +188,26 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       setDaemonCardState(null);
       return;
     }
-    window.tai.daemon.check(remoteTarget).then((result: { installed: boolean; version?: string }) => {
+    // Guard against the daemon.check promise resolving after the user has
+    // already left the remote session — without this, a stale `installed: false`
+    // result re-shows the install card while remoteTarget is null, rendering
+    // "Install TAI Daemon on null?".
+    let cancelled = false;
+    const target = remoteTarget;
+    window.tai.daemon.check(target).then((result: { installed: boolean; version?: string }) => {
+      if (cancelled) return;
       const currentVersion = DAEMON_VERSION;
       if (!result.installed) {
         setDaemonCardState({ show: true, mode: 'install', newVersion: currentVersion });
       } else if (result.version !== currentVersion) {
         setDaemonCardState({ show: true, mode: 'update', currentVersion: result.version, newVersion: currentVersion });
       } else {
-        // Already up to date — enable daemon immediately
         setDaemonCardState(null);
         window.tai.ai.setDaemonEnabled(tabId, true);
       }
     });
-  }, [remoteTarget]);
+    return () => { cancelled = true; };
+  }, [remoteTarget, tabId]);
 
   const handleDaemonInstall = () => {
     window.tai.ai.setDaemonEnabled(tabId, true);
@@ -872,9 +879,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0, position: 'relative' }}>
-      {!showXterm && daemonCardState?.show && (
+      {!showXterm && daemonCardState?.show && remoteTarget && (
         <DaemonInstallCard
-          target={remoteTarget!}
+          target={remoteTarget}
           mode={daemonCardState.mode}
           currentVersion={daemonCardState.currentVersion}
           newVersion={daemonCardState.newVersion}
