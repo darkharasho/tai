@@ -505,9 +505,8 @@ export class BlockSegmenter {
       case 'output': {
         this._osc133RawOutput += chunk;
         this._osc133CleanOutput += stripAnsi(chunk);
-        const trimmed = this._osc133CleanOutput.trim();
-        if (trimmed) {
-          this._outputCallbacks.forEach(cb => cb(trimmed, this._osc133RawOutput));
+        if (this._osc133CleanOutput.length > 0) {
+          this._outputCallbacks.forEach(cb => cb(this._osc133CleanOutput, this._osc133RawOutput));
         }
         break;
       }
