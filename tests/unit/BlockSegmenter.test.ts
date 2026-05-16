@@ -245,6 +245,41 @@ describe('BlockSegmenter', () => {
       expect(sshCb).not.toHaveBeenCalled();
     });
 
+    it('handles ANSI escapes split across feed() boundaries in the prompt', () => {
+      // Real-world: a colored prompt like \x1b[38;5;78m... can have its CSI
+      // sequence split between two writes. Per-chunk stripAnsi would miss the
+      // partial escape and leak literal "78m..." into the prompt text.
+      const segmenter = new BlockSegmenter();
+      const promptCb = vi.fn();
+      segmenter.onPromptChange(promptCb);
+
+      segmenter.feed(`${A}\x1b[38;5;`);
+      segmenter.feed(`78muser@host:~$ \x1b[0m${B}`);
+
+      const lastCall = promptCb.mock.calls[promptCb.mock.calls.length - 1];
+      expect(lastCall[0]).toBe('user@host:~$ ');
+      expect(lastCall[0]).not.toContain('78m');
+    });
+
+    it('does not accumulate alt-screen TUI noise into the output buffer', () => {
+      const segmenter = new BlockSegmenter();
+      const blockCb = vi.fn();
+      segmenter.onBlock(blockCb);
+
+      segmenter.feed(`${A}$ ${B}vim\n${C}`);
+      // Simulate alt-screen on + tons of TUI bytes + alt-screen off.
+      segmenter.feed('\x1b[?1049h');
+      segmenter.feed('\x1b[H\x1b[2Jlots of redraw bytes\x1b[5;5Hmore\x1b[10;10Hstuff');
+      segmenter.feed('\x1b[?1049l');
+      // After exit, vim prints nothing, bash emits D then A.
+      segmenter.feed(`${D(0)}${A}$ ${B}`);
+
+      expect(blockCb).toHaveBeenCalledTimes(1);
+      const block = blockCb.mock.calls[0][0];
+      expect(block.command).toBe('vim');
+      expect(block.output).toBe('');
+    });
+
     it('bypasses the regex prompt heuristic once integration is active', () => {
       const segmenter = new BlockSegmenter();
       const blockCb = vi.fn();

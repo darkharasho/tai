@@ -57,11 +57,10 @@ export class BlockSegmenter {
   // by markers emitted by the shell.
   private _integrationActive = false;
   private _osc133Phase: 'idle' | 'prompt' | 'command' | 'output' = 'idle';
-  private _osc133Prompt = '';
+  // Buffers store raw bytes; ANSI is stripped at finalization boundaries (B,
+  // block finalize) so we never observe a partial CSI sequence mid-chunk.
   private _osc133RawPrompt = '';
-  private _osc133Command = '';
   private _osc133RawCommand = '';
-  private _osc133Output = '';
   private _osc133RawOutput = '';
   private _osc133ExitCode: number | null = null;
   private _osc133BlockStart = 0;
@@ -423,11 +422,8 @@ export class BlockSegmenter {
           this._finalizeIntegratedBlock();
         }
         this._osc133Phase = 'prompt';
-        this._osc133Prompt = '';
         this._osc133RawPrompt = '';
-        this._osc133Command = '';
         this._osc133RawCommand = '';
-        this._osc133Output = '';
         this._osc133RawOutput = '';
         this._osc133ExitCode = null;
         this._osc133BlockStart = Date.now();
@@ -437,7 +433,7 @@ export class BlockSegmenter {
       case 'B': {
         // Prompt rendered; what follows is the command line.
         this._osc133Phase = 'command';
-        const promptText = stripAnsi(this._osc133Prompt);
+        const promptText = stripAnsi(this._osc133RawPrompt);
         if (promptText && promptText !== this._currentPrompt) {
           this._currentPrompt = promptText;
           if (!this._seenFirstPrompt) {
@@ -460,7 +456,7 @@ export class BlockSegmenter {
         // If this command is an `ssh ...`, mark the segmenter as in a degraded
         // (no-markers) sub-session until the command ends. The remote shell
         // owns the stream until then.
-        const cmdMatch = this._osc133Command.trim().match(SSH_CMD_RE);
+        const cmdMatch = stripAnsi(this._osc133RawCommand).trim().match(SSH_CMD_RE);
         if (cmdMatch) {
           const user = cmdMatch[1] || '';
           const host = cmdMatch[2];
@@ -491,27 +487,27 @@ export class BlockSegmenter {
 
   private _routeChunk(chunk: string): void {
     if (!this._integrationActive) return;
-    const clean = stripAnsi(chunk);
+    // While the foreground program owns the alt-screen (vim, less, claude, etc)
+    // the byte stream is full-screen TUI noise that doesn't belong in the
+    // block's output buffer. Drop it; xterm.js renders it for the user
+    // separately.
+    if (this._inAltScreen) return;
     switch (this._osc133Phase) {
       case 'prompt':
-        this._osc133Prompt += clean;
         this._osc133RawPrompt += chunk;
         break;
       case 'command':
-        this._osc133Command += clean;
         this._osc133RawCommand += chunk;
         break;
-      case 'output':
-        this._osc133Output += clean;
+      case 'output': {
         this._osc133RawOutput += chunk;
-        if (this._osc133Output.trim()) {
-          const out = this._osc133Output.trim();
-          const raw = this._osc133RawOutput;
-          this._outputCallbacks.forEach(cb => cb(out, raw));
+        const clean = stripAnsi(this._osc133RawOutput).trim();
+        if (clean) {
+          this._outputCallbacks.forEach(cb => cb(clean, this._osc133RawOutput));
         }
         break;
+      }
       case 'idle':
-        // Pre-first-marker bytes; ignore.
         break;
     }
   }
@@ -521,8 +517,14 @@ export class BlockSegmenter {
     // mode (TUIs, sudo prompts) — they don't conflict with OSC 133.
     const hasAltEnter = ALT_SCREEN_ENTER_SEQS.some(s => rawData.includes(s));
     const altExitSeq = ALT_SCREEN_EXIT_SEQS.find(s => rawData.includes(s));
-    if (hasAltEnter) this._altScreenCallbacks.forEach(cb => cb(true));
-    if (altExitSeq) this._altScreenCallbacks.forEach(cb => cb(false));
+    if (hasAltEnter && !this._inAltScreen) {
+      this._inAltScreen = true;
+      this._altScreenCallbacks.forEach(cb => cb(true));
+    }
+    if (altExitSeq && this._inAltScreen) {
+      this._inAltScreen = false;
+      this._altScreenCallbacks.forEach(cb => cb(false));
+    }
 
     if (!this._passwordPromptFired && /(?:password|passphrase).*:\s*$/i.test(stripAnsi(rawData))) {
       this._passwordPromptFired = true;
@@ -533,10 +535,10 @@ export class BlockSegmenter {
   }
 
   private _finalizeIntegratedBlock(): void {
-    const command = this._osc133Command.trim();
-    const output = this._osc133Output.trimEnd();
+    const command = stripAnsi(this._osc133RawCommand).trim();
+    const output = stripAnsi(this._osc133RawOutput).trimEnd();
     const rawOutput = this._osc133RawOutput.trimEnd();
-    const promptText = stripAnsi(this._osc133Prompt) || this._currentPrompt;
+    const promptText = stripAnsi(this._osc133RawPrompt) || this._currentPrompt;
 
     // Skip empty bootstrap "blocks" (e.g. the synthetic prompt that fires
     // right after we source the integration script with no command run).
@@ -595,11 +597,8 @@ export class BlockSegmenter {
     this._sshSessionTarget = null;
     this._integrationActive = false;
     this._osc133Phase = 'idle';
-    this._osc133Prompt = '';
     this._osc133RawPrompt = '';
-    this._osc133Command = '';
     this._osc133RawCommand = '';
-    this._osc133Output = '';
     this._osc133RawOutput = '';
     this._osc133ExitCode = null;
     this._osc133BlockStart = 0;
