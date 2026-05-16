@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('tai', {
       ipcRenderer.on('pty:resized', listener);
       return () => ipcRenderer.removeListener('pty:resized', listener);
     },
+    dataAck: (id: number, bytes: number) => ipcRenderer.send('pty:data-ack', id, bytes),
   },
   window: {
     minimize: () => ipcRenderer.send('window:minimize'),

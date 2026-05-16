@@ -6,6 +6,11 @@ import * as os from 'os';
 import { execFile, spawn } from 'child_process';
 import { isWindows } from './platform';
 import { createResizeQueue, type ResizeQueue } from './resizeQueue';
+import { createCoalescingBuffer, type CoalescingBuffer } from './coalescingBuffer';
+import { createBackpressureGate, type BackpressureGate } from './backpressureGate';
+
+const BACKPRESSURE_HIGH = 4 * 1024 * 1024;
+const BACKPRESSURE_LOW = 1 * 1024 * 1024;
 
 // Resolves the on-disk directory holding the OSC 133 shell integration
 // scripts. In dev they live under the source tree; in packaged builds they're
@@ -65,6 +70,8 @@ let canUseSystemdScope = detectSystemdScope;
 interface TerminalEntry {
   term: pty.IPty;
   resizeQueue: ResizeQueue;
+  buffer: CoalescingBuffer;
+  gate: BackpressureGate;
 }
 const allTerminals = new Map<number, TerminalEntry>();
 let nextId = 1;
@@ -114,11 +121,23 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
       env,
     });
 
+    let buffer: CoalescingBuffer;
     const resizeQueue = createResizeQueue((cols, rows) => {
+      buffer?.forceFlush();
       try { term.resize(cols, rows); } catch {}
       safeSend('pty:resized', id, cols, rows);
     });
-    allTerminals.set(id, { term, resizeQueue });
+    const gate = createBackpressureGate({
+      high: BACKPRESSURE_HIGH,
+      low: BACKPRESSURE_LOW,
+      pause: () => { try { term.pause(); } catch {} },
+      resume: () => { try { term.resume(); } catch {} },
+    });
+    buffer = createCoalescingBuffer((chunk) => {
+      safeSend('pty:data', id, chunk);
+      gate.onSent(chunk.length);
+    });
+    allTerminals.set(id, { term, resizeQueue, buffer, gate });
 
     term.onExit(() => { allTerminals.delete(id); });
 
@@ -140,7 +159,7 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
 
     term.onData((data) => {
       lastDataAt = Date.now();
-      safeSend('pty:data', id, data);
+      buffer.push(data);
     });
 
     if (!isWindows && script) {
@@ -182,9 +201,14 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
     allTerminals.get(id)?.resizeQueue.enqueue(cols, rows);
   });
 
+  ipcMain.on('pty:data-ack', (_event, id: number, bytes: number) => {
+    allTerminals.get(id)?.gate.onAck(bytes);
+  });
+
   ipcMain.on('pty:kill', (_event, id: number) => {
     const entry = allTerminals.get(id);
     if (entry) {
+      entry.buffer.forceFlush();
       entry.term.kill();
       allTerminals.delete(id);
     }
@@ -405,6 +429,9 @@ done`;
 }
 
 export function destroyAllTerminals() {
-  for (const entry of allTerminals.values()) entry.term.kill();
+  for (const entry of allTerminals.values()) {
+    entry.buffer.forceFlush();
+    entry.term.kill();
+  }
   allTerminals.clear();
 }
