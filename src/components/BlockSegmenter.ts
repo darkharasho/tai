@@ -105,6 +105,10 @@ export class BlockSegmenter {
   }
 
   feed(rawData: string): void {
+    if (rawData.includes('\x1b]')) {
+      // eslint-disable-next-line no-console
+      console.log('[tai feed]', JSON.stringify(rawData));
+    }
     if (rawData.includes('\x1b]133;')) {
       rawData = this._consumeOsc133(rawData);
       if (!rawData) return;
