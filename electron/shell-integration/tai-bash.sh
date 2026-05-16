@@ -23,22 +23,25 @@ __tai_prompt_invoke() {
     __TAI_CMD_ACTIVE=
   fi
   __tai_osc133 "A"
-  # Append the prompt-end marker to PS1 (idempotent). B must come AFTER the
-  # visible prompt characters or they'll be parsed as part of the command.
-  case "$PS1" in
-    *'\[\033]133;B\007\]'*) ;;
-    *) PS1="${PS1}"'\[\033]133;B\007\]' ;;
-  esac
-  # Replay the user's PROMPT_COMMAND inside our state. DEBUG fires here stay
-  # quiet because __TAI_INTERACTIVE_MODE is still empty.
+  # Replay the user's PROMPT_COMMAND FIRST — any PS1 rebuilds it does need to
+  # happen before we layer B onto the (possibly new) PS1. DEBUG fires here
+  # stay quiet because __TAI_INTERACTIVE_MODE is still empty.
   if [ -n "$__tai_user_pc" ]; then
     eval "$__tai_user_pc"
   fi
-  # Fallback for prompt managers (starship, oh-my-bash) that draw the prompt
-  # from PROMPT_COMMAND directly and leave PS1 empty. By the time we get here
-  # the prompt has already been printed, so emit B inline.
+  # Now decide how to emit B:
+  #   - PS1 non-empty: append B (idempotent); fires after the visible prompt
+  #     characters when bash expands PS1.
+  #   - PS1 empty: user's PROMPT_COMMAND drew the prompt itself (starship,
+  #     oh-my-bash). PS1 expansion is a no-op, so emit B inline — the
+  #     prompt characters have already been printed by this point.
   if [ -z "$PS1" ]; then
     __tai_osc133 "B"
+  else
+    case "$PS1" in
+      *'\[\033]133;B\007\]'*) ;;
+      *) PS1="${PS1}"'\[\033]133;B\007\]' ;;
+    esac
   fi
   # Arm preexec: the next DEBUG trap fire is the user's typed command.
   __TAI_INTERACTIVE_MODE=1
