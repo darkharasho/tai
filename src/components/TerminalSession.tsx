@@ -401,8 +401,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     if (localStorage.getItem(dismissKey)) return;
 
     let cancelled = false;
-    // Only ask if remote stays markerless. shellIntegrated would flip true if
-    // the remote shell is emitting OSC 133.
+    // 2.5s delay so we don't prompt during one-shot ssh commands (e.g.
+    // `ssh host whoami`). checkRemote is authoritative — if the host already
+    // has integration, the card stays hidden.
     const t = setTimeout(async () => {
       if (cancelled) return;
       const result = await window.tai.shellIntegration.checkRemote(sshSessionTarget);

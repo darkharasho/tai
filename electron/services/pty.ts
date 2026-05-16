@@ -7,18 +7,18 @@ import { execFile, spawn } from 'child_process';
 import { isWindows } from './platform';
 
 // Resolves the on-disk directory holding the OSC 133 shell integration
-// snippets. In dev the scripts live under the source tree; in packaged builds
-// they're copied to resources/ via electron-builder's extraResources.
+// scripts. In dev they live under the source tree; in packaged builds they're
+// copied to resources/ via electron-builder's extraResources.
+let _cachedShellIntegrationDir: string | null | undefined;
 function shellIntegrationDir(): string | null {
+  if (_cachedShellIntegrationDir !== undefined) return _cachedShellIntegrationDir;
   const candidates = [
     path.join(process.resourcesPath || '', 'shell-integration'),
     path.join(__dirname, '..', 'electron', 'shell-integration'),
-    path.join(app.getAppPath?.() || '', 'electron', 'shell-integration'),
+    path.join(app.getAppPath(), 'electron', 'shell-integration'),
   ];
-  for (const c of candidates) {
-    if (c && fs.existsSync(c)) return c;
-  }
-  return null;
+  _cachedShellIntegrationDir = candidates.find(c => c && fs.existsSync(c)) ?? null;
+  return _cachedShellIntegrationDir;
 }
 
 function detectShellName(shellPath: string): 'bash' | 'zsh' | 'fish' | null {

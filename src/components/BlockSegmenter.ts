@@ -44,7 +44,6 @@ export class BlockSegmenter {
   private _integrationCallbacks: ShellIntegrationCallback[] = [];
   private _sshSessionCallbacks: SshSessionCallback[] = [];
   private _inSshSession = false;
-  private _sshSessionTarget: string | null = null;
   private _seenFirstPrompt = false;
   private _inAltScreen = false;
   private _inInteractiveMode = false;
@@ -62,6 +61,10 @@ export class BlockSegmenter {
   private _osc133RawPrompt = '';
   private _osc133RawCommand = '';
   private _osc133RawOutput = '';
+  // Per-chunk-stripped clean output, accumulated alongside the raw buffer so
+  // streaming onOutput callbacks don't re-strip the whole buffer each tick
+  // (was O(N²) on chunky long-running commands like `find /`).
+  private _osc133CleanOutput = '';
   private _osc133ExitCode: number | null = null;
   private _osc133BlockStart = 0;
 
@@ -382,22 +385,20 @@ export class BlockSegmenter {
 
   private _consumeOsc133(rawData: string): string {
     OSC133_RE.lastIndex = 0;
-    let out = '';
     let lastIndex = 0;
     let match: RegExpExecArray | null;
     while ((match = OSC133_RE.exec(rawData)) !== null) {
       const before = rawData.slice(lastIndex, match.index);
-      out += before;
       if (before) this._routeChunk(before);
       this._handleOsc133Marker(match[1] as 'A' | 'B' | 'C' | 'D', match[2] || '');
       lastIndex = OSC133_RE.lastIndex;
     }
-    out += rawData.slice(lastIndex);
-    if (lastIndex === 0) return rawData; // no markers actually matched
+    if (lastIndex === 0) return rawData;
     const tail = rawData.slice(lastIndex);
     if (tail && this._integrationActive) {
       this._routeChunk(tail);
-      // Tail has been routed; tell caller "nothing more to do" by returning ''.
+      // Empty return signals "tail already consumed via _routeChunk; nothing
+      // for the legacy path to do."
       return '';
     }
     return tail;
@@ -416,8 +417,6 @@ export class BlockSegmenter {
 
     switch (kind) {
       case 'A': {
-        // New prompt is starting. If we already have a command in flight,
-        // finalize it as a block.
         if (this._osc133Phase !== 'idle' && this._osc133Phase !== 'prompt') {
           this._finalizeIntegratedBlock();
         }
@@ -425,13 +424,13 @@ export class BlockSegmenter {
         this._osc133RawPrompt = '';
         this._osc133RawCommand = '';
         this._osc133RawOutput = '';
+        this._osc133CleanOutput = '';
         this._osc133ExitCode = null;
         this._osc133BlockStart = Date.now();
         this._passwordPromptFired = false;
         break;
       }
       case 'B': {
-        // Prompt rendered; what follows is the command line.
         this._osc133Phase = 'command';
         const promptText = stripAnsi(this._osc133RawPrompt);
         if (promptText && promptText !== this._currentPrompt) {
@@ -450,12 +449,11 @@ export class BlockSegmenter {
         break;
       }
       case 'C': {
-        // Command starts executing; what follows is output.
         this._osc133Phase = 'output';
         this._commandActive = true;
-        // If this command is an `ssh ...`, mark the segmenter as in a degraded
-        // (no-markers) sub-session until the command ends. The remote shell
-        // owns the stream until then.
+        // If this command is an `ssh ...`, flag the segmenter as in a degraded
+        // sub-session until D — the remote shell owns the byte stream and
+        // (usually) won't emit OSC 133 markers.
         const cmdMatch = stripAnsi(this._osc133RawCommand).trim().match(SSH_CMD_RE);
         if (cmdMatch) {
           const user = cmdMatch[1] || '';
@@ -466,7 +464,7 @@ export class BlockSegmenter {
         break;
       }
       case 'D': {
-        // Command finished. Exit code in payload (";<n>").
+        // Payload format: ";<exit-code>".
         const m = payload.match(/^;(-?\d+)/);
         if (m) this._osc133ExitCode = parseInt(m[1], 10);
         // Stay in output phase until the next A — trailing newlines or
@@ -479,9 +477,8 @@ export class BlockSegmenter {
   }
 
   private _setSshSession(active: boolean, target: string | null): void {
-    if (this._inSshSession === active && this._sshSessionTarget === target) return;
+    if (this._inSshSession === active) return;
     this._inSshSession = active;
-    this._sshSessionTarget = target;
     this._sshSessionCallbacks.forEach(cb => cb(active, target));
   }
 
@@ -501,9 +498,10 @@ export class BlockSegmenter {
         break;
       case 'output': {
         this._osc133RawOutput += chunk;
-        const clean = stripAnsi(this._osc133RawOutput).trim();
-        if (clean) {
-          this._outputCallbacks.forEach(cb => cb(clean, this._osc133RawOutput));
+        this._osc133CleanOutput += stripAnsi(chunk);
+        const trimmed = this._osc133CleanOutput.trim();
+        if (trimmed) {
+          this._outputCallbacks.forEach(cb => cb(trimmed, this._osc133RawOutput));
         }
         break;
       }
@@ -594,12 +592,12 @@ export class BlockSegmenter {
     this._integrationCallbacks = [];
     this._sshSessionCallbacks = [];
     this._inSshSession = false;
-    this._sshSessionTarget = null;
     this._integrationActive = false;
     this._osc133Phase = 'idle';
     this._osc133RawPrompt = '';
     this._osc133RawCommand = '';
     this._osc133RawOutput = '';
+    this._osc133CleanOutput = '';
     this._osc133ExitCode = null;
     this._osc133BlockStart = 0;
   }
