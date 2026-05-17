@@ -11,19 +11,21 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
+/* Gradient border via dual-background. A transparent 1px border claims
+   ring space; the padding-box layer covers the inner area, leaving only
+   the border ring showing the gradient. Renders uniformly at corners,
+   unlike the mask-composite approach. */
 .box::before {
   content: '';
   position: absolute;
-  inset: -1.5px;
-  border-radius: 11.5px;
-  padding: 1.5px;
-  background: linear-gradient(135deg, var(--color-shell) 0%, #007a60 30%, #005a47 50%, #007a60 70%, var(--color-shell) 100%);
-  background-size: 300% 300%;
+  inset: 0;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(transparent, transparent) padding-box,
+    linear-gradient(135deg, var(--color-shell) 0%, #007a60 30%, #005a47 50%, #007a60 70%, var(--color-shell) 100%) border-box;
+  background-size: 100% 100%, 300% 300%;
   animation: gradientSweep 20s ease-in-out infinite alternate;
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask-composite: xor;
-  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  mask-composite: exclude;
   pointer-events: none;
   z-index: 0;
   opacity: 0.5;
@@ -45,15 +47,17 @@
 }
 
 .boxAi::before {
-  background: linear-gradient(135deg, var(--color-ai) 0%, #7048b8 30%, #5a3494 50%, #7048b8 70%, var(--color-ai) 100%);
-  background-size: 300% 300%;
-  animation: gradientSweep 20s ease-in-out infinite alternate;
+  background:
+    linear-gradient(transparent, transparent) padding-box,
+    linear-gradient(135deg, var(--color-ai) 0%, #7048b8 30%, #5a3494 50%, #7048b8 70%, var(--color-ai) 100%) border-box;
+  background-size: 100% 100%, 300% 300%;
 }
 
 .boxRemote::before {
-  background: linear-gradient(135deg, var(--color-agent) 0%, #c44d0a 30%, #8a3808 50%, #c44d0a 70%, var(--color-agent) 100%);
-  background-size: 300% 300%;
-  animation: gradientSweep 20s ease-in-out infinite alternate;
+  background:
+    linear-gradient(transparent, transparent) padding-box,
+    linear-gradient(135deg, var(--color-agent) 0%, #c44d0a 30%, #8a3808 50%, #c44d0a 70%, var(--color-agent) 100%) border-box;
+  background-size: 100% 100%, 300% 300%;
 }
 
 .row {
