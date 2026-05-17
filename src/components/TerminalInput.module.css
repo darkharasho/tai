@@ -22,7 +22,7 @@
   border-radius: 10px;
   border: 1px solid transparent;
   background:
-    linear-gradient(transparent, transparent) padding-box,
+    linear-gradient(180deg, #181c22, #161a1f) padding-box,
     linear-gradient(135deg, var(--color-shell) 0%, #007a60 30%, #005a47 50%, #007a60 70%, var(--color-shell) 100%) border-box;
   background-size: 100% 100%, 300% 300%;
   animation: gradientSweep 20s ease-in-out infinite alternate;
@@ -48,14 +48,14 @@
 
 .boxAi::before {
   background:
-    linear-gradient(transparent, transparent) padding-box,
+    linear-gradient(180deg, #181c22, #161a1f) padding-box,
     linear-gradient(135deg, var(--color-ai) 0%, #7048b8 30%, #5a3494 50%, #7048b8 70%, var(--color-ai) 100%) border-box;
   background-size: 100% 100%, 300% 300%;
 }
 
 .boxRemote::before {
   background:
-    linear-gradient(transparent, transparent) padding-box,
+    linear-gradient(180deg, #181c22, #161a1f) padding-box,
     linear-gradient(135deg, var(--color-agent) 0%, #c44d0a 30%, #8a3808 50%, #c44d0a 70%, var(--color-agent) 100%) border-box;
   background-size: 100% 100%, 300% 300%;
 }
