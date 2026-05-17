@@ -49,6 +49,10 @@
 }
 
 [data-color-mode="low"] {
+  /* Inherited fallback for any consumer that reads --accent-color from
+     the root. Card modules redeclare --accent-color locally (per role),
+     so this does NOT dim card accents under non-bracket styles — that
+     is an accepted trade-off documented in the design spec. */
   --accent-color: var(--text-muted);
   --accent-tl-mask: linear-gradient(180deg, black 0px, black 140px, transparent 160px), linear-gradient(90deg, black 0%, transparent 2%);
   --accent-br-opacity: 0;
