@@ -169,11 +169,11 @@ export function BlockList({
         </div>
       )}
 
-      {groupConversations(items).map((group, idx) => {
+      {groupConversations(items).map((group) => {
         if (group.kind === 'passthrough') {
           return renderItem(group.item);
         }
-        const key = group.items.map(i => i.id).join('|') || `conv-${idx}`;
+        const key = group.items.map(i => i.id).join('|');
         return (
           <AIConversation key={key}>
             {group.items.map((aiItem, i) => renderItem(aiItem, { isFollowup: i > 0 }))}
