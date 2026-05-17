@@ -17,9 +17,9 @@
 .box::before {
   content: '';
   position: absolute;
-  inset: -1px;
-  border-radius: 11px;
-  padding: 1px;
+  inset: -2px;
+  border-radius: 12px;
+  padding: 2px;
   background: linear-gradient(135deg, var(--color-shell) 0%, #007a60 30%, #005a47 50%, #007a60 70%, var(--color-shell) 100%);
   background-size: 300% 300%;
   animation: gradientSweep 20s ease-in-out infinite alternate;
