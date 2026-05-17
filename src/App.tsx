@@ -162,9 +162,10 @@ export default function App() {
   }, [tabs, activeTabId, handleNewTab, requestCloseTab]);
 
   const colorMode = config['appearance.colorMode'] || 'high';
+  const cardAccent = config['appearance.cardAccent'] || 'brackets';
 
   return (
-    <div data-color-mode={colorMode} className={maximized ? undefined : 'window-frame'} style={{
+    <div data-color-mode={colorMode} data-card-accent={cardAccent} className={maximized ? undefined : 'window-frame'} style={{
       height: '100vh',
       display: 'flex',
       flexDirection: 'column',
