@@ -26,7 +26,7 @@ export function ApprovalPrompt({ command, status, onApprove, onReject, onEdit }:
   const resolved = status !== 'pending';
 
   return (
-    <div className={styles.container} style={{ opacity: resolved ? 0.4 : 1 }}>
+    <div className={styles.container} data-card-surface style={{ opacity: resolved ? 0.4 : 1 }}>
       <div className={styles.commandPreview}>
         <span className={styles.commandAccent}>❯</span> {command}
       </div>

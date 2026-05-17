@@ -114,6 +114,7 @@ export function CommandBlock({
   return (
     <div
       className={styles.block}
+      data-card-surface
       style={{ '--accent-color': modeColor } as React.CSSProperties}
       onClick={() => { if (active && awaitingInput && onSendInput) interactiveRef.current?.focus(); }}
     >

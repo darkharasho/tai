@@ -61,22 +61,25 @@
 
 /* === Card accent styles ===
    `brackets` is the default and uses the existing --accent-tl-mask / --accent-br-mask
-   variables already defined on :root. The five styles below disable those masks via a
-   fully-transparent gradient and provide their own border / shadow treatment. */
+   variables already defined on :root. The five styles below target the card element
+   directly (via [data-card-surface]) so that var(--accent-color) resolves at the card,
+   where the role color is set locally — setting these on :root would fail because
+   --accent-color is undefined at root, causing the whole declaration to be invalid
+   at computed-value time. */
 
-[data-card-accent="stripe-left"] {
+[data-card-accent="stripe-left"] [data-card-surface] {
   --accent-tl-mask: linear-gradient(transparent, transparent);
   --accent-br-mask: linear-gradient(transparent, transparent);
   --accent-card-border-left: 3px solid var(--accent-color);
 }
 
-[data-card-accent="stripe-top"] {
+[data-card-accent="stripe-top"] [data-card-surface] {
   --accent-tl-mask: linear-gradient(transparent, transparent);
   --accent-br-mask: linear-gradient(transparent, transparent);
   --accent-card-border-top: 2px solid var(--accent-color);
 }
 
-[data-card-accent="tinted"] {
+[data-card-accent="tinted"] [data-card-surface] {
   --accent-tl-mask: linear-gradient(transparent, transparent);
   --accent-br-mask: linear-gradient(transparent, transparent);
   --accent-card-border-top: 1px solid color-mix(in srgb, var(--accent-color) 50%, transparent);
@@ -88,7 +91,7 @@
     0 4px 16px color-mix(in srgb, var(--accent-color) 8%, transparent);
 }
 
-[data-card-accent="header-tint"] {
+[data-card-accent="header-tint"] [data-card-surface] {
   --accent-tl-mask: linear-gradient(transparent, transparent);
   --accent-br-mask: linear-gradient(transparent, transparent);
   --accent-card-shadow:
@@ -97,7 +100,7 @@
     var(--shadow-card);
 }
 
-[data-card-accent="stripe-glow"] {
+[data-card-accent="stripe-glow"] [data-card-surface] {
   --accent-tl-mask: linear-gradient(transparent, transparent);
   --accent-br-mask: linear-gradient(transparent, transparent);
   --accent-card-border-left: 3px solid var(--accent-color);

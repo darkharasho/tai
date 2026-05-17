@@ -157,7 +157,7 @@ export function InlineAIBlock({
         </div>
       )}
       {(streaming || content || (entries && entries.length > 0)) && (
-        <div className={styles.block}>
+        <div className={styles.block} data-card-surface>
           <div className={styles.accent} />
           <div className={styles.inner}>
             <div className={styles.header}>
