@@ -1,0 +1,41 @@
+.conversation {
+  position: relative;
+  padding-left: 22px;
+  margin: 6px 0 10px;
+}
+
+.rail {
+  position: absolute;
+  left: 7px;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 168, 132, 0.75) 0%,
+    rgba(139, 92, 246, 0.75) 100%
+  );
+  pointer-events: none;
+}
+
+.dot {
+  position: absolute;
+  left: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-base);
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.dotUser {
+  top: 4px;
+  background: var(--color-shell);
+}
+
+.dotAi {
+  bottom: 4px;
+  background: var(--color-ai);
+}
