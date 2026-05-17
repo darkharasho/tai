@@ -14,6 +14,7 @@ const DEFAULTS = {
   'appearance.gradientBorder': true,
   'appearance.animationSpeed': 20,
   'appearance.colorMode': 'high',
+  'appearance.cardAccent': 'brackets',
 };
 
 export function useSettings() {
