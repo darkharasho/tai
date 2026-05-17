@@ -1,20 +1,30 @@
 .wrapper {
-  margin: 6px 0 10px;
+  margin: 0 0 14px;
+}
+
+.wrapper:last-child {
+  margin-bottom: 0;
 }
 
 .prompt {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 6px 8px;
+  display: block;
+  padding: 4px 0 6px;
   margin-bottom: 4px;
 }
 
-.promptIcon {
-  color: var(--color-ai);
-  flex-shrink: 0;
-  margin-top: 2px;
-  opacity: 0.7;
+.promptLabel {
+  display: block;
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-shell);
+  margin-bottom: 2px;
+}
+
+.promptLabelFollowup {
+  /* same colour and size — class exists for future tweaks (e.g. lower opacity) */
 }
 
 .promptText {

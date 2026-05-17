@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
-import { Terminal, Copy, Sparkles, Square, Check, X, Circle, FileText, Pencil, FolderSearch, Search, Globe, ChevronRight, ChevronDown, type LucideIcon } from 'lucide-react';
+import { Terminal, Copy, Square, Check, X, Circle, FileText, Pencil, FolderSearch, Search, Globe, ChevronRight, ChevronDown, type LucideIcon } from 'lucide-react';
 import type { AIEntry, AIProvider } from '@/types';
 import styles from './InlineAIBlock.module.css';
 import ToolCallBody, { formatToolLabel } from './ToolCallBody';
@@ -40,6 +40,7 @@ interface InlineAIBlockProps {
   queuedPrompts?: { id: string; text: string }[];
   onEditQueued?: (id: string, text: string) => void;
   onRemoveQueued?: (id: string) => void;
+  isFollowup?: boolean;
 }
 
 const TOOL_ICONS: Record<string, LucideIcon> = {
@@ -73,6 +74,7 @@ export function InlineAIBlock({
   queuedPrompts,
   onEditQueued,
   onRemoveQueued,
+  isFollowup = false,
 }: InlineAIBlockProps) {
   const runnableCommands = new Set(suggestedCommands ?? []);
   const { config } = useSettings();
@@ -143,7 +145,9 @@ export function InlineAIBlock({
     <div className={styles.wrapper}>
       {question && (
         <div className={styles.prompt}>
-          <Sparkles size={13} className={styles.promptIcon} />
+          <span className={`${styles.promptLabel}${isFollowup ? ` ${styles.promptLabelFollowup}` : ''}`}>
+            {isFollowup ? '↪ You' : 'You'}
+          </span>
           <div className={styles.promptText}>
             <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
               {question}
