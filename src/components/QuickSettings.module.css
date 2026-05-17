@@ -19,8 +19,8 @@
 }
 
 .modal {
-  width: 540px;
-  min-height: 340px;
+  width: 580px;
+  min-height: 420px;
   max-height: 80vh;
   background: var(--bg-surface);
   border: 1px solid var(--border-card);
@@ -170,7 +170,7 @@
   border: 1px solid var(--border-subtle);
   border-radius: 6px;
   cursor: pointer;
-  min-width: 120px;
+  min-width: 160px;
   transition: border-color 0.15s, background 0.15s;
 }
 
@@ -224,6 +224,7 @@
   font-family: var(--font-sans);
   font-size: 12px;
   color: var(--text-secondary);
+  white-space: nowrap;
   transition: background 0.12s;
 }
 
