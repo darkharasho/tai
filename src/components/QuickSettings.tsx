@@ -37,7 +37,7 @@ const CARD_ACCENT_OPTIONS = [
   { value: 'stripe-left', label: 'Left Stripe' },
   { value: 'stripe-top', label: 'Top Stripe' },
   { value: 'tinted', label: 'Tinted Border' },
-  { value: 'header-tint', label: 'Header Tint' },
+  { value: 'tinted-stripe', label: 'Tinted + Stripe' },
   { value: 'stripe-glow', label: 'Stripe + Glow' },
 ];
 
