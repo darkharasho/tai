@@ -33,7 +33,7 @@ export function AgentStepCard({ question, steps, streaming }: AgentStepCardProps
   const completedCount = steps.filter(s => s.status === 'complete').length;
 
   return (
-    <div className={styles.card}>
+    <div className={styles.card} data-card-surface>
       <div className={styles.header} onClick={() => setCollapsed(!collapsed)}>
         {collapsed
           ? <ChevronRight size={14} color="var(--color-agent)" />

@@ -1,9 +1,12 @@
 .container {
   --accent-color: var(--color-agent);
   background: var(--bg-card);
-  border: 1px solid var(--border-card);
+  border-top: var(--accent-card-border-top);
+  border-right: var(--accent-card-border-right);
+  border-bottom: var(--accent-card-border-bottom);
+  border-left: var(--accent-card-border-left);
   border-radius: 10px;
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--accent-card-shadow);
   padding: 14px 16px;
   margin-bottom: 8px;
   position: relative;

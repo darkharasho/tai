@@ -37,14 +37,77 @@
   --accent-br-composite: intersect;
   --accent-br-webkit-composite: source-in;
   --accent-br-opacity: 1;
+  /* Card border + shadow vars consumed by .card rules in card modules.
+     Defaults preserve the current bracket appearance. */
+  --accent-card-border-top: 1px solid var(--border-card);
+  --accent-card-border-right: 1px solid var(--border-card);
+  --accent-card-border-bottom: 1px solid var(--border-card);
+  --accent-card-border-left: 1px solid var(--border-card);
+  --accent-card-shadow: var(--shadow-card);
   --shimmer-duration: 8s;
   --window-radius: 10px;
 }
 
 [data-color-mode="low"] {
+  /* Inherited fallback for any consumer that reads --accent-color from
+     the root. Card modules redeclare --accent-color locally (per role),
+     so this does NOT dim card accents under non-bracket styles — that
+     is an accepted trade-off documented in the design spec. */
+  --accent-color: var(--text-muted);
   --accent-tl-mask: linear-gradient(180deg, black 0px, black 140px, transparent 160px), linear-gradient(90deg, black 0%, transparent 2%);
   --accent-br-opacity: 0;
   --shimmer-duration: 30s;
+}
+
+/* === Card accent styles ===
+   `brackets` is the default and uses the existing --accent-tl-mask / --accent-br-mask
+   variables already defined on :root. The five styles below target the card element
+   directly (via [data-card-surface]) so that var(--accent-color) resolves at the card,
+   where the role color is set locally — setting these on :root would fail because
+   --accent-color is undefined at root, causing the whole declaration to be invalid
+   at computed-value time. */
+
+[data-card-accent="stripe-left"] [data-card-surface] {
+  --accent-tl-mask: linear-gradient(transparent, transparent);
+  --accent-br-mask: linear-gradient(transparent, transparent);
+  --accent-card-border-left: 3px solid var(--accent-color);
+}
+
+[data-card-accent="stripe-top"] [data-card-surface] {
+  --accent-tl-mask: linear-gradient(transparent, transparent);
+  --accent-br-mask: linear-gradient(transparent, transparent);
+  --accent-card-border-top: 2px solid var(--accent-color);
+}
+
+[data-card-accent="tinted"] [data-card-surface] {
+  --accent-tl-mask: linear-gradient(transparent, transparent);
+  --accent-br-mask: linear-gradient(transparent, transparent);
+  --accent-card-border-top: 1px solid color-mix(in srgb, var(--accent-color) 50%, transparent);
+  --accent-card-border-right: 1px solid color-mix(in srgb, var(--accent-color) 50%, transparent);
+  --accent-card-border-bottom: 1px solid color-mix(in srgb, var(--accent-color) 50%, transparent);
+  --accent-card-border-left: 1px solid color-mix(in srgb, var(--accent-color) 50%, transparent);
+  --accent-card-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent-color) 15%, transparent),
+    0 4px 16px color-mix(in srgb, var(--accent-color) 8%, transparent);
+}
+
+[data-card-accent="tinted-stripe"] [data-card-surface] {
+  --accent-tl-mask: linear-gradient(transparent, transparent);
+  --accent-br-mask: linear-gradient(transparent, transparent);
+  --accent-card-border-top: 1px solid color-mix(in srgb, var(--accent-color) 50%, transparent);
+  --accent-card-border-right: 1px solid color-mix(in srgb, var(--accent-color) 50%, transparent);
+  --accent-card-border-bottom: 1px solid color-mix(in srgb, var(--accent-color) 50%, transparent);
+  --accent-card-border-left: 3px solid var(--accent-color);
+}
+
+[data-card-accent="stripe-glow"] [data-card-surface] {
+  --accent-tl-mask: linear-gradient(transparent, transparent);
+  --accent-br-mask: linear-gradient(transparent, transparent);
+  --accent-card-border-left: 3px solid var(--accent-color);
+  --accent-card-shadow:
+    0 0 24px 0 color-mix(in srgb, var(--accent-color) 45%, transparent),
+    -4px 0 16px 0 color-mix(in srgb, var(--accent-color) 35%, transparent),
+    var(--shadow-card);
 }
 
 *, *::before, *::after {
@@ -82,6 +145,16 @@ html, body {
   pointer-events: none;
   z-index: 9999;
   border-radius: inherit;
+}
+
+/* Hide all noise overlays (root + per-modal ::after textures) when the user
+   has disabled the noise setting. #root::after is the main app texture and
+   sits ABOVE the [data-noise] element, so :has() is needed to reach it from
+   a descendant. The modal overlays are descendants of [data-noise], so the
+   simple descendant selector covers them. */
+#root:has([data-noise="off"])::after,
+[data-noise="off"] ::after {
+  background-image: none !important;
 }
 
 ::selection {

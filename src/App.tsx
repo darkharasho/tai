@@ -162,9 +162,11 @@ export default function App() {
   }, [tabs, activeTabId, handleNewTab, requestCloseTab]);
 
   const colorMode = config['appearance.colorMode'] || 'high';
+  const cardAccent = config['appearance.cardAccent'] || 'brackets';
+  const noise = config['appearance.noise'] !== false;
 
   return (
-    <div data-color-mode={colorMode} className={maximized ? undefined : 'window-frame'} style={{
+    <div data-color-mode={colorMode} data-card-accent={cardAccent} data-noise={noise ? 'on' : 'off'} className={maximized ? undefined : 'window-frame'} style={{
       height: '100vh',
       display: 'flex',
       flexDirection: 'column',
@@ -221,6 +223,10 @@ export default function App() {
         onClose={() => setQuickSettingsOpen(false)}
         colorMode={colorMode}
         onColorModeChange={(mode) => setSetting('appearance.colorMode', mode)}
+        cardAccent={cardAccent}
+        onCardAccentChange={(value) => setSetting('appearance.cardAccent', value)}
+        noise={noise}
+        onNoiseChange={(value) => setSetting('appearance.noise', value)}
         trustLevel={activeTab.trustLevel}
         onTrustLevelChange={handleTrustLevelChange}
         aiProvider={activeTab.aiProvider}
