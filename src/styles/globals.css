@@ -148,8 +148,11 @@ html, body {
 }
 
 /* Hide all noise overlays (root + per-modal ::after textures) when the user
-   has disabled the noise setting. */
-[data-noise="off"] #root::after,
+   has disabled the noise setting. #root::after is the main app texture and
+   sits ABOVE the [data-noise] element, so :has() is needed to reach it from
+   a descendant. The modal overlays are descendants of [data-noise], so the
+   simple descendant selector covers them. */
+#root:has([data-noise="off"])::after,
 [data-noise="off"] ::after {
   background-image: none !important;
 }
