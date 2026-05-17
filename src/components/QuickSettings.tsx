@@ -9,6 +9,8 @@ interface QuickSettingsProps {
   onClose: () => void;
   colorMode: string;
   onColorModeChange: (mode: string) => void;
+  cardAccent: string;
+  onCardAccentChange: (value: string) => void;
   trustLevel: TrustLevel;
   onTrustLevelChange: (level: TrustLevel) => void;
   aiProvider: AIProvider;
@@ -28,6 +30,15 @@ type Category = 'general' | 'claude';
 const COLOR_MODE_OPTIONS = [
   { value: 'high', label: 'High' },
   { value: 'low', label: 'Low' },
+];
+
+const CARD_ACCENT_OPTIONS = [
+  { value: 'brackets', label: 'Corner Brackets' },
+  { value: 'stripe-left', label: 'Left Stripe' },
+  { value: 'stripe-top', label: 'Top Stripe' },
+  { value: 'tinted', label: 'Tinted Border' },
+  { value: 'header-tint', label: 'Header Tint' },
+  { value: 'stripe-glow', label: 'Stripe + Glow' },
 ];
 
 const TRUST_LEVEL_OPTIONS = [
@@ -109,7 +120,7 @@ function CustomDropdown({ value, options, onChange }: {
   );
 }
 
-export function QuickSettings({ visible, onClose, colorMode, onColorModeChange, trustLevel, onTrustLevelChange, aiProvider, onAIProviderChange, claudeModel, onClaudeModelChange, claudeEffort, onClaudeEffortChange, expandToolCalls, onExpandToolCallsChange, systemNotifications, onSystemNotificationsChange }: QuickSettingsProps) {
+export function QuickSettings({ visible, onClose, colorMode, onColorModeChange, cardAccent, onCardAccentChange, trustLevel, onTrustLevelChange, aiProvider, onAIProviderChange, claudeModel, onClaudeModelChange, claudeEffort, onClaudeEffortChange, expandToolCalls, onExpandToolCallsChange, systemNotifications, onSystemNotificationsChange }: QuickSettingsProps) {
   const [category, setCategory] = useState<Category>('general');
   const [version, setVersion] = useState('');
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'up-to-date' | 'available' | 'error'>('idle');
@@ -190,6 +201,14 @@ export function QuickSettings({ visible, onClose, colorMode, onColorModeChange, 
                     value={colorMode}
                     options={COLOR_MODE_OPTIONS}
                     onChange={onColorModeChange}
+                  />
+                </div>
+                <div className={styles.settingRow}>
+                  <span className={styles.settingLabel}>Card Accent</span>
+                  <CustomDropdown
+                    value={cardAccent}
+                    options={CARD_ACCENT_OPTIONS}
+                    onChange={onCardAccentChange}
                   />
                 </div>
 

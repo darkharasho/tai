@@ -222,6 +222,8 @@ export default function App() {
         onClose={() => setQuickSettingsOpen(false)}
         colorMode={colorMode}
         onColorModeChange={(mode) => setSetting('appearance.colorMode', mode)}
+        cardAccent={cardAccent}
+        onCardAccentChange={(value) => setSetting('appearance.cardAccent', value)}
         trustLevel={activeTab.trustLevel}
         onTrustLevelChange={handleTrustLevelChange}
         aiProvider={activeTab.aiProvider}
