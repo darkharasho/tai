@@ -70,7 +70,8 @@ Each turn renders without its own rail or dots — those belong to the conversat
 - **First turn:** prompt label reads `YOU` (color `var(--color-shell)`, 10px uppercase letter-spaced, 500 weight).
 - **Follow-up turns:** prompt label reads `↪ YOU` (same styling; the arrow uses the same color).
 - **Turn spacing:** `margin-bottom: 14px` between turns inside a conversation; `0` on the last turn.
-- **Prompt body and AI card:** unchanged from today (existing ReactMarkdown rendering, existing `.block`/`.accent`/`.header`/`.body` structure).
+- **Prompt card:** the prompt label + body live inside a small elevated card — `background: var(--bg-elevated)`, `border-left: 3px solid var(--color-shell)`, `border-radius: 12px`, `padding: 9px 14px`, with a subtle inset highlight. Deliberately distinct from the command card pattern (which uses corner accents on `bg-card`).
+- **AI card:** unchanged from today (existing `.block`/`.accent`/`.header`/`.body` structure).
 - **`Sparkles` import:** removed; replaced by the text label.
 
 ### Grouping logic (`BlockList`)
