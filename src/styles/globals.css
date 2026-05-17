@@ -147,6 +147,13 @@ html, body {
   border-radius: inherit;
 }
 
+/* Hide all noise overlays (root + per-modal ::after textures) when the user
+   has disabled the noise setting. */
+[data-noise="off"] #root::after,
+[data-noise="off"] ::after {
+  background-image: none !important;
+}
+
 ::selection {
   background: rgba(139, 92, 246, 0.3);
 }

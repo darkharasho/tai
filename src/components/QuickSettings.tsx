@@ -11,6 +11,8 @@ interface QuickSettingsProps {
   onColorModeChange: (mode: string) => void;
   cardAccent: string;
   onCardAccentChange: (value: string) => void;
+  noise: boolean;
+  onNoiseChange: (value: boolean) => void;
   trustLevel: TrustLevel;
   onTrustLevelChange: (level: TrustLevel) => void;
   aiProvider: AIProvider;
@@ -120,7 +122,7 @@ function CustomDropdown({ value, options, onChange }: {
   );
 }
 
-export function QuickSettings({ visible, onClose, colorMode, onColorModeChange, cardAccent, onCardAccentChange, trustLevel, onTrustLevelChange, aiProvider, onAIProviderChange, claudeModel, onClaudeModelChange, claudeEffort, onClaudeEffortChange, expandToolCalls, onExpandToolCallsChange, systemNotifications, onSystemNotificationsChange }: QuickSettingsProps) {
+export function QuickSettings({ visible, onClose, colorMode, onColorModeChange, cardAccent, onCardAccentChange, noise, onNoiseChange, trustLevel, onTrustLevelChange, aiProvider, onAIProviderChange, claudeModel, onClaudeModelChange, claudeEffort, onClaudeEffortChange, expandToolCalls, onExpandToolCallsChange, systemNotifications, onSystemNotificationsChange }: QuickSettingsProps) {
   const [category, setCategory] = useState<Category>('general');
   const [version, setVersion] = useState('');
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'up-to-date' | 'available' | 'error'>('idle');
@@ -210,6 +212,10 @@ export function QuickSettings({ visible, onClose, colorMode, onColorModeChange, 
                     options={CARD_ACCENT_OPTIONS}
                     onChange={onCardAccentChange}
                   />
+                </div>
+                <div className={styles.settingRow}>
+                  <span className={styles.settingLabel}>Noise Texture</span>
+                  <Toggle checked={noise} onChange={onNoiseChange} ariaLabel="Noise texture" />
                 </div>
 
                 <div className={styles.settingRow}>

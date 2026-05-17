@@ -19,9 +19,10 @@
 }
 
 .modal {
-  width: 580px;
-  min-height: 420px;
-  max-height: 80vh;
+  width: 90vw;
+  max-width: 1200px;
+  height: 85vh;
+  max-height: 900px;
   background: var(--bg-surface);
   border: 1px solid var(--border-card);
   border-radius: 12px;
