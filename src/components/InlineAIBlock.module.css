@@ -17,7 +17,9 @@
 }
 
 .promptLabel {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-family: var(--font-sans);
   font-size: 10px;
   font-weight: 500;
@@ -25,6 +27,10 @@
   text-transform: uppercase;
   color: var(--color-shell);
   margin-bottom: 2px;
+}
+
+.promptLabelIcon {
+  flex-shrink: 0;
 }
 
 .promptLabelFollowup {

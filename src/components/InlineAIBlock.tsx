@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
-import { Terminal, Copy, Square, Check, X, Circle, FileText, Pencil, FolderSearch, Search, Globe, ChevronRight, ChevronDown, type LucideIcon } from 'lucide-react';
+import { Terminal, Copy, Square, Check, X, Circle, FileText, Pencil, FolderSearch, Search, Globe, ChevronRight, ChevronDown, Reply, type LucideIcon } from 'lucide-react';
 import type { AIEntry, AIProvider } from '@/types';
 import styles from './InlineAIBlock.module.css';
 import ToolCallBody, { formatToolLabel } from './ToolCallBody';
@@ -146,7 +146,8 @@ export function InlineAIBlock({
       {question && (
         <div className={styles.prompt}>
           <span className={`${styles.promptLabel}${isFollowup ? ` ${styles.promptLabelFollowup}` : ''}`}>
-            {isFollowup ? '↪ You' : 'You'}
+            {isFollowup && <Reply size={10} className={styles.promptLabelIcon} />}
+            You
           </span>
           <div className={styles.promptText}>
             <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
