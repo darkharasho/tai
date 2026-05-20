@@ -368,11 +368,14 @@ export class BlockSegmenter {
       return promptShort !== this._localHostname && promptShort !== localShort;
     }
 
+    // Fallback when local hostname hasn't loaded: only flag remote if the
+    // initial captured prompt had its own identity and the new identity
+    // differs. The previous `initId === null` branch produced false positives
+    // when the very first prompt happened to be a bootstrap/precmd prompt
+    // without `user@host` — any later real prompt then got flagged remote,
+    // causing the local session to be routed through ssh + askpass.
     const initId = this._extractIdentity(this._initialPrompt);
-    return this._initialPrompt !== '' && (
-      (initId !== null && newId !== initId) ||
-      (initId === null && prompt !== this._initialPrompt)
-    );
+    return initId !== null && newId !== initId;
   }
 
   private _firePromptChange(prompt: string): void {
