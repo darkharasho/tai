@@ -11,6 +11,15 @@ const CURSOR_SHOW = '\x1b[?25h';
 const CURSOR_HOME = '\x1b[H';
 const CLEAR_SCREEN = '\x1b[2J';
 
+/** Apply carriage-return semantics: for each line keep only text after the last \r. */
+function applyCR(str: string): string {
+  if (!str.includes('\r')) return str;
+  return str.split('\n').map(line => {
+    const cr = line.lastIndexOf('\r');
+    return cr === -1 ? line : line.substring(cr + 1);
+  }).join('\n');
+}
+
 type BlockCallback = (block: SegmentedBlock) => void;
 type OutputCallback = (output: string, rawOutput: string) => void;
 type AltScreenCallback = (entered: boolean) => void;
@@ -508,8 +517,12 @@ export class BlockSegmenter {
       case 'output': {
         this._osc133RawOutput += chunk;
         this._osc133CleanOutput += stripAnsi(chunk);
-        if (this._osc133CleanOutput.length > 0) {
-          this._outputCallbacks.forEach(cb => cb(this._osc133CleanOutput, this._osc133RawOutput));
+        // Apply carriage-return semantics: for each line, keep only
+        // text after the last \r so progress bars overwrite in place.
+        const cleanCR = applyCR(this._osc133CleanOutput);
+        const rawCR = applyCR(this._osc133RawOutput);
+        if (cleanCR.length > 0) {
+          this._outputCallbacks.forEach(cb => cb(cleanCR, rawCR));
         }
         break;
       }
@@ -558,8 +571,8 @@ export class BlockSegmenter {
     }
 
     const command = stripAnsi(rawCommand).trim();
-    const output = stripAnsi(rawOutputBytes).trimEnd();
-    const rawOutput = rawOutputBytes.trimEnd();
+    const output = applyCR(stripAnsi(rawOutputBytes)).trimEnd();
+    const rawOutput = applyCR(rawOutputBytes).trimEnd();
     const promptText = stripAnsi(this._osc133RawPrompt) || this._currentPrompt;
 
     // Skip empty bootstrap "blocks" (e.g. the synthetic prompt that fires
