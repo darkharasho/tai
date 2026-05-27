@@ -11,12 +11,26 @@ const CURSOR_SHOW = '\x1b[?25h';
 const CURSOR_HOME = '\x1b[H';
 const CLEAR_SCREEN = '\x1b[2J';
 
-/** Apply carriage-return semantics: for each line keep only text after the last \r. */
+/**
+ * Apply carriage-return semantics: for each line, simulate \r by
+ * keeping only text after the last bare \r (not \r\n which is just
+ * a line ending).  If \r is the very last character (cursor parked
+ * at column 0 waiting for the next overwrite), keep the previous
+ * segment so the line isn't blank.
+ */
 function applyCR(str: string): string {
   if (!str.includes('\r')) return str;
-  return str.split('\n').map(line => {
-    const cr = line.lastIndexOf('\r');
-    return cr === -1 ? line : line.substring(cr + 1);
+  // Strip \r\n → \n first so only bare \r remain
+  const normalized = str.replace(/\r\n/g, '\n');
+  if (!normalized.includes('\r')) return normalized;
+  return normalized.split('\n').map(line => {
+    if (!line.includes('\r')) return line;
+    // Split by \r and pick the last non-empty segment
+    const segments = line.split('\r');
+    for (let i = segments.length - 1; i >= 0; i--) {
+      if (segments[i].length > 0) return segments[i];
+    }
+    return '';
   }).join('\n');
 }
 
