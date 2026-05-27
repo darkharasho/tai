@@ -12,29 +12,23 @@ __TAI_LOADED=1
 __tai_osc133() { printf '\033]133;%s\007' "$1"; }
 
 # Snapshot the user's existing PROMPT_COMMAND once so we can replay it inside
-# our wrapper. This lets us own the state machine (DEBUG trap correctness)
-# without breaking user/theme hooks.
+# our wrapper.
 __tai_user_pc="${PROMPT_COMMAND}"
 
 __tai_prompt_invoke() {
   local __ec=$?
-  if [ -n "$__TAI_CMD_ACTIVE" ]; then
-    __tai_osc133 "D;$__ec"
-    __TAI_CMD_ACTIVE=
-  fi
+  __tai_osc133 "D;$__ec"
   __tai_osc133 "A"
   # Replay the user's PROMPT_COMMAND FIRST — any PS1 rebuilds it does need to
-  # happen before we layer B onto the (possibly new) PS1. DEBUG fires here
-  # stay quiet because __TAI_INTERACTIVE_MODE is still empty.
+  # happen before we layer B onto the (possibly new) PS1.
   if [ -n "$__tai_user_pc" ]; then
     eval "$__tai_user_pc"
   fi
-  # Now decide how to emit B:
+  # Decide how to emit B:
   #   - PS1 non-empty: append B (idempotent); fires after the visible prompt
   #     characters when bash expands PS1.
   #   - PS1 empty: user's PROMPT_COMMAND drew the prompt itself (starship,
-  #     oh-my-bash). PS1 expansion is a no-op, so emit B inline — the
-  #     prompt characters have already been printed by this point.
+  #     oh-my-bash). PS1 expansion is a no-op, so emit B inline.
   if [ -z "$PS1" ]; then
     __tai_osc133 "B"
   else
@@ -43,21 +37,15 @@ __tai_prompt_invoke() {
       *) PS1="${PS1}"'\[\033]133;B\007\]' ;;
     esac
   fi
-  # Arm preexec: the next DEBUG trap fire is the user's typed command.
-  __TAI_INTERACTIVE_MODE=1
 }
 
-__tai_preexec() {
-  # Tab completion shells out internally; ignore.
-  [ -n "$COMP_LINE" ] && return
-  # Suppress DEBUG noise that doesn't correspond to user-typed commands.
-  [ -z "$__TAI_INTERACTIVE_MODE" ] && return
-  __TAI_INTERACTIVE_MODE=
-  __TAI_CMD_ACTIVE=1
-  __tai_osc133 "C"
-}
-
+# PS0 expands after Enter but before bash runs the command — that's the
+# preexec moment, exactly where the segmenter needs OSC 133 C to transition
+# from 'command' to 'output' phase. Using PS0 avoids fighting other
+# integrations (Ptyxis/vte, bash-preexec) for the DEBUG trap, which they
+# tend to reinstall on every prompt cycle. Empty Enter still expands PS0,
+# but the resulting empty-command block is dropped by the segmenter.
+PS0=$'\e]133;C\a'
 PROMPT_COMMAND="__tai_prompt_invoke"
-trap '__tai_preexec' DEBUG
 
 export TAI_SHELL_INTEGRATION=1

@@ -16,6 +16,7 @@ import { createGeminiProvider } from '@/providers/gemini';
 import { useSettings } from '@/hooks/useSettings';
 import type { AIProvider, ContextMode, TrustLevel, AIEntry } from '@/types';
 import { hasActiveAi } from '@/utils/hasActiveAi';
+import { isMultilineCommand } from '@/utils/isMultilineCommand';
 import {
   type QueuedPrompt,
   addQueuedPrompt,
@@ -730,7 +731,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
 
   const handleSubmit = useCallback((value: string) => {
     if (inputMode === 'shell') {
-      const isMultiline = value.includes('\n');
+      const isMultiline = isMultilineCommand(value);
       // Multi-line inputs are sent raw — bash handles each line as a separate
       // command (or as a continuation for heredocs/loops), and each gets its
       // own block via OSC 133 markers. Wrapping in `bash -c '...'` would

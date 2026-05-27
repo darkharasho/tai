@@ -30,6 +30,27 @@ describe('BlockSegmenter', () => {
     expect(outputCb).toHaveBeenCalled();
   });
 
+  it('streams onOutput per output line in legacy (non-integrated) mode', () => {
+    const segmenter = new BlockSegmenter();
+    const outputCb = vi.fn();
+    segmenter.onOutput(outputCb);
+
+    // Prompt detection + command echo. Legacy mode emits per newline once
+    // _seenFirstPrompt is set, so this models the live-streaming pending card.
+    segmenter.feed('user@host:~$ ');
+    segmenter.feed('cmd\n');
+    const baseline = outputCb.mock.calls.length;
+
+    segmenter.feed('1\n');
+    expect(outputCb.mock.calls.length).toBeGreaterThan(baseline);
+    expect(outputCb.mock.calls.at(-1)![0]).toContain('1');
+
+    const afterOne = outputCb.mock.calls.length;
+    segmenter.feed('2\n');
+    expect(outputCb.mock.calls.length).toBeGreaterThan(afterOne);
+    expect(outputCb.mock.calls.at(-1)![0]).toContain('2');
+  });
+
   it('detects alt-screen enter/exit', () => {
     const segmenter = new BlockSegmenter();
     const altCb = vi.fn();
@@ -170,6 +191,51 @@ describe('BlockSegmenter', () => {
       segmenter.feed(`${A}user@host:~$ ${B}echo hi\n${C}hi\n`);
       const seen = outputCb.mock.calls.map(c => c[0]).join('');
       expect(seen).not.toContain('\x1b]133');
+    });
+
+    it('streams onOutput per chunk during a long-running command (OSC 133)', () => {
+      const segmenter = new BlockSegmenter();
+      const outputCb = vi.fn();
+      segmenter.onOutput(outputCb);
+
+      // Prompt + command typed + preexec marker (start of output phase).
+      segmenter.feed(`${A}user@host:~$ ${B}sleep-loop\n${C}`);
+
+      const callsAfterStart = outputCb.mock.calls.length;
+      expect(callsAfterStart).toBe(0);
+
+      // Output trickles in chunk-by-chunk, as it would from a real PTY for
+      // `for i in 1 2 3; do echo $i; sleep 1; done`.
+      segmenter.feed('1\n');
+      expect(outputCb.mock.calls.length).toBeGreaterThan(callsAfterStart);
+      expect(outputCb.mock.calls.at(-1)![0]).toContain('1');
+
+      const afterOne = outputCb.mock.calls.length;
+      segmenter.feed('2\n');
+      expect(outputCb.mock.calls.length).toBeGreaterThan(afterOne);
+      expect(outputCb.mock.calls.at(-1)![0]).toContain('2');
+
+      const afterTwo = outputCb.mock.calls.length;
+      segmenter.feed('3\n');
+      expect(outputCb.mock.calls.length).toBeGreaterThan(afterTwo);
+      expect(outputCb.mock.calls.at(-1)![0]).toContain('3');
+    });
+
+    it('streams onOutput byte-by-byte (worst-case PTY chunking)', () => {
+      const segmenter = new BlockSegmenter();
+      const outputCb = vi.fn();
+      segmenter.onOutput(outputCb);
+
+      segmenter.feed(`${A}$ ${B}cmd\n${C}`);
+      const baseline = outputCb.mock.calls.length;
+
+      const payload = 'hello world\n';
+      for (const ch of payload) segmenter.feed(ch);
+
+      // Each byte after entering output phase should produce an emit — the
+      // pending command card depends on this for live streaming.
+      expect(outputCb.mock.calls.length).toBe(baseline + payload.length);
+      expect(outputCb.mock.calls.at(-1)![0]).toContain('hello world');
     });
 
     it('captures non-zero exit codes', () => {
