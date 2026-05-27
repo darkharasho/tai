@@ -5,3 +5,4 @@ dist-electron/
 .superpowers/
 .DS_Store
 .worktrees/
+graphify-out/
