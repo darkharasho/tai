@@ -7,6 +7,7 @@ import { RemoteSshManager } from './remoteSsh';
 import { RemoteToolProxy } from './remoteToolProxy';
 import { RemoteDaemonProxy } from './remoteDaemonProxy';
 import { generateMcpServerScript, generateMcpConfig } from './mcpRemoteServer';
+import { generateHistoryServerScript, generateHistoryMcpConfig } from './mcpHistoryServer';
 import { enrichEnv, resolveBinary } from './platform';
 
 const sshManager = new RemoteSshManager();
@@ -23,6 +24,7 @@ interface ClaudeState {
   pendingToolUses: Map<string, { id: string; name: string; input: Record<string, any> }>;
   daemonProxy: RemoteDaemonProxy | null;
   daemonEnabled: boolean;
+  historyFilePath: string | null;
 }
 
 const claudeStates = new Map<string, ClaudeState>();
@@ -30,7 +32,7 @@ const claudeStates = new Map<string, ClaudeState>();
 function getState(key: string): ClaudeState {
   let state = claudeStates.get(key);
   if (!state) {
-    state = { process: null, sessionId: null, buffer: '', busy: false, permMode: null, remoteTarget: null, remoteExecMode: 'auto', pendingToolUses: new Map(), daemonProxy: null, daemonEnabled: false };
+    state = { process: null, sessionId: null, buffer: '', busy: false, permMode: null, remoteTarget: null, remoteExecMode: 'auto', pendingToolUses: new Map(), daemonProxy: null, daemonEnabled: false, historyFilePath: null };
     claudeStates.set(key, state);
   }
   return state;
@@ -93,11 +95,28 @@ function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, perm
   let mcpServerPath: string | null = null;
   let mcpConfigPath: string | null = null;
   let sshConfigPath: string | null = null;
+  let historyServerPath: string | null = null;
+
+  const safeKey = key.replace(/[^a-z0-9]/gi, '_');
+  const tmp = os.tmpdir();
+
+  // Terminal history MCP server: exposes a TerminalHistory tool so Claude can
+  // retrieve recent commands/output from the current session on demand.
+  const historyFilePath = path.join(tmp, `tai-history-${safeKey}.json`);
+  state.historyFilePath = historyFilePath;
+  // Seed with empty array so the file exists before the server reads it
+  if (!fs.existsSync(historyFilePath)) {
+    fs.writeFileSync(historyFilePath, '[]', { mode: 0o600 });
+  }
+  historyServerPath = path.join(tmp, `tai-mcp-history-${safeKey}.cjs`);
+  fs.writeFileSync(historyServerPath, generateHistoryServerScript(historyFilePath), { mode: 0o755 });
+
+  // Build merged MCP config with history server (and optionally remote server)
+  let mcpServers: Record<string, any> = {
+    ...(generateHistoryMcpConfig(historyServerPath) as any).mcpServers,
+  };
 
   if (isRemoteExec && state.daemonEnabled) {
-    const safeKey = key.replace(/[^a-z0-9]/gi, '_');
-    const tmp = os.tmpdir();
-
     // SSH config: include ~/.ssh/config (user-owned) but skip system files
     sshConfigPath = path.join(tmp, `tai-ssh-config-${safeKey}`);
     fs.writeFileSync(sshConfigPath, `Include ~/.ssh/config\nBatchMode yes\nStrictHostKeyChecking accept-new\n`, { mode: 0o600 });
@@ -106,13 +125,16 @@ function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, perm
     mcpServerPath = path.join(tmp, `tai-mcp-server-${safeKey}.cjs`);
     fs.writeFileSync(mcpServerPath, generateMcpServerScript(state.remoteTarget!, sshConfigPath), { mode: 0o755 });
 
-    mcpConfigPath = path.join(tmp, `tai-mcp-config-${safeKey}.json`);
-    fs.writeFileSync(mcpConfigPath, JSON.stringify(generateMcpConfig(mcpServerPath)), { mode: 0o600 });
-
-    args.push('--mcp-config', mcpConfigPath);
+    mcpServers = { ...mcpServers, ...(generateMcpConfig(mcpServerPath) as any).mcpServers };
     args.push('--disallowed-tools', 'Bash,Read,Write,Edit,Grep,Glob,WebFetch,WebSearch');
     console.log(`[daemon] remote exec via MCP server: ${mcpServerPath} -> ${state.remoteTarget}`);
   }
+
+  mcpConfigPath = path.join(tmp, `tai-mcp-config-${safeKey}.json`);
+  fs.writeFileSync(mcpConfigPath, JSON.stringify({ mcpServers }), { mode: 0o600 });
+  args.push('--mcp-config', mcpConfigPath);
+  // Auto-approve the read-only history tool so it doesn't trigger approval prompts
+  args.push('--allowedTools', 'mcp__tai-history__TerminalHistory');
 
   const env = enrichedEnv();
   const proc = spawn(resolveBinary('claude', env), args, {
@@ -192,7 +214,7 @@ function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, perm
     state.process = null;
     state.busy = false;
     state.pendingToolUses.clear();
-    for (const p of [mcpServerPath, mcpConfigPath, sshConfigPath]) {
+    for (const p of [mcpServerPath, mcpConfigPath, sshConfigPath, historyServerPath, historyFilePath]) {
       if (p) try { fs.unlinkSync(p); } catch {}
     }
     if (wasBusy) {
@@ -355,6 +377,17 @@ export function setupClaudeService(getWindow: () => BrowserWindow | null) {
       state.process = null;
     }
     state.busy = false;
+  });
+
+  // Receive terminal history snapshots from the renderer and persist to the
+  // temp file that the MCP history server reads from.
+  ipcMain.on('ai:updateHistory', (_event, key: string, entries: Array<{ command: string; output: string; exitCode?: number }>) => {
+    const state = getState(key);
+    if (state.historyFilePath) {
+      try {
+        fs.writeFileSync(state.historyFilePath, JSON.stringify(entries), { mode: 0o600 });
+      } catch {}
+    }
   });
 
   ipcMain.handle('ai:approve', (_event, key: string, toolUseId: string, approved: boolean) => {

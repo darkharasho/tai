@@ -40,6 +40,8 @@ contextBridge.exposeInMainWorld('tai', {
       ipcRenderer.invoke('ai:send', key, cwd, message, permMode, model, effort),
     cancel: (key: string) => ipcRenderer.send('ai:cancel', key),
     stop: (key: string) => ipcRenderer.send('ai:stop', key),
+    updateHistory: (key: string, entries: Array<{ command: string; output: string; exitCode?: number }>) =>
+      ipcRenderer.send('ai:updateHistory', key, entries),
     approve: (key: string, toolUseId: string, approved: boolean) =>
       ipcRenderer.invoke('ai:approve', key, toolUseId, approved),
     onMessage: (key: string, callback: (msg: any) => void) => {

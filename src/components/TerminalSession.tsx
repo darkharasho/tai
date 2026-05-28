@@ -137,6 +137,20 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     preambleSentRef.current = false;
   }, [aiProvider, tabId]);
 
+  // Sync completed command blocks to the main process so the MCP history
+  // server can serve them to Claude on demand.
+  useEffect(() => {
+    const entries = displayItems
+      .filter((item): item is DisplayItem & { type: 'command' } => item.type === 'command' && !item.active)
+      .slice(-50)
+      .map(item => ({
+        command: item.block.command,
+        output: item.block.output,
+        exitCode: item.block.exitCode,
+      }));
+    window.tai?.ai?.updateHistory(tabId, entries);
+  }, [displayItems, tabId]);
+
   useEffect(() => {
     if (initialCwd) setCwd(initialCwd);
   }, [initialCwd]);
@@ -512,6 +526,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         '- Be concise and direct. Lead with the answer or action.',
         '- When showing commands, use ```bash code blocks.',
         '- Skip pleasantries and unnecessary explanation.',
+        '- You have a TerminalHistory tool that retrieves recent commands and output from this terminal session. Use it when the user references previous commands, errors, or output.',
       );
 
       if (isRemoteExec && promptInfo?.sshTarget) {
@@ -851,17 +866,22 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     const handleKeyDown = (e: KeyboardEvent) => {
       if (altScreenRef.current || interactiveModeRef.current) return;
 
+      const isMac = navigator.platform.startsWith('Mac');
       const ctrlOrMeta = e.ctrlKey || e.metaKey;
       if (!ctrlOrMeta) return;
 
-      if (e.key === 'C' && e.shiftKey) {
+      // Copy: Cmd+C (macOS) or Ctrl+Shift+C (Linux/Windows)
+      if ((isMac && e.metaKey && e.key === 'c' && !e.shiftKey) ||
+          (!isMac && e.ctrlKey && e.key === 'C' && e.shiftKey)) {
         e.preventDefault();
         const selection = window.getSelection()?.toString();
         if (selection) navigator.clipboard.writeText(selection);
         return;
       }
 
-      if (e.key === 'V' && e.shiftKey) {
+      // Paste: Cmd+V (macOS) or Ctrl+Shift+V (Linux/Windows)
+      if ((isMac && e.metaKey && e.key === 'v' && !e.shiftKey) ||
+          (!isMac && e.ctrlKey && e.key === 'V' && e.shiftKey)) {
         e.preventDefault();
         navigator.clipboard.readText().then(text => {
           if (text && inputRef.current) inputRef.current.paste(text);
@@ -869,7 +889,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         return;
       }
 
-      if (e.key === 'c' && !e.shiftKey) {
+      // SIGINT: Ctrl+C (all platforms, not Cmd+C on macOS)
+      if (e.key === 'c' && e.ctrlKey && !e.metaKey && !e.shiftKey) {
         e.preventDefault();
         handleStopAI();
         if (ptyId !== null) window.tai?.pty?.write(ptyId, '\x03');

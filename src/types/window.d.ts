@@ -26,6 +26,7 @@ declare global {
         send: (key: string, cwd: string, message: string, permMode: string, model: string, effort?: string) => Promise<boolean>;
         cancel: (key: string) => void;
         stop: (key: string) => void;
+        updateHistory: (key: string, entries: Array<{ command: string; output: string; exitCode?: number }>) => void;
         approve: (key: string, toolUseId: string, approved: boolean) => Promise<boolean>;
         onMessage: (key: string, callback: (msg: any) => void) => () => void;
         onError: (key: string, callback: (error: string) => void) => () => void;
