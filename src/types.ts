@@ -14,6 +14,10 @@ export interface SegmentedBlock {
   duration: number;
   isRemote: boolean;
   exitCode?: number;
+  signal?: string | null;       // e.g. "SIG15"; null when exit was clean
+  cwd?: string;                 // post-exec cwd from precmd hook
+  commandFromShell?: string;    // command as shell saw it (post-alias)
+  hooksAvailable?: boolean;     // true iff this block had an OSC 6973 precmd
 }
 
 export interface AIEntry {

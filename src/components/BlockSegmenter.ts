@@ -1,4 +1,5 @@
 import { stripAnsi } from '@/utils/stripAnsi';
+import { parseOsc6973 } from '@/utils/osc6973';
 import type { SegmentedBlock } from '@/types';
 
 const PROMPT_RE = /(\S+[@:]\S+.*[\$#%>❯→➜]|[→➜]\s+\S+|[\$#%>❯→➜])\s*$/;
@@ -46,6 +47,7 @@ type SshSessionCallback = (active: boolean, target: string | null) => void;
 // OSC 133 markers: ESC ] 133 ; <X>[;...] (BEL | ESC \)
 // We only care about the trailing payload for the D marker (exit code).
 const OSC133_RE = /\x1b\]133;([ABCD])([^\x07\x1b]*)?(?:\x07|\x1b\\)/g;
+const OSC6973_RE = /\x1b\]6973;([^\x07\x1b]*)(?:\x07|\x1b\\)/g;
 
 export class BlockSegmenter {
   private _idCounter = 0;
@@ -91,6 +93,17 @@ export class BlockSegmenter {
   private _osc133ExitCode: number | null = null;
   private _osc133BlockStart = 0;
 
+  // OSC 6973 (shell hook) pending state — populated by preexec/precmd payloads
+  // and consumed when finalizing the integrated block.
+  private _pendingPreexec: { command: string } | null = null;
+  private _pendingPrecmd: {
+    exit: number;
+    signal: string | null;
+    duration_ms: number;
+    command: string;
+    cwd: string;
+  } | null = null;
+
   private _nextId(): string {
     return `seg-block-${++this._idCounter}`;
   }
@@ -128,6 +141,10 @@ export class BlockSegmenter {
   }
 
   feed(rawData: string): void {
+    if (rawData.includes('\x1b]6973;')) {
+      rawData = this._consumeOsc6973(rawData);
+      if (!rawData) return;
+    }
     if (rawData.includes('\x1b]133;')) {
       rawData = this._consumeOsc133(rawData);
       if (!rawData) return;
@@ -353,6 +370,7 @@ export class BlockSegmenter {
       startTime: this._startTime,
       duration: Date.now() - this._startTime,
       isRemote: this._isRemotePrompt(this._currentPrompt),
+      hooksAvailable: false,
     };
 
     const sshMatch = command.match(SSH_CMD_RE);
@@ -407,6 +425,34 @@ export class BlockSegmenter {
       ? (this._sshConnectionTarget ?? this._extractIdentity(prompt))
       : null;
     this._promptChangeCallbacks.forEach(cb => cb(prompt, isRemote, sshTarget));
+  }
+
+  private _consumeOsc6973(rawData: string): string {
+    OSC6973_RE.lastIndex = 0;
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    const pieces: string[] = [];
+    while ((match = OSC6973_RE.exec(rawData)) !== null) {
+      pieces.push(rawData.slice(lastIndex, match.index));
+      const parsed = parseOsc6973(match[1]);
+      if (parsed) {
+        if (parsed.hook === 'preexec') {
+          this._pendingPreexec = { command: parsed.command };
+        } else if (parsed.hook === 'precmd') {
+          this._pendingPrecmd = {
+            exit: parsed.exit,
+            signal: parsed.signal,
+            duration_ms: parsed.duration_ms,
+            command: parsed.command,
+            cwd: parsed.cwd,
+          };
+        }
+      }
+      lastIndex = OSC6973_RE.lastIndex;
+    }
+    if (lastIndex === 0) return rawData;
+    pieces.push(rawData.slice(lastIndex));
+    return pieces.join('');
   }
 
   private _consumeOsc133(rawData: string): string {
@@ -602,9 +648,17 @@ export class BlockSegmenter {
       rawOutput,
       promptText,
       startTime: this._osc133BlockStart || Date.now(),
-      duration: Date.now() - (this._osc133BlockStart || Date.now()),
+      duration: this._pendingPrecmd
+        ? this._pendingPrecmd.duration_ms
+        : Date.now() - (this._osc133BlockStart || Date.now()),
       isRemote: this._isRemotePrompt(promptText),
       ...(this._osc133ExitCode !== null ? { exitCode: this._osc133ExitCode } : {}),
+      hooksAvailable: !!this._pendingPrecmd,
+      ...(this._pendingPrecmd ? {
+        signal: this._pendingPrecmd.signal,
+        cwd: this._pendingPrecmd.cwd,
+        commandFromShell: this._pendingPrecmd.command,
+      } : {}),
     };
 
     const sshMatch = command.match(SSH_CMD_RE);
@@ -616,6 +670,8 @@ export class BlockSegmenter {
 
     this._blockCallbacks.forEach(cb => cb(block));
     this._commandActive = false;
+    this._pendingPreexec = null;
+    this._pendingPrecmd = null;
   }
 
   reset(): void {
@@ -651,6 +707,8 @@ export class BlockSegmenter {
     this._osc133CleanOutput = '';
     this._osc133ExitCode = null;
     this._osc133BlockStart = 0;
+    this._pendingPreexec = null;
+    this._pendingPrecmd = null;
   }
 
   /**
