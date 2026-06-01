@@ -11,12 +11,18 @@ const CURSOR_HIDE = '\x1b[?25l';
 const CURSOR_SHOW = '\x1b[?25h';
 const CURSOR_HOME = '\x1b[H';
 const CLEAR_SCREEN = '\x1b[2J';
-// CUU (cursor up) / CPL (cursor previous line) — Ink-style TUIs (claude,
-// many Node CLIs) redraw frames in place on the main buffer instead of
-// entering alt-screen. Seeing CUU or CPL during an active block's output
-// phase is a near-certain TUI signal — no line-oriented program needs to
-// move the cursor backward up the screen.
-const CURSOR_UP_RE = /\x1b\[\d*[AF]/;
+// Cursor-reposition escapes that signal an interactive program doing per-
+// keystroke redraws:
+//   ESC [ <n> A         CUU  (cursor up)
+//   ESC [ <n> F         CPL  (cursor previous line)
+//     — Ink-style TUIs (claude) redrawing frames on the main buffer.
+//   ESC [ <n>D where n>=2  — REPLs (python pyrepl, node) doing per-char
+//     prompt redraws via cursor-back. n=1 is plain backspace and stays
+//     out of the trigger so legitimate single-char edits don't flip us.
+// Any of these during an active block's output phase tells us the program
+// owns its line-editing — route through xterm so the user sees keystroke
+// echo and gets working history/arrow keys.
+const TUI_REPOSITION_RE = /\x1b\[(?:\d*[AF]|(?:[2-9]|\d{2,})D)/;
 
 /**
  * Apply carriage-return semantics: for each line, simulate \r by
@@ -647,7 +653,7 @@ export class BlockSegmenter {
     // redraw frames in place on the main buffer using cursor-up. Treat that
     // as a TUI signal and flip to interactive so the bytes route to xterm
     // instead of accumulating as garbled text in the line-oriented output.
-    if (!this._inAltScreen && this._osc133Phase === 'output' && CURSOR_UP_RE.test(rawData)) {
+    if (!this._inAltScreen && this._osc133Phase === 'output' && TUI_REPOSITION_RE.test(rawData)) {
       this._inAltScreen = true;
       this._altScreenCallbacks.forEach(cb => cb(true));
     }
