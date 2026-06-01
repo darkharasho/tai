@@ -4,6 +4,8 @@ export type TrustLevel = 'ask' | 'approve-edits' | 'bypass';
 
 export type AIProvider = 'claude' | 'codex' | 'gemini';
 
+export type BlockBodyMode = 'output' | 'interactive' | 'password';
+
 export interface SegmentedBlock {
   id: string;
   command: string;

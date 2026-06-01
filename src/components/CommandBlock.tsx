@@ -1,7 +1,8 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { ansiToHtml } from '@/utils/ansiToHtml';
-import type { SegmentedBlock } from '@/types';
+import type { SegmentedBlock, BlockBodyMode } from '@/types';
+import { PasswordPrompt } from './PasswordPrompt';
 import styles from './CommandBlock.module.css';
 
 const LONG_OUTPUT_LINES = 30;
@@ -49,6 +50,10 @@ interface CommandBlockProps {
   onAskAI: (block: SegmentedBlock) => void;
   onRerun: (command: string) => void;
   onSendInput?: (data: string) => void;
+  bodyMode?: BlockBodyMode;
+  ptyId?: number;
+  onPasswordDone?: () => void;
+  isActive?: boolean;
 }
 
 export function CommandBlock({
@@ -61,6 +66,10 @@ export function CommandBlock({
   cwd,
   onCopy,
   onSendInput,
+  bodyMode = 'output',
+  ptyId,
+  onPasswordDone,
+  isActive: _isActive,
 }: CommandBlockProps) {
   const [showAll, setShowAll] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -156,7 +165,33 @@ export function CommandBlock({
         </div>
       </div>
 
-      {block.output && (
+      {bodyMode === 'password' && ptyId !== undefined && (
+        <>
+          <div
+            className={styles.separator}
+            style={{
+              background: `linear-gradient(90deg, ${isRemote ? 'rgba(245,158,11,0.12)' : 'rgba(0,168,132,0.12)'}, transparent 60%)`,
+            }}
+          />
+          <PasswordPrompt ptyId={ptyId} onDone={onPasswordDone ?? (() => {})} />
+        </>
+      )}
+
+      {bodyMode === 'interactive' && (
+        <>
+          <div
+            className={styles.separator}
+            style={{
+              background: `linear-gradient(90deg, ${isRemote ? 'rgba(245,158,11,0.12)' : 'rgba(0,168,132,0.12)'}, transparent 60%)`,
+            }}
+          />
+          <div className={styles.interactiveBody} style={{ minHeight: 80, padding: '10px 16px', opacity: 0.6, fontStyle: 'italic', fontSize: 12 }}>
+            (interactive program running…)
+          </div>
+        </>
+      )}
+
+      {bodyMode === 'output' && block.output && (
         <>
           <div
             className={styles.separator}

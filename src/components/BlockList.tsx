@@ -4,7 +4,7 @@ import { CommandBlock } from './CommandBlock';
 import { InlineAIBlock } from './InlineAIBlock';
 import { AIConversation } from './AIConversation';
 import { ApprovalPrompt } from './ApprovalPrompt';
-import type { SegmentedBlock, AIEntry, AIProvider } from '@/types';
+import type { SegmentedBlock, AIEntry, AIProvider, BlockBodyMode } from '@/types';
 import { groupConversations } from '@/utils/groupConversations';
 import styles from './BlockList.module.css';
 
@@ -30,6 +30,9 @@ interface BlockListProps {
   queuedPrompts?: { id: string; text: string }[];
   onEditQueued?: (id: string, text: string) => void;
   onRemoveQueued?: (id: string) => void;
+  activeBodyMode?: BlockBodyMode;
+  ptyId?: number;
+  onPasswordDone?: () => void;
 }
 
 export function BlockList({
@@ -49,6 +52,9 @@ export function BlockList({
   queuedPrompts,
   onEditQueued,
   onRemoveQueued,
+  activeBodyMode,
+  ptyId,
+  onPasswordDone,
 }: BlockListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [manualCollapsed, setManualCollapsed] = useState<Set<string>>(new Set());
@@ -80,20 +86,25 @@ export function BlockList({
     if (item.type === 'command') {
       const collapsed = isCollapsed(item);
       const id = item.block.id;
+      const isActive = item.active || id === activeBlockId;
       return (
         <div key={id}>
           <CommandBlock
             block={item.block}
             collapsed={collapsed}
             onToggleCollapse={() => handleToggleCollapse(id, collapsed)}
-            active={item.active || id === activeBlockId}
-            awaitingInput={(item.active || id === activeBlockId) ? awaitingInput : false}
+            active={isActive}
+            awaitingInput={isActive ? awaitingInput : false}
             aiSuggested={item.aiSuggested}
             cwd={cwd}
             onCopy={onCopy}
             onAskAI={onAskAI}
             onRerun={onRerun}
-            onSendInput={(item.active || id === activeBlockId) ? onSendInput : undefined}
+            onSendInput={isActive ? onSendInput : undefined}
+            bodyMode={isActive ? (activeBodyMode ?? 'output') : 'output'}
+            ptyId={ptyId}
+            onPasswordDone={onPasswordDone}
+            isActive={isActive}
           />
         </div>
       );

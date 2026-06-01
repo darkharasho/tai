@@ -5,7 +5,6 @@ import { BlockList } from './BlockList';
 import type { DisplayItem } from './BlockList';
 import { TerminalInput } from './TerminalInput';
 import type { TerminalInputHandle } from './TerminalInput';
-import { PasswordPrompt } from './PasswordPrompt';
 import { DaemonInstallCard } from './DaemonInstallCard';
 import { ShellIntegrationInstallCard } from './ShellIntegrationInstallCard';
 import { DAEMON_VERSION } from '../daemonVersion';
@@ -955,6 +954,10 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const showFullscreenInteractive = interactiveMode && interactiveFullscreen && !altScreenVisible;
   const showXterm = altScreenVisible || showFullscreenInteractive;
   const inputDisabled = awaitingInput || passwordPrompt;
+  const activeBodyMode: import('@/types').BlockBodyMode =
+    passwordPrompt ? 'password'
+    : (altScreenVisible || interactiveMode) ? 'interactive'
+    : 'output';
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0, position: 'relative' }}>
@@ -1004,6 +1007,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           onEditQueued={handleEditQueued}
           onRemoveQueued={handleRemoveQueued}
           aiProvider={aiProvider}
+          activeBodyMode={activeBodyMode}
+          ptyId={ptyId ?? undefined}
+          onPasswordDone={() => setPasswordPrompt(false)}
         />
       )}
       {ptyId !== null && (
@@ -1014,14 +1020,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           onData={(data) => segmenterRef.current.feed(data)}
         />
       )}
-      {!showXterm && passwordPrompt && ptyId !== null && (
-        <div style={{ flexShrink: 0 }}>
-          <PasswordPrompt
-            ptyId={ptyId}
-            onDone={() => setPasswordPrompt(false)}
-          />
-        </div>
-      )}
+      {/* Password prompt is now rendered inside the active CommandBlock via bodyMode='password'. */}
       {!showXterm && (
         <div style={{ flexShrink: 0, opacity: inputDisabled ? 0.3 : 1, pointerEvents: inputDisabled ? 'none' : 'auto', transition: 'opacity 0.15s' }}>
           <TerminalInput

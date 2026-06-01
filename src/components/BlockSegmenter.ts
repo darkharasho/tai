@@ -127,6 +127,9 @@ export class BlockSegmenter {
   }
 
   get currentPrompt(): string { return this._currentPrompt; }
+  get pendingCommand(): string {
+    return this._pendingPreexec?.command ?? '';
+  }
   get seenFirstPrompt(): boolean { return this._seenFirstPrompt; }
   get shellIntegrationActive(): boolean { return this._integrationActive; }
   get sshSessionActive(): boolean { return this._inSshSession; }
