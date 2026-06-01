@@ -24,6 +24,14 @@ contextBridge.exposeInMainWorld('tai', {
       return () => ipcRenderer.removeListener('pty:resized', listener);
     },
     dataAck: (id: number, bytes: number) => ipcRenderer.send('pty:data-ack', id, bytes),
+    startEchoPoll: (id: number) => ipcRenderer.send('pty:start-echo-poll', id),
+    stopEchoPoll: (id: number) => ipcRenderer.send('pty:stop-echo-poll', id),
+    onEchoChange: (callback: (id: number, e: { echo: boolean; icanon: boolean; passwordPrompt: boolean; interactiveProgram: boolean }) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, id: number, e: { echo: boolean; icanon: boolean; passwordPrompt: boolean; interactiveProgram: boolean }) =>
+        callback(id, e);
+      ipcRenderer.on('pty:echo-change', listener);
+      return () => ipcRenderer.removeListener('pty:echo-change', listener);
+    },
   },
   window: {
     minimize: () => ipcRenderer.send('window:minimize'),
@@ -40,6 +48,8 @@ contextBridge.exposeInMainWorld('tai', {
       ipcRenderer.invoke('ai:send', key, cwd, message, permMode, model, effort),
     cancel: (key: string) => ipcRenderer.send('ai:cancel', key),
     stop: (key: string) => ipcRenderer.send('ai:stop', key),
+    updateHistory: (key: string, entries: Array<{ command: string; output: string; exitCode?: number }>) =>
+      ipcRenderer.send('ai:updateHistory', key, entries),
     approve: (key: string, toolUseId: string, approved: boolean) =>
       ipcRenderer.invoke('ai:approve', key, toolUseId, approved),
     onMessage: (key: string, callback: (msg: any) => void) => {

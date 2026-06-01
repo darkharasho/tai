@@ -1,4 +1,5 @@
-import { stripAnsi } from '@/utils/stripAnsi';
+import { stripAnsi, normalizeCursorRedraws } from '@/utils/stripAnsi';
+import { parseOsc6973 } from '@/utils/osc6973';
 import type { SegmentedBlock } from '@/types';
 
 const PROMPT_RE = /(\S+[@:]\S+.*[\$#%>❯→➜]|[→➜]\s+\S+|[\$#%>❯→➜])\s*$/;
@@ -10,6 +11,41 @@ const CURSOR_HIDE = '\x1b[?25l';
 const CURSOR_SHOW = '\x1b[?25h';
 const CURSOR_HOME = '\x1b[H';
 const CLEAR_SCREEN = '\x1b[2J';
+// Cursor-reposition escapes that signal an interactive program doing per-
+// keystroke redraws:
+//   ESC [ <n> A         CUU  (cursor up)
+//   ESC [ <n> F         CPL  (cursor previous line)
+//     — Ink-style TUIs (claude) redrawing frames on the main buffer.
+//   ESC [ <n>D where n>=2  — REPLs (python pyrepl, node) doing per-char
+//     prompt redraws via cursor-back. n=1 is plain backspace and stays
+//     out of the trigger so legitimate single-char edits don't flip us.
+// Any of these during an active block's output phase tells us the program
+// owns its line-editing — route through xterm so the user sees keystroke
+// echo and gets working history/arrow keys.
+const TUI_REPOSITION_RE = /\x1b\[(?:\d*[AF]|(?:[2-9]|\d{2,})D)/;
+
+/**
+ * Apply carriage-return semantics: for each line, simulate \r by
+ * keeping only text after the last bare \r (not \r\n which is just
+ * a line ending).  If \r is the very last character (cursor parked
+ * at column 0 waiting for the next overwrite), keep the previous
+ * segment so the line isn't blank.
+ */
+function applyCR(str: string): string {
+  if (!str.includes('\r')) return str;
+  // Strip \r\n → \n first so only bare \r remain
+  const normalized = str.replace(/\r\n/g, '\n');
+  if (!normalized.includes('\r')) return normalized;
+  return normalized.split('\n').map(line => {
+    if (!line.includes('\r')) return line;
+    // Split by \r and pick the last non-empty segment
+    const segments = line.split('\r');
+    for (let i = segments.length - 1; i >= 0; i--) {
+      if (segments[i].length > 0) return segments[i];
+    }
+    return '';
+  }).join('\n');
+}
 
 type BlockCallback = (block: SegmentedBlock) => void;
 type OutputCallback = (output: string, rawOutput: string) => void;
@@ -19,10 +55,12 @@ type PasswordPromptCallback = () => void;
 type PromptChangeCallback = (prompt: string, isRemote: boolean, sshTarget: string | null) => void;
 type ShellIntegrationCallback = (active: boolean) => void;
 type SshSessionCallback = (active: boolean, target: string | null) => void;
+type BlockActiveCallback = (active: boolean) => void;
 
 // OSC 133 markers: ESC ] 133 ; <X>[;...] (BEL | ESC \)
 // We only care about the trailing payload for the D marker (exit code).
 const OSC133_RE = /\x1b\]133;([ABCD])([^\x07\x1b]*)?(?:\x07|\x1b\\)/g;
+const OSC6973_RE = /\x1b\]6973;([^\x07\x1b]*)(?:\x07|\x1b\\)/g;
 
 export class BlockSegmenter {
   private _idCounter = 0;
@@ -43,9 +81,14 @@ export class BlockSegmenter {
   private _promptChangeCallbacks: PromptChangeCallback[] = [];
   private _integrationCallbacks: ShellIntegrationCallback[] = [];
   private _sshSessionCallbacks: SshSessionCallback[] = [];
+  private _blockActiveCallbacks: BlockActiveCallback[] = [];
   private _inSshSession = false;
   private _seenFirstPrompt = false;
   private _inAltScreen = false;
+  // Carry the trailing bytes of each chunk so alt-screen sequences split
+  // across chunk boundaries (e.g. "\x1b[?" | "1049h") are still detected.
+  // Max-needed lookback = max(altSeq.length) - 1 = 7.
+  private _altScreenTail = '';
   private _inInteractiveMode = false;
   private _interactiveFullscreen = false;
   private _commandActive = false;
@@ -68,6 +111,17 @@ export class BlockSegmenter {
   private _osc133ExitCode: number | null = null;
   private _osc133BlockStart = 0;
 
+  // OSC 6973 (shell hook) pending state — populated by preexec/precmd payloads
+  // and consumed when finalizing the integrated block.
+  private _pendingPreexec: { command: string } | null = null;
+  private _pendingPrecmd: {
+    exit: number;
+    signal: string | null;
+    duration_ms: number;
+    command: string;
+    cwd: string;
+  } | null = null;
+
   private _nextId(): string {
     return `seg-block-${++this._idCounter}`;
   }
@@ -80,14 +134,24 @@ export class BlockSegmenter {
   onPromptChange(cb: PromptChangeCallback): void { this._promptChangeCallbacks.push(cb); }
   onShellIntegration(cb: ShellIntegrationCallback): void { this._integrationCallbacks.push(cb); }
   onSshSession(cb: SshSessionCallback): void { this._sshSessionCallbacks.push(cb); }
+  onBlockActive(cb: BlockActiveCallback): void { this._blockActiveCallbacks.push(cb); }
+
+  private _setCommandActive(active: boolean): void {
+    if (this._commandActive === active) return;
+    this._commandActive = active;
+    this._blockActiveCallbacks.forEach(cb => cb(active));
+  }
 
   get currentPrompt(): string { return this._currentPrompt; }
+  get pendingCommand(): string {
+    return this._pendingPreexec?.command ?? '';
+  }
   get seenFirstPrompt(): boolean { return this._seenFirstPrompt; }
   get shellIntegrationActive(): boolean { return this._integrationActive; }
   get sshSessionActive(): boolean { return this._inSshSession; }
 
   markCommandSent(): void {
-    this._commandActive = true;
+    this._setCommandActive(true);
   }
 
   setLocalHostname(hostname: string): void {
@@ -105,6 +169,10 @@ export class BlockSegmenter {
   }
 
   feed(rawData: string): void {
+    if (rawData.includes('\x1b]6973;')) {
+      rawData = this._consumeOsc6973(rawData);
+      if (!rawData) return;
+    }
     if (rawData.includes('\x1b]133;')) {
       rawData = this._consumeOsc133(rawData);
       if (!rawData) return;
@@ -117,8 +185,10 @@ export class BlockSegmenter {
   }
 
   private _feedLegacy(rawData: string): void {
-    const hasAltEnter = ALT_SCREEN_ENTER_SEQS.some(s => rawData.includes(s));
-    const altExitSeq = ALT_SCREEN_EXIT_SEQS.find(s => rawData.includes(s));
+    const scanned = this._altScreenTail + rawData;
+    const hasAltEnter = ALT_SCREEN_ENTER_SEQS.some(s => scanned.includes(s));
+    const altExitSeq = ALT_SCREEN_EXIT_SEQS.find(s => scanned.includes(s));
+    this._altScreenTail = rawData.slice(-7);
 
     if (hasAltEnter) {
       this._inAltScreen = true;
@@ -293,7 +363,7 @@ export class BlockSegmenter {
   }
 
   private _finalizeBlock(newPromptText: string): void {
-    this._commandActive = false;
+    this._setCommandActive(false);
     this._exitInteractiveMode();
     const lines = this._pendingLines;
     const rawLines = this._pendingRawLines;
@@ -330,6 +400,7 @@ export class BlockSegmenter {
       startTime: this._startTime,
       duration: Date.now() - this._startTime,
       isRemote: this._isRemotePrompt(this._currentPrompt),
+      hooksAvailable: false,
     };
 
     const sshMatch = command.match(SSH_CMD_RE);
@@ -386,6 +457,34 @@ export class BlockSegmenter {
     this._promptChangeCallbacks.forEach(cb => cb(prompt, isRemote, sshTarget));
   }
 
+  private _consumeOsc6973(rawData: string): string {
+    OSC6973_RE.lastIndex = 0;
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    const pieces: string[] = [];
+    while ((match = OSC6973_RE.exec(rawData)) !== null) {
+      pieces.push(rawData.slice(lastIndex, match.index));
+      const parsed = parseOsc6973(match[1]);
+      if (parsed) {
+        if (parsed.hook === 'preexec') {
+          this._pendingPreexec = { command: parsed.command };
+        } else if (parsed.hook === 'precmd') {
+          this._pendingPrecmd = {
+            exit: parsed.exit,
+            signal: parsed.signal,
+            duration_ms: parsed.duration_ms,
+            command: parsed.command,
+            cwd: parsed.cwd,
+          };
+        }
+      }
+      lastIndex = OSC6973_RE.lastIndex;
+    }
+    if (lastIndex === 0) return rawData;
+    pieces.push(rawData.slice(lastIndex));
+    return pieces.join('');
+  }
+
   private _consumeOsc133(rawData: string): string {
     OSC133_RE.lastIndex = 0;
     let lastIndex = 0;
@@ -427,6 +526,13 @@ export class BlockSegmenter {
         // local shell, so clear any SSH-session flag that didn't get cleared
         // by a D (network drop, kill -9, user reload, etc).
         if (this._inSshSession) this._setSshSession(false, null);
+        // Same reasoning for alt-screen: a fresh prompt means the foreground
+        // program (claude, vim, etc.) has exited. Reset so the next command's
+        // line-oriented output isn't dropped by _routeChunk's alt-screen guard.
+        if (this._inAltScreen) {
+          this._inAltScreen = false;
+          this._altScreenCallbacks.forEach(cb => cb(false));
+        }
         this._osc133Phase = 'prompt';
         this._osc133RawPrompt = '';
         this._osc133RawCommand = '';
@@ -462,7 +568,7 @@ export class BlockSegmenter {
         // it there prevents the prompt characters from leaking into outputBuf.
         if (this._osc133Phase !== 'command') break;
         this._osc133Phase = 'output';
-        this._commandActive = true;
+        this._setCommandActive(true);
         const cmdMatch = stripAnsi(this._osc133RawCommand).trim().match(SSH_CMD_RE);
         if (cmdMatch) {
           const user = cmdMatch[1] || '';
@@ -478,7 +584,7 @@ export class BlockSegmenter {
         if (m) this._osc133ExitCode = parseInt(m[1], 10);
         // Stay in output phase until the next A — trailing newlines or
         // shell-emitted text before the next prompt belong to this block.
-        this._commandActive = false;
+        this._setCommandActive(false);
         if (this._inSshSession) this._setSshSession(false, null);
         break;
       }
@@ -506,10 +612,17 @@ export class BlockSegmenter {
         this._osc133RawCommand += chunk;
         break;
       case 'output': {
-        this._osc133RawOutput += chunk;
+        // Rewrite cursor-redraw escapes (ESC[<n>D / ESC[G) to \r in BOTH
+        // raw and clean buffers so applyCR can collapse readline / pyrepl
+        // per-keystroke prompt redraws into a single visible line. The raw
+        // buffer keeps all other ANSI intact for ansiToHtml downstream.
+        const normalized = normalizeCursorRedraws(chunk);
+        this._osc133RawOutput += normalized;
         this._osc133CleanOutput += stripAnsi(chunk);
-        if (this._osc133CleanOutput.length > 0) {
-          this._outputCallbacks.forEach(cb => cb(this._osc133CleanOutput, this._osc133RawOutput));
+        const cleanCR = applyCR(this._osc133CleanOutput);
+        const rawCR = applyCR(this._osc133RawOutput);
+        if (cleanCR.length > 0) {
+          this._outputCallbacks.forEach(cb => cb(cleanCR, rawCR));
         }
         break;
       }
@@ -521,8 +634,10 @@ export class BlockSegmenter {
   private _feedIntegrated(rawData: string): void {
     // Alt-screen and password-prompt detection are still useful in integrated
     // mode (TUIs, sudo prompts) — they don't conflict with OSC 133.
-    const hasAltEnter = ALT_SCREEN_ENTER_SEQS.some(s => rawData.includes(s));
-    const altExitSeq = ALT_SCREEN_EXIT_SEQS.find(s => rawData.includes(s));
+    // Prepend tail from previous chunk so split sequences are detected.
+    const scanned = this._altScreenTail + rawData;
+    const hasAltEnter = ALT_SCREEN_ENTER_SEQS.some(s => scanned.includes(s));
+    const altExitSeq = ALT_SCREEN_EXIT_SEQS.find(s => scanned.includes(s));
     if (hasAltEnter && !this._inAltScreen) {
       this._inAltScreen = true;
       this._altScreenCallbacks.forEach(cb => cb(true));
@@ -530,6 +645,17 @@ export class BlockSegmenter {
     if (altExitSeq && this._inAltScreen) {
       this._inAltScreen = false;
       this._altScreenCallbacks.forEach(cb => cb(false));
+    }
+    // Keep the last 7 bytes (max-altSeq-length - 1) for next chunk's scan.
+    this._altScreenTail = rawData.slice(-7);
+
+    // Ink-style TUIs (claude, many Node CLIs) never enter alt-screen — they
+    // redraw frames in place on the main buffer using cursor-up. Treat that
+    // as a TUI signal and flip to interactive so the bytes route to xterm
+    // instead of accumulating as garbled text in the line-oriented output.
+    if (!this._inAltScreen && this._osc133Phase === 'output' && TUI_REPOSITION_RE.test(rawData)) {
+      this._inAltScreen = true;
+      this._altScreenCallbacks.forEach(cb => cb(true));
     }
 
     if (!this._passwordPromptFired && /(?:password|passphrase).*:\s*$/i.test(stripAnsi(rawData))) {
@@ -558,8 +684,8 @@ export class BlockSegmenter {
     }
 
     const command = stripAnsi(rawCommand).trim();
-    const output = stripAnsi(rawOutputBytes).trimEnd();
-    const rawOutput = rawOutputBytes.trimEnd();
+    const output = applyCR(stripAnsi(rawOutputBytes)).trimEnd();
+    const rawOutput = applyCR(normalizeCursorRedraws(rawOutputBytes)).trimEnd();
     const promptText = stripAnsi(this._osc133RawPrompt) || this._currentPrompt;
 
     // Skip empty bootstrap "blocks" (e.g. the synthetic prompt that fires
@@ -575,9 +701,17 @@ export class BlockSegmenter {
       rawOutput,
       promptText,
       startTime: this._osc133BlockStart || Date.now(),
-      duration: Date.now() - (this._osc133BlockStart || Date.now()),
+      duration: this._pendingPrecmd
+        ? this._pendingPrecmd.duration_ms
+        : Date.now() - (this._osc133BlockStart || Date.now()),
       isRemote: this._isRemotePrompt(promptText),
       ...(this._osc133ExitCode !== null ? { exitCode: this._osc133ExitCode } : {}),
+      hooksAvailable: !!this._pendingPrecmd,
+      ...(this._pendingPrecmd ? {
+        signal: this._pendingPrecmd.signal,
+        cwd: this._pendingPrecmd.cwd,
+        commandFromShell: this._pendingPrecmd.command,
+      } : {}),
     };
 
     const sshMatch = command.match(SSH_CMD_RE);
@@ -588,7 +722,9 @@ export class BlockSegmenter {
     }
 
     this._blockCallbacks.forEach(cb => cb(block));
-    this._commandActive = false;
+    this._setCommandActive(false);
+    this._pendingPreexec = null;
+    this._pendingPrecmd = null;
   }
 
   reset(): void {
@@ -603,6 +739,7 @@ export class BlockSegmenter {
     this._sshConnectionTarget = null;
     this._seenFirstPrompt = false;
     this._inAltScreen = false;
+    this._altScreenTail = '';
     this._inInteractiveMode = false;
     this._interactiveFullscreen = false;
     this._commandActive = false;
@@ -615,6 +752,7 @@ export class BlockSegmenter {
     this._promptChangeCallbacks = [];
     this._integrationCallbacks = [];
     this._sshSessionCallbacks = [];
+    this._blockActiveCallbacks = [];
     this._inSshSession = false;
     this._integrationActive = false;
     this._osc133Phase = 'idle';
@@ -624,6 +762,8 @@ export class BlockSegmenter {
     this._osc133CleanOutput = '';
     this._osc133ExitCode = null;
     this._osc133BlockStart = 0;
+    this._pendingPreexec = null;
+    this._pendingPrecmd = null;
   }
 
   /**

@@ -8,6 +8,7 @@ import { isWindows } from './platform';
 import { createResizeQueue, type ResizeQueue } from './resizeQueue';
 import { createCoalescingBuffer, type CoalescingBuffer } from './coalescingBuffer';
 import { createBackpressureGate, type BackpressureGate } from './backpressureGate';
+import { TermiosPoller, defaultTermiosReader } from './termiosPoller';
 
 const BACKPRESSURE_HIGH = 512 * 1024;
 const BACKPRESSURE_LOW = 128 * 1024;
@@ -72,6 +73,7 @@ interface TerminalEntry {
   resizeQueue: ResizeQueue;
   buffer: CoalescingBuffer;
   gate: BackpressureGate;
+  poller: TermiosPoller | null;
 }
 const allTerminals = new Map<number, TerminalEntry>();
 let nextId = 1;
@@ -137,9 +139,30 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
       safeSend('pty:data', id, chunk);
       gate.onSent(chunk.length);
     });
-    allTerminals.set(id, { term, resizeQueue, buffer, gate });
+    const masterFd: number | undefined = (term as unknown as { _fd?: number })._fd;
+    let poller: TermiosPoller | null = null;
+    if (process.platform !== 'win32' && typeof masterFd === 'number') {
+      try {
+        const reader = defaultTermiosReader();
+        poller = new TermiosPoller(masterFd, reader, (e) => {
+          safeSend('pty:echo-change', id, {
+            echo: e.echo,
+            icanon: e.icanon,
+            passwordPrompt: e.passwordPrompt,
+            interactiveProgram: e.interactiveProgram,
+          });
+        });
+      } catch (err) {
+        console.warn('[pty] termios poller unavailable:', err);
+      }
+    }
 
-    term.onExit(() => { allTerminals.delete(id); });
+    allTerminals.set(id, { term, resizeQueue, buffer, gate, poller });
+
+    term.onExit(() => {
+      poller?.stop();
+      allTerminals.delete(id);
+    });
 
     // Inject shell integration once bash/zsh/fish has finished its rc files
     // and is sitting at an interactive prompt. We can't write at spawn time:
@@ -208,10 +231,19 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
   ipcMain.on('pty:kill', (_event, id: number) => {
     const entry = allTerminals.get(id);
     if (entry) {
+      entry.poller?.stop();
       entry.buffer.forceFlush();
       entry.term.kill();
       allTerminals.delete(id);
     }
+  });
+
+  ipcMain.on('pty:start-echo-poll', (_event, id: number) => {
+    allTerminals.get(id)?.poller?.start();
+  });
+
+  ipcMain.on('pty:stop-echo-poll', (_event, id: number) => {
+    allTerminals.get(id)?.poller?.stop();
   });
 
   ipcMain.handle('pty:getProcess', (_event, id: number) => {
@@ -430,6 +462,7 @@ done`;
 
 export function destroyAllTerminals() {
   for (const entry of allTerminals.values()) {
+    entry.poller?.stop();
     entry.buffer.forceFlush();
     entry.term.kill();
   }

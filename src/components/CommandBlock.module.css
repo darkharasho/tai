@@ -236,6 +236,32 @@
   opacity: 1;
 }
 
+.interactiveBody {
+  /* Most interactive programs (vim, htop, less, claude) expect a near-full
+     screen. Sizing to ~72vh keeps the prompt header visible above and leaves
+     a sliver of context below so the card doesn't feel disconnected. */
+  min-height: 72vh;
+  display: flex;
+  width: 100%;
+  margin-top: 8px;
+  background: var(--bg-card);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+/* Pushes CardInput to the bottom of a REPL-active card (python, node, psql).
+   Without this, the input sits flush against the output; with it, the card
+   becomes a proper workspace and the input feels anchored. */
+.activeOutputSpacer {
+  flex: 1;
+  min-height: 0;
+}
+
+.interactiveBody > * {
+  flex: 1;
+  min-width: 0;
+}
+
 .interactiveInput {
   display: block;
   width: calc(100% + 32px);
@@ -261,6 +287,34 @@
 }
 
 .interactiveInput:focus {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-primary);
+}
+
+.cardInput {
+  display: block;
+  width: calc(100% + 32px);
+  box-sizing: border-box;
+  margin: 8px -16px -14px;
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 0 0 10px 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  outline: none;
+  caret-color: var(--text-primary);
+  transition: background 0.15s;
+}
+
+.cardInput::placeholder {
+  color: var(--text-muted);
+  opacity: 0.4;
+}
+
+.cardInput:focus {
   background: rgba(255, 255, 255, 0.03);
   color: var(--text-primary);
 }

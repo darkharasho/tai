@@ -1,7 +1,8 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { ansiToHtml } from '@/utils/ansiToHtml';
-import type { SegmentedBlock } from '@/types';
+import type { SegmentedBlock, BlockBodyMode } from '@/types';
+import { PasswordPrompt } from './PasswordPrompt';
 import styles from './CommandBlock.module.css';
 
 const LONG_OUTPUT_LINES = 30;
@@ -49,6 +50,11 @@ interface CommandBlockProps {
   onAskAI: (block: SegmentedBlock) => void;
   onRerun: (command: string) => void;
   onSendInput?: (data: string) => void;
+  bodyMode?: BlockBodyMode;
+  ptyId?: number;
+  onPasswordDone?: () => void;
+  isActive?: boolean;
+  onInteractiveContainerRef?: (el: HTMLDivElement | null) => void;
 }
 
 export function CommandBlock({
@@ -61,6 +67,11 @@ export function CommandBlock({
   cwd,
   onCopy,
   onSendInput,
+  bodyMode = 'output',
+  ptyId,
+  onPasswordDone,
+  isActive,
+  onInteractiveContainerRef,
 }: CommandBlockProps) {
   const [showAll, setShowAll] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -111,11 +122,21 @@ export function CommandBlock({
     );
   }
 
+  // Active REPL-style cards (running command with stdin available) grow to
+  // a near-full-viewport so the user has a real workspace, not a sliver glued
+  // to the prompt. Interactive (alt-screen) cards have their own min-height
+  // from .interactiveBody; for those we don't need to grow the outer card.
+  const replActive =
+    isActive && ptyId !== undefined && bodyMode === 'output' && !awaitingInput;
+
   return (
     <div
       className={styles.block}
       data-card-surface
-      style={{ '--accent-color': modeColor } as React.CSSProperties}
+      style={{
+        '--accent-color': modeColor,
+        ...(replActive ? { minHeight: '60vh', display: 'flex', flexDirection: 'column' } : {}),
+      } as React.CSSProperties}
       onClick={() => { if (active && awaitingInput && onSendInput) interactiveRef.current?.focus(); }}
     >
       <div className={styles.promptLine} onClick={() => onToggleCollapse?.()}>
@@ -128,14 +149,37 @@ export function CommandBlock({
         </div>
         <div className={styles.promptRight}>
           {active ? (
-            awaitingInput ? (
-              <span className={styles.awaiting}>
-                <span className={styles.awaitingDot} />
-                INPUT
-              </span>
-            ) : (
-              <span className={styles.running} />
-            )
+            <>
+              {awaitingInput ? (
+                <span className={styles.awaiting}>
+                  <span className={styles.awaitingDot} />
+                  INPUT
+                </span>
+              ) : (
+                <span className={styles.running} />
+              )}
+              {isActive && ptyId !== undefined && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); window.tai?.pty?.write?.(ptyId, '\x03'); }}
+                  title="Send Ctrl-C to running command"
+                  style={{
+                    background: 'none',
+                    border: '1px solid rgba(255,255,255,0.18)',
+                    borderRadius: 4,
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                    padding: '1px 8px',
+                    fontSize: 10,
+                    fontFamily: 'var(--font-mono)',
+                    marginLeft: 8,
+                    letterSpacing: '0.5px',
+                  }}
+                >
+                  STOP
+                </button>
+              )}
+            </>
           ) : (
             <>
               <span
@@ -156,7 +200,37 @@ export function CommandBlock({
         </div>
       </div>
 
-      {block.output && (
+      {bodyMode === 'password' && ptyId !== undefined && (
+        <>
+          <div
+            className={styles.separator}
+            style={{
+              background: `linear-gradient(90deg, ${isRemote ? 'rgba(245,158,11,0.12)' : 'rgba(0,168,132,0.12)'}, transparent 60%)`,
+            }}
+          />
+          <PasswordPrompt ptyId={ptyId} onDone={onPasswordDone ?? (() => {})} />
+        </>
+      )}
+
+      {bodyMode === 'interactive' && (
+        <>
+          <div
+            className={styles.separator}
+            style={{
+              background: `linear-gradient(90deg, ${isRemote ? 'rgba(245,158,11,0.12)' : 'rgba(0,168,132,0.12)'}, transparent 60%)`,
+            }}
+          />
+          {isActive ? (
+            <div ref={onInteractiveContainerRef} className={styles.interactiveBody} />
+          ) : (
+            <div className={styles.interactiveBody} style={{ minHeight: 80, padding: '10px 16px', opacity: 0.6, fontStyle: 'italic', fontSize: 12 }}>
+              (interactive program running…)
+            </div>
+          )}
+        </>
+      )}
+
+      {bodyMode === 'output' && block.output && (
         <>
           <div
             className={styles.separator}
@@ -177,6 +251,16 @@ export function CommandBlock({
               </div>
             )}
           </div>
+        </>
+      )}
+
+      {bodyMode === 'output' && isActive && ptyId !== undefined && !awaitingInput && (
+        <>
+          {/* Spacer pushes the input to the bottom of a tall card so REPL
+              sessions (python, node, psql) feel like a dedicated workspace
+              instead of a thin strip glued to the prompt. */}
+          <div className={styles.activeOutputSpacer} />
+          <CardInput ptyId={ptyId} />
         </>
       )}
 
@@ -201,5 +285,29 @@ export function CommandBlock({
         />
       )}
     </div>
+  );
+}
+
+function CardInput({ ptyId }: { ptyId: number }) {
+  const [value, setValue] = useState('');
+  return (
+    <input
+      className={styles.cardInput}
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      placeholder="…input to running command"
+      spellCheck={false}
+      autoComplete="off"
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          window.tai?.pty?.write?.(ptyId, value + '\n');
+          setValue('');
+        } else if (e.key === 'c' && e.ctrlKey) {
+          e.preventDefault();
+          window.tai?.pty?.write?.(ptyId, '\x03');
+        }
+      }}
+    />
   );
 }

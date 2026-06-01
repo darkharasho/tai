@@ -5,7 +5,6 @@ import { BlockList } from './BlockList';
 import type { DisplayItem } from './BlockList';
 import { TerminalInput } from './TerminalInput';
 import type { TerminalInputHandle } from './TerminalInput';
-import { PasswordPrompt } from './PasswordPrompt';
 import { DaemonInstallCard } from './DaemonInstallCard';
 import { ShellIntegrationInstallCard } from './ShellIntegrationInstallCard';
 import { DAEMON_VERSION } from '../daemonVersion';
@@ -60,6 +59,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const [displayItems, setDisplayItems] = useState<DisplayItem[]>([]);
   const [altScreenVisible, setAltScreenVisible] = useState(false);
   const [interactiveMode, setInteractiveMode] = useState(false);
+  const [interactivePortalTarget, setInteractivePortalTarget] = useState<HTMLDivElement | null>(null);
+  const [xtermFallbackEl, setXtermFallbackEl] = useState<HTMLDivElement | null>(null);
   const [interactiveFullscreen, setInteractiveFullscreen] = useState(false);
   const [inputMode, setInputMode] = useState<'shell' | 'ai'>('shell');
   const handleInputModeChange = useCallback((mode: 'shell' | 'ai') => {
@@ -136,6 +137,20 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     providerRef.current = createProvider(aiProvider, tabId);
     preambleSentRef.current = false;
   }, [aiProvider, tabId]);
+
+  // Sync completed command blocks to the main process so the MCP history
+  // server can serve them to Claude on demand.
+  useEffect(() => {
+    const entries = displayItems
+      .filter((item): item is DisplayItem & { type: 'command' } => item.type === 'command' && !item.active)
+      .slice(-50)
+      .map(item => ({
+        command: item.block.command,
+        output: item.block.output,
+        exitCode: item.block.exitCode,
+      }));
+    window.tai?.ai?.updateHistory(tabId, entries);
+  }, [displayItems, tabId]);
 
   useEffect(() => {
     if (initialCwd) setCwd(initialCwd);
@@ -368,6 +383,28 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       setSshSessionTarget(active ? target : null);
     });
 
+    segmenter.onBlockActive((active) => {
+      if (cancelled) return;
+      if (ptyId === null) return;
+      if (active) {
+        window.tai?.pty?.startEchoPoll?.(ptyId);
+      } else {
+        window.tai?.pty?.stopEchoPoll?.(ptyId);
+        setPasswordPrompt(false);
+      }
+    });
+
+    const cleanupEcho = window.tai?.pty?.onEchoChange?.((evtId: number, e: { echo: boolean; icanon: boolean; passwordPrompt: boolean; interactiveProgram: boolean }) => {
+      if (cancelled) return;
+      if (evtId !== ptyId) return;
+      setPasswordPrompt(e.passwordPrompt);
+      // Raw-mode tty (REPLs like python/node/psql, plus full TUIs) — route
+      // the card through xterm so the user sees keystrokes echo and can
+      // use readline navigation/history.
+      setInteractiveMode(e.interactiveProgram);
+      if (e.interactiveProgram) setInteractiveFullscreen(false);
+    });
+
     const cleanupData = window.tai?.pty?.onData((id: number, data: string) => {
       if (cancelled) return;
       if (id !== ptyId) return;
@@ -388,6 +425,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       cancelled = true;
       cleanupData?.();
       cleanupResized?.();
+      cleanupEcho?.();
       if (outputRafId !== null) cancelAnimationFrame(outputRafId);
       segmenter.reset();
       setShellIntegrated(false);
@@ -512,6 +550,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         '- Be concise and direct. Lead with the answer or action.',
         '- When showing commands, use ```bash code blocks.',
         '- Skip pleasantries and unnecessary explanation.',
+        '- You have a TerminalHistory tool that retrieves recent commands and output from this terminal session. Use it when the user references previous commands, errors, or output.',
       );
 
       if (isRemoteExec && promptInfo?.sshTarget) {
@@ -851,17 +890,22 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     const handleKeyDown = (e: KeyboardEvent) => {
       if (altScreenRef.current || interactiveModeRef.current) return;
 
+      const isMac = navigator.platform.startsWith('Mac');
       const ctrlOrMeta = e.ctrlKey || e.metaKey;
       if (!ctrlOrMeta) return;
 
-      if (e.key === 'C' && e.shiftKey) {
+      // Copy: Cmd+C (macOS) or Ctrl+Shift+C (Linux/Windows)
+      if ((isMac && e.metaKey && e.key === 'c' && !e.shiftKey) ||
+          (!isMac && e.ctrlKey && e.key === 'C' && e.shiftKey)) {
         e.preventDefault();
         const selection = window.getSelection()?.toString();
         if (selection) navigator.clipboard.writeText(selection);
         return;
       }
 
-      if (e.key === 'V' && e.shiftKey) {
+      // Paste: Cmd+V (macOS) or Ctrl+Shift+V (Linux/Windows)
+      if ((isMac && e.metaKey && e.key === 'v' && !e.shiftKey) ||
+          (!isMac && e.ctrlKey && e.key === 'V' && e.shiftKey)) {
         e.preventDefault();
         navigator.clipboard.readText().then(text => {
           if (text && inputRef.current) inputRef.current.paste(text);
@@ -869,7 +913,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         return;
       }
 
-      if (e.key === 'c' && !e.shiftKey) {
+      // SIGINT: Ctrl+C (all platforms, not Cmd+C on macOS)
+      if (e.key === 'c' && e.ctrlKey && !e.metaKey && !e.shiftKey) {
         e.preventDefault();
         handleStopAI();
         if (ptyId !== null) window.tai?.pty?.write(ptyId, '\x03');
@@ -914,8 +959,17 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   }, [ptyId]);
 
   const showFullscreenInteractive = interactiveMode && interactiveFullscreen && !altScreenVisible;
-  const showXterm = altScreenVisible || showFullscreenInteractive;
-  const inputDisabled = awaitingInput || passwordPrompt;
+  // showXterm now includes any interactiveMode (REPLs flagged by termios raw
+  // mode), not just legacy CURSOR_HIDE-style fullscreen. xterm gets routed
+  // into the card via the interactive-portal target, not the session overlay.
+  const showXterm = altScreenVisible || showFullscreenInteractive || interactiveMode;
+  const hasActiveBlock = displayItems.some(item => item.type === 'command' && item.active);
+  const blockInputLocked = awaitingInput || passwordPrompt;
+  const inputDisabled = blockInputLocked || (hasActiveBlock && !passwordPrompt);
+  const activeBodyMode: import('@/types').BlockBodyMode =
+    passwordPrompt ? 'password'
+    : (altScreenVisible || interactiveMode) ? 'interactive'
+    : 'output';
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0, position: 'relative' }}>
@@ -941,7 +995,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           }}
         />
       )}
-      {!showXterm && (
+      {(
         <BlockList
           items={displayItems}
           activeBlockId={null}
@@ -965,26 +1019,38 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           onEditQueued={handleEditQueued}
           onRemoveQueued={handleRemoveQueued}
           aiProvider={aiProvider}
+          activeBodyMode={activeBodyMode}
+          ptyId={ptyId ?? undefined}
+          onPasswordDone={() => setPasswordPrompt(false)}
+          onInteractiveContainerRef={setInteractivePortalTarget}
         />
       )}
-      {ptyId !== null && (
+      {/* Stable home for the xterm DOM. HiddenXterm always renders here so its
+          xterm.js instance is never disposed/remounted. When alt-screen is active
+          and the active card exposes a portal container, we imperatively relocate
+          the xterm's outer DOM element into the card, then move it back when the
+          card goes away. This preserves xterm's buffer/render state across the
+          transition. */}
+      <div
+        ref={setXtermFallbackEl}
+        style={
+          showXterm && !interactivePortalTarget
+            ? { flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }
+            : { position: 'absolute', width: 0, height: 0, overflow: 'hidden', visibility: 'hidden', pointerEvents: 'none' }
+        }
+      />
+      {ptyId !== null && xtermFallbackEl && (
         <HiddenXterm
           ref={hiddenXtermRef}
           ptyId={ptyId}
           visible={showXterm}
           onData={(data) => segmenterRef.current.feed(data)}
+          hostEl={(showXterm && interactivePortalTarget) ? interactivePortalTarget : xtermFallbackEl}
         />
       )}
-      {!showXterm && passwordPrompt && ptyId !== null && (
-        <div style={{ flexShrink: 0 }}>
-          <PasswordPrompt
-            ptyId={ptyId}
-            onDone={() => setPasswordPrompt(false)}
-          />
-        </div>
-      )}
+      {/* Password prompt is now rendered inside the active CommandBlock via bodyMode='password'. */}
       {!showXterm && (
-        <div style={{ flexShrink: 0, opacity: inputDisabled ? 0.3 : 1, pointerEvents: inputDisabled ? 'none' : 'auto', transition: 'opacity 0.15s' }}>
+        <div style={{ flexShrink: 0, opacity: inputDisabled ? (blockInputLocked ? 0.3 : 0.5) : 1, pointerEvents: blockInputLocked ? 'none' : 'auto', transition: 'opacity 0.15s', cursor: inputDisabled && !blockInputLocked ? 'not-allowed' : undefined }}>
           <TerminalInput
             ref={inputRef}
             onSubmit={handleSubmit}
