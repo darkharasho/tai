@@ -249,6 +249,14 @@
   overflow: hidden;
 }
 
+/* Pushes CardInput to the bottom of a REPL-active card (python, node, psql).
+   Without this, the input sits flush against the output; with it, the card
+   becomes a proper workspace and the input feels anchored. */
+.activeOutputSpacer {
+  flex: 1;
+  min-height: 0;
+}
+
 .interactiveBody > * {
   flex: 1;
   min-width: 0;

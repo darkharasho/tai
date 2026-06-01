@@ -122,11 +122,21 @@ export function CommandBlock({
     );
   }
 
+  // Active REPL-style cards (running command with stdin available) grow to
+  // a near-full-viewport so the user has a real workspace, not a sliver glued
+  // to the prompt. Interactive (alt-screen) cards have their own min-height
+  // from .interactiveBody; for those we don't need to grow the outer card.
+  const replActive =
+    isActive && ptyId !== undefined && bodyMode === 'output' && !awaitingInput;
+
   return (
     <div
       className={styles.block}
       data-card-surface
-      style={{ '--accent-color': modeColor } as React.CSSProperties}
+      style={{
+        '--accent-color': modeColor,
+        ...(replActive ? { minHeight: '60vh', display: 'flex', flexDirection: 'column' } : {}),
+      } as React.CSSProperties}
       onClick={() => { if (active && awaitingInput && onSendInput) interactiveRef.current?.focus(); }}
     >
       <div className={styles.promptLine} onClick={() => onToggleCollapse?.()}>
@@ -245,7 +255,13 @@ export function CommandBlock({
       )}
 
       {bodyMode === 'output' && isActive && ptyId !== undefined && !awaitingInput && (
-        <CardInput ptyId={ptyId} />
+        <>
+          {/* Spacer pushes the input to the bottom of a tall card so REPL
+              sessions (python, node, psql) feel like a dedicated workspace
+              instead of a thin strip glued to the prompt. */}
+          <div className={styles.activeOutputSpacer} />
+          <CardInput ptyId={ptyId} />
+        </>
       )}
 
       {active && awaitingInput && onSendInput && (
