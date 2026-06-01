@@ -58,6 +58,17 @@ describe('BlockSegmenter OSC 6973 enrichment', () => {
     expect(events).toEqual([true, false]);
   });
 
+  it('detects alt-screen enter even when the escape spans chunk boundaries', () => {
+    const seg = new BlockSegmenter();
+    const events: boolean[] = [];
+    seg.onAltScreen(e => events.push(e));
+    seg.feed('\x1b]133;A\x07$ \x1b]133;B\x07cmd\n\x1b]133;C\x07');
+    seg.feed('banner\x1b[?');   // chunk ends mid-sequence
+    expect(events).toEqual([]); // not yet detected
+    seg.feed('1049h');           // tail continues the sequence
+    expect(events).toEqual([true]);
+  });
+
   it('ignores malformed OSC 6973 payloads', () => {
     const seg = new BlockSegmenter();
     const blocks: any[] = [];

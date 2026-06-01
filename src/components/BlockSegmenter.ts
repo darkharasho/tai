@@ -73,6 +73,10 @@ export class BlockSegmenter {
   private _inSshSession = false;
   private _seenFirstPrompt = false;
   private _inAltScreen = false;
+  // Carry the trailing bytes of each chunk so alt-screen sequences split
+  // across chunk boundaries (e.g. "\x1b[?" | "1049h") are still detected.
+  // Max-needed lookback = max(altSeq.length) - 1 = 7.
+  private _altScreenTail = '';
   private _inInteractiveMode = false;
   private _interactiveFullscreen = false;
   private _commandActive = false;
@@ -169,8 +173,10 @@ export class BlockSegmenter {
   }
 
   private _feedLegacy(rawData: string): void {
-    const hasAltEnter = ALT_SCREEN_ENTER_SEQS.some(s => rawData.includes(s));
-    const altExitSeq = ALT_SCREEN_EXIT_SEQS.find(s => rawData.includes(s));
+    const scanned = this._altScreenTail + rawData;
+    const hasAltEnter = ALT_SCREEN_ENTER_SEQS.some(s => scanned.includes(s));
+    const altExitSeq = ALT_SCREEN_EXIT_SEQS.find(s => scanned.includes(s));
+    this._altScreenTail = rawData.slice(-7);
 
     if (hasAltEnter) {
       this._inAltScreen = true;
@@ -606,8 +612,10 @@ export class BlockSegmenter {
   private _feedIntegrated(rawData: string): void {
     // Alt-screen and password-prompt detection are still useful in integrated
     // mode (TUIs, sudo prompts) — they don't conflict with OSC 133.
-    const hasAltEnter = ALT_SCREEN_ENTER_SEQS.some(s => rawData.includes(s));
-    const altExitSeq = ALT_SCREEN_EXIT_SEQS.find(s => rawData.includes(s));
+    // Prepend tail from previous chunk so split sequences are detected.
+    const scanned = this._altScreenTail + rawData;
+    const hasAltEnter = ALT_SCREEN_ENTER_SEQS.some(s => scanned.includes(s));
+    const altExitSeq = ALT_SCREEN_EXIT_SEQS.find(s => scanned.includes(s));
     if (hasAltEnter && !this._inAltScreen) {
       this._inAltScreen = true;
       this._altScreenCallbacks.forEach(cb => cb(true));
@@ -616,6 +624,8 @@ export class BlockSegmenter {
       this._inAltScreen = false;
       this._altScreenCallbacks.forEach(cb => cb(false));
     }
+    // Keep the last 7 bytes (max-altSeq-length - 1) for next chunk's scan.
+    this._altScreenTail = rawData.slice(-7);
 
     if (!this._passwordPromptFired && /(?:password|passphrase).*:\s*$/i.test(stripAnsi(rawData))) {
       this._passwordPromptFired = true;
@@ -698,6 +708,7 @@ export class BlockSegmenter {
     this._sshConnectionTarget = null;
     this._seenFirstPrompt = false;
     this._inAltScreen = false;
+    this._altScreenTail = '';
     this._inInteractiveMode = false;
     this._interactiveFullscreen = false;
     this._commandActive = false;
