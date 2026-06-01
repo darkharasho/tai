@@ -32,6 +32,38 @@ __tai_json_escape() {
   s="${s//$'\n'/\\n}"
   s="${s//$'\r'/\\r}"
   s="${s//$'\t'/\\t}"
+  # Escape remaining C0 control chars (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F) as
+  # \u00XX per RFC 8259. \n, \r, \t are already handled above; 0x00 cannot
+  # appear in a bash string anyway, but we include it for completeness in case
+  # of future callers. Forking is avoided since this is on the hot path.
+  s="${s//$'\x01'/\\u0001}"
+  s="${s//$'\x02'/\\u0002}"
+  s="${s//$'\x03'/\\u0003}"
+  s="${s//$'\x04'/\\u0004}"
+  s="${s//$'\x05'/\\u0005}"
+  s="${s//$'\x06'/\\u0006}"
+  s="${s//$'\x07'/\\u0007}"
+  s="${s//$'\x08'/\\u0008}"
+  s="${s//$'\x0b'/\\u000b}"
+  s="${s//$'\x0c'/\\u000c}"
+  s="${s//$'\x0e'/\\u000e}"
+  s="${s//$'\x0f'/\\u000f}"
+  s="${s//$'\x10'/\\u0010}"
+  s="${s//$'\x11'/\\u0011}"
+  s="${s//$'\x12'/\\u0012}"
+  s="${s//$'\x13'/\\u0013}"
+  s="${s//$'\x14'/\\u0014}"
+  s="${s//$'\x15'/\\u0015}"
+  s="${s//$'\x16'/\\u0016}"
+  s="${s//$'\x17'/\\u0017}"
+  s="${s//$'\x18'/\\u0018}"
+  s="${s//$'\x19'/\\u0019}"
+  s="${s//$'\x1a'/\\u001a}"
+  s="${s//$'\x1b'/\\u001b}"
+  s="${s//$'\x1c'/\\u001c}"
+  s="${s//$'\x1d'/\\u001d}"
+  s="${s//$'\x1e'/\\u001e}"
+  s="${s//$'\x1f'/\\u001f}"
   printf '%s' "$s"
 }
 

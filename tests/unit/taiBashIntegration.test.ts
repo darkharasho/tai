@@ -145,4 +145,60 @@ describe('tai-bash.sh OSC 6973 emission (integration)', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   }, 15_000);
+
+  // Regression: __tai_json_escape previously only escaped \, ", \n, \r, \t.
+  // Other C0 control bytes (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F) leaked through
+  // verbatim and produced invalid JSON per RFC 8259, which parseOsc6973
+  // silently dropped. The fix escapes all C0 bytes as \u00XX.
+  it('produces parseable JSON when a command contains a C0 control byte', async () => {
+    const { spawnSync } = await import('node:child_process');
+    const { writeFileSync, readFileSync: readSync, mkdtempSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { parseOsc6973 } = await import('@/utils/osc6973');
+    const scriptPath = resolve(__dirname, '../../electron/shell-integration/tai-bash.sh');
+
+    const which = spawnSync('which', ['script'], { encoding: 'utf8' });
+    if (which.status !== 0) {
+      return;
+    }
+
+    const dir = mkdtempSync(join(tmpdir(), 'tai-bash-c0-test-'));
+    const cmdsPath = join(dir, 'cmds');
+    const outPath = join(dir, 'out');
+    // `printf 'a\x01b'` puts a literal SOH (0x01) byte in the printed output,
+    // and the command string itself contains the bash-expanded $'\x01' once
+    // history records it; either way the escape function must handle it.
+    writeFileSync(
+      cmdsPath,
+      `source ${scriptPath}\nprintf 'a\\x01b\\n'\nexit\n`,
+    );
+
+    try {
+      spawnSync(
+        'script',
+        ['-q', '-c', `bash --norc --noprofile -i < ${cmdsPath}`, outPath],
+        {
+          encoding: 'utf8',
+          timeout: 10_000,
+          env: { ...process.env, TERM: 'xterm-256color' },
+        },
+      );
+      const stdout = readSync(outPath, 'utf8');
+      const re = /\x1b\]6973;([0-9a-f]+)\x07/g;
+      let totalPayloads = 0;
+      let parseable = 0;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(stdout)) !== null) {
+        totalPayloads++;
+        const parsed = parseOsc6973(m[1]);
+        if (parsed) parseable++;
+      }
+      // Every OSC 6973 payload emitted must be valid parseable JSON.
+      expect(totalPayloads, `stdout=${JSON.stringify(stdout)}`).toBeGreaterThan(0);
+      expect(parseable).toBe(totalPayloads);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
 });
