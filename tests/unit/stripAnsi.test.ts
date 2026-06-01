@@ -31,11 +31,18 @@ describe('stripAnsi', () => {
   });
 
   it('rewrites cursor-to-col-1 escapes (ESC[G, ESC[0G, ESC[1G) as \\r', () => {
-    // Python/node readline emit these for redrawing the prompt line instead
-    // of a bare \r; we normalize so per-line CR collapse can see the redraw.
     expect(stripAnsi('\x1b[G>>> 1+1')).toBe('\r>>> 1+1');
     expect(stripAnsi('\x1b[0G>>> 1+1')).toBe('\r>>> 1+1');
     expect(stripAnsi('\x1b[1G>>> 1+1')).toBe('\r>>> 1+1');
+  });
+
+  it('rewrites ESC[<n>D cursor-back (n>=2) as \\r for readline redraw', () => {
+    // Python's readline redraws by moving cursor back N (to col 0), then
+    // re-emitting the prompt + input. n>=2 is the threshold so single-char
+    // backspace (n=1, mid-line edits) stays a normal strip.
+    expect(stripAnsi('\x1b[4D>>> 1+1')).toBe('\r>>> 1+1');
+    expect(stripAnsi('\x1b[12D')).toBe('\r');
+    expect(stripAnsi('\x1b[1D')).toBe('');  // n=1 still stripped
   });
 
   it('combined readline redraw pattern collapses with CR semantics', () => {
