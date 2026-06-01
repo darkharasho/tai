@@ -953,7 +953,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
 
   const showFullscreenInteractive = interactiveMode && interactiveFullscreen && !altScreenVisible;
   const showXterm = altScreenVisible || showFullscreenInteractive;
-  const inputDisabled = awaitingInput || passwordPrompt;
+  const hasActiveBlock = displayItems.some(item => item.type === 'command' && item.active);
+  const blockInputLocked = awaitingInput || passwordPrompt;
+  const inputDisabled = blockInputLocked || (hasActiveBlock && !passwordPrompt);
   const activeBodyMode: import('@/types').BlockBodyMode =
     passwordPrompt ? 'password'
     : (altScreenVisible || interactiveMode) ? 'interactive'
@@ -1022,7 +1024,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       )}
       {/* Password prompt is now rendered inside the active CommandBlock via bodyMode='password'. */}
       {!showXterm && (
-        <div style={{ flexShrink: 0, opacity: inputDisabled ? 0.3 : 1, pointerEvents: inputDisabled ? 'none' : 'auto', transition: 'opacity 0.15s' }}>
+        <div style={{ flexShrink: 0, opacity: inputDisabled ? (blockInputLocked ? 0.3 : 0.5) : 1, pointerEvents: blockInputLocked ? 'none' : 'auto', transition: 'opacity 0.15s', cursor: inputDisabled && !blockInputLocked ? 'not-allowed' : undefined }}>
           <TerminalInput
             ref={inputRef}
             onSubmit={handleSubmit}

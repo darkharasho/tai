@@ -69,7 +69,7 @@ export function CommandBlock({
   bodyMode = 'output',
   ptyId,
   onPasswordDone,
-  isActive: _isActive,
+  isActive,
 }: CommandBlockProps) {
   const [showAll, setShowAll] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -215,6 +215,10 @@ export function CommandBlock({
         </>
       )}
 
+      {bodyMode === 'output' && isActive && ptyId !== undefined && !awaitingInput && (
+        <CardInput ptyId={ptyId} />
+      )}
+
       {active && awaitingInput && onSendInput && (
         <input
           ref={interactiveRef}
@@ -236,5 +240,29 @@ export function CommandBlock({
         />
       )}
     </div>
+  );
+}
+
+function CardInput({ ptyId }: { ptyId: number }) {
+  const [value, setValue] = useState('');
+  return (
+    <input
+      className={styles.cardInput}
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      placeholder="…input to running command"
+      spellCheck={false}
+      autoComplete="off"
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          window.tai?.pty?.write?.(ptyId, value + '\n');
+          setValue('');
+        } else if (e.key === 'c' && e.ctrlKey) {
+          e.preventDefault();
+          window.tai?.pty?.write?.(ptyId, '\x03');
+        }
+      }}
+    />
   );
 }
