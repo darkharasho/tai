@@ -29,4 +29,21 @@ describe('stripAnsi', () => {
   it('handles alt-screen sequences within mixed content', () => {
     expect(stripAnsi('\x1b[?1049hhello')).toBe('hello');
   });
+
+  it('rewrites cursor-to-col-1 escapes (ESC[G, ESC[0G, ESC[1G) as \\r', () => {
+    // Python/node readline emit these for redrawing the prompt line instead
+    // of a bare \r; we normalize so per-line CR collapse can see the redraw.
+    expect(stripAnsi('\x1b[G>>> 1+1')).toBe('\r>>> 1+1');
+    expect(stripAnsi('\x1b[0G>>> 1+1')).toBe('\r>>> 1+1');
+    expect(stripAnsi('\x1b[1G>>> 1+1')).toBe('\r>>> 1+1');
+  });
+
+  it('combined readline redraw pattern collapses with CR semantics', () => {
+    // Simulates python readline emitting cursor-col1 + erase-to-EOL on each
+    // keystroke. stripAnsi rewrites the col-1 escape; downstream applyCR can
+    // then keep only post-last-\r content per line.
+    const bytes = '>>> \x1b[G\x1b[K>>> 1\x1b[G\x1b[K>>> 1+\x1b[G\x1b[K>>> 1+1\n2\n>>> ';
+    // \x1b[G → \r ; \x1b[K is stripped. So each redraw becomes "\r>>> <buf>".
+    expect(stripAnsi(bytes)).toBe('>>> \r>>> 1\r>>> 1+\r>>> 1+1\n2\n>>> ');
+  });
 });
