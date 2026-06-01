@@ -43,6 +43,7 @@ type PasswordPromptCallback = () => void;
 type PromptChangeCallback = (prompt: string, isRemote: boolean, sshTarget: string | null) => void;
 type ShellIntegrationCallback = (active: boolean) => void;
 type SshSessionCallback = (active: boolean, target: string | null) => void;
+type BlockActiveCallback = (active: boolean) => void;
 
 // OSC 133 markers: ESC ] 133 ; <X>[;...] (BEL | ESC \)
 // We only care about the trailing payload for the D marker (exit code).
@@ -68,6 +69,7 @@ export class BlockSegmenter {
   private _promptChangeCallbacks: PromptChangeCallback[] = [];
   private _integrationCallbacks: ShellIntegrationCallback[] = [];
   private _sshSessionCallbacks: SshSessionCallback[] = [];
+  private _blockActiveCallbacks: BlockActiveCallback[] = [];
   private _inSshSession = false;
   private _seenFirstPrompt = false;
   private _inAltScreen = false;
@@ -116,6 +118,13 @@ export class BlockSegmenter {
   onPromptChange(cb: PromptChangeCallback): void { this._promptChangeCallbacks.push(cb); }
   onShellIntegration(cb: ShellIntegrationCallback): void { this._integrationCallbacks.push(cb); }
   onSshSession(cb: SshSessionCallback): void { this._sshSessionCallbacks.push(cb); }
+  onBlockActive(cb: BlockActiveCallback): void { this._blockActiveCallbacks.push(cb); }
+
+  private _setCommandActive(active: boolean): void {
+    if (this._commandActive === active) return;
+    this._commandActive = active;
+    this._blockActiveCallbacks.forEach(cb => cb(active));
+  }
 
   get currentPrompt(): string { return this._currentPrompt; }
   get seenFirstPrompt(): boolean { return this._seenFirstPrompt; }
@@ -123,7 +132,7 @@ export class BlockSegmenter {
   get sshSessionActive(): boolean { return this._inSshSession; }
 
   markCommandSent(): void {
-    this._commandActive = true;
+    this._setCommandActive(true);
   }
 
   setLocalHostname(hostname: string): void {
@@ -333,7 +342,7 @@ export class BlockSegmenter {
   }
 
   private _finalizeBlock(newPromptText: string): void {
-    this._commandActive = false;
+    this._setCommandActive(false);
     this._exitInteractiveMode();
     const lines = this._pendingLines;
     const rawLines = this._pendingRawLines;
@@ -531,7 +540,7 @@ export class BlockSegmenter {
         // it there prevents the prompt characters from leaking into outputBuf.
         if (this._osc133Phase !== 'command') break;
         this._osc133Phase = 'output';
-        this._commandActive = true;
+        this._setCommandActive(true);
         const cmdMatch = stripAnsi(this._osc133RawCommand).trim().match(SSH_CMD_RE);
         if (cmdMatch) {
           const user = cmdMatch[1] || '';
@@ -547,7 +556,7 @@ export class BlockSegmenter {
         if (m) this._osc133ExitCode = parseInt(m[1], 10);
         // Stay in output phase until the next A — trailing newlines or
         // shell-emitted text before the next prompt belong to this block.
-        this._commandActive = false;
+        this._setCommandActive(false);
         if (this._inSshSession) this._setSshSession(false, null);
         break;
       }
@@ -669,7 +678,7 @@ export class BlockSegmenter {
     }
 
     this._blockCallbacks.forEach(cb => cb(block));
-    this._commandActive = false;
+    this._setCommandActive(false);
     this._pendingPreexec = null;
     this._pendingPrecmd = null;
   }
@@ -698,6 +707,7 @@ export class BlockSegmenter {
     this._promptChangeCallbacks = [];
     this._integrationCallbacks = [];
     this._sshSessionCallbacks = [];
+    this._blockActiveCallbacks = [];
     this._inSshSession = false;
     this._integrationActive = false;
     this._osc133Phase = 'idle';

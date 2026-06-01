@@ -50,6 +50,14 @@ describe('BlockSegmenter OSC 6973 enrichment', () => {
     expect(blocks[0].hooksAvailable).toBe(false);
   });
 
+  it('fires onBlockActive(true) on OSC 133 C and onBlockActive(false) on D', () => {
+    const seg = new BlockSegmenter();
+    const events: boolean[] = [];
+    seg.onBlockActive(a => events.push(a));
+    seg.feed('\x1b]133;A\x07$ \x1b]133;B\x07cmd\n\x1b]133;C\x07output\n\x1b]133;D;0\x07');
+    expect(events).toEqual([true, false]);
+  });
+
   it('ignores malformed OSC 6973 payloads', () => {
     const seg = new BlockSegmenter();
     const blocks: any[] = [];

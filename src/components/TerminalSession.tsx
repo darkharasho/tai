@@ -382,6 +382,23 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       setSshSessionTarget(active ? target : null);
     });
 
+    segmenter.onBlockActive((active) => {
+      if (cancelled) return;
+      if (ptyId === null) return;
+      if (active) {
+        window.tai?.pty?.startEchoPoll?.(ptyId);
+      } else {
+        window.tai?.pty?.stopEchoPoll?.(ptyId);
+        setPasswordPrompt(false);
+      }
+    });
+
+    const cleanupEcho = window.tai?.pty?.onEchoChange?.((evtId: number, e: { echo: boolean; icanon: boolean; passwordPrompt: boolean }) => {
+      if (cancelled) return;
+      if (evtId !== ptyId) return;
+      setPasswordPrompt(e.passwordPrompt);
+    });
+
     const cleanupData = window.tai?.pty?.onData((id: number, data: string) => {
       if (cancelled) return;
       if (id !== ptyId) return;
@@ -402,6 +419,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       cancelled = true;
       cleanupData?.();
       cleanupResized?.();
+      cleanupEcho?.();
       if (outputRafId !== null) cancelAnimationFrame(outputRafId);
       segmenter.reset();
       setShellIntegrated(false);
