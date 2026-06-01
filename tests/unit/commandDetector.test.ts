@@ -49,4 +49,16 @@ describe('looksLikeShellCommand', () => {
   it('detects question marks as natural language', () => {
     expect(looksLikeShellCommand('is this a bug?')).toBe(false);
   });
+
+  it('treats wrapped agent CLIs as shell commands, never AI', () => {
+    // TAI wraps claude/codex/gemini; classifying a launch of one of these as
+    // natural language would misroute it into the AI provider instead of the
+    // CLI the user is trying to run. Always shell, even with NL-looking args.
+    expect(looksLikeShellCommand('claude how do I fix this')).toBe(true);
+    expect(looksLikeShellCommand('gemini what is the weather')).toBe(true);
+    expect(looksLikeShellCommand('codex can you refactor this')).toBe(true);
+    expect(looksLikeShellCommand('claude')).toBe(true);
+    // The agent guardrail must win even over the question-mark NL signal.
+    expect(looksLikeShellCommand('claude how do I fix this?')).toBe(true);
+  });
 });
