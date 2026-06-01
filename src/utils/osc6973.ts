@@ -18,6 +18,19 @@ export function parseOsc6973(hex: string): ShellHook | null {
   if (!obj || typeof obj !== 'object') return null;
   const hook = (obj as { hook?: unknown }).hook;
   if (hook !== 'preexec' && hook !== 'precmd') return null;
+
+  // Validate required fields based on hook type
+  if (hook === 'preexec') {
+    if (typeof (obj as any).command !== 'string') return null;
+  } else if (hook === 'precmd') {
+    if (typeof (obj as any).command !== 'string') return null;
+    if (typeof (obj as any).exit !== 'number') return null;
+    if (typeof (obj as any).duration_ms !== 'number') return null;
+    if (typeof (obj as any).cwd !== 'string') return null;
+    const signal = (obj as any).signal;
+    if (signal !== null && typeof signal !== 'string') return null;
+  }
+
   return obj as ShellHook;
 }
 

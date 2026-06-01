@@ -35,6 +35,16 @@ describe('parseOsc6973', () => {
     const hex = Buffer.from(JSON.stringify({ hook: 'wat' })).toString('hex');
     expect(parseOsc6973(hex)).toBeNull();
   });
+
+  it('returns null for preexec missing command field', () => {
+    const hex = Buffer.from(JSON.stringify({ hook: 'preexec' })).toString('hex');
+    expect(parseOsc6973(hex)).toBeNull();
+  });
+
+  it('returns null for precmd missing required fields', () => {
+    const hex = Buffer.from(JSON.stringify({ hook: 'precmd', exit: 0 })).toString('hex');
+    expect(parseOsc6973(hex)).toBeNull();
+  });
 });
 
 describe('encodeOsc6973', () => {
