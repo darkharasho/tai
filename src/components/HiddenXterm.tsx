@@ -110,16 +110,25 @@ export const HiddenXterm = forwardRef<HiddenXtermHandle, HiddenXtermProps>(
 
     useEffect(() => {
       if (visible && fitRef.current && containerRef.current) {
-        const timer = setTimeout(() => {
+        // Two passes (rAF + 150ms) to survive layout settling after a DOM move
+        // into the active card. Explicit refresh() repaints buffer content that
+        // was written while the parent was 0x0 (e.g. the hidden fallback host).
+        const doFit = () => {
           try {
             fitRef.current?.fit();
             if (xtermRef.current) {
               window.tai?.pty?.resize(ptyId, xtermRef.current.cols, xtermRef.current.rows);
+              xtermRef.current.refresh(0, xtermRef.current.rows - 1);
               xtermRef.current.focus();
             }
           } catch { /* ignore */ }
-        }, 50);
-        return () => clearTimeout(timer);
+        };
+        const raf = requestAnimationFrame(doFit);
+        const t = setTimeout(doFit, 150);
+        return () => {
+          cancelAnimationFrame(raf);
+          clearTimeout(t);
+        };
       }
     }, [visible, ptyId]);
 
@@ -257,18 +266,23 @@ export const HiddenXterm = forwardRef<HiddenXtermHandle, HiddenXtermProps>(
       if (!el || !hostEl) return;
       if (el.parentElement !== hostEl) {
         hostEl.appendChild(el);
-        // After reparenting, ask xterm to refit to the new container size.
-        if (visible && fitRef.current) {
-          requestAnimationFrame(() => {
-            try {
-              fitRef.current?.fit();
-              if (xtermRef.current) {
-                window.tai?.pty?.resize(ptyId, xtermRef.current.cols, xtermRef.current.rows);
-              }
-            } catch { /* ignore */ }
-          });
-        }
       }
+      if (!visible || !fitRef.current) return;
+      const doFit = () => {
+        try {
+          fitRef.current?.fit();
+          if (xtermRef.current) {
+            window.tai?.pty?.resize(ptyId, xtermRef.current.cols, xtermRef.current.rows);
+            xtermRef.current.refresh(0, xtermRef.current.rows - 1);
+          }
+        } catch { /* ignore */ }
+      };
+      const raf = requestAnimationFrame(doFit);
+      const t = setTimeout(doFit, 150);
+      return () => {
+        cancelAnimationFrame(raf);
+        clearTimeout(t);
+      };
     }, [hostEl, ptyId, visible]);
 
     // This component doesn't render any React-owned DOM; the xterm container

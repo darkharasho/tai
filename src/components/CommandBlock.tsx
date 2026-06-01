@@ -139,14 +139,37 @@ export function CommandBlock({
         </div>
         <div className={styles.promptRight}>
           {active ? (
-            awaitingInput ? (
-              <span className={styles.awaiting}>
-                <span className={styles.awaitingDot} />
-                INPUT
-              </span>
-            ) : (
-              <span className={styles.running} />
-            )
+            <>
+              {awaitingInput ? (
+                <span className={styles.awaiting}>
+                  <span className={styles.awaitingDot} />
+                  INPUT
+                </span>
+              ) : (
+                <span className={styles.running} />
+              )}
+              {isActive && ptyId !== undefined && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); window.tai?.pty?.write?.(ptyId, '\x03'); }}
+                  title="Send Ctrl-C to running command"
+                  style={{
+                    background: 'none',
+                    border: '1px solid rgba(255,255,255,0.18)',
+                    borderRadius: 4,
+                    color: 'var(--text-muted)',
+                    cursor: 'pointer',
+                    padding: '1px 8px',
+                    fontSize: 10,
+                    fontFamily: 'var(--font-mono)',
+                    marginLeft: 8,
+                    letterSpacing: '0.5px',
+                  }}
+                >
+                  STOP
+                </button>
+              )}
+            </>
           ) : (
             <>
               <span
