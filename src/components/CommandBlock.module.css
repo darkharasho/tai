@@ -237,10 +237,16 @@
 }
 
 .interactiveBody {
-  min-height: 240px;
+  /* Most interactive programs (vim, htop, less, claude) expect a near-full
+     screen. Sizing to ~72vh keeps the prompt header visible above and leaves
+     a sliver of context below so the card doesn't feel disconnected. */
+  min-height: 72vh;
   display: flex;
   width: 100%;
   margin-top: 8px;
+  background: var(--bg-card);
+  border-radius: 6px;
+  overflow: hidden;
 }
 
 .interactiveBody > * {

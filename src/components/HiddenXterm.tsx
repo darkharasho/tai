@@ -54,10 +54,12 @@ export const HiddenXterm = forwardRef<HiddenXtermHandle, HiddenXtermProps>(
 
       const xterm = new Terminal({
         theme: {
-          background: '#0c0f11',
+          // Match --bg-card from src/styles/globals.css so the in-card xterm
+          // body visually merges with its surrounding CommandBlock.
+          background: '#141719',
           foreground: '#bec6d0',
           cursor: '#bec6d0',
-          cursorAccent: '#0c0f11',
+          cursorAccent: '#141719',
           selectionBackground: 'rgba(168, 95, 241, 0.3)',
           black: '#0c0f11',
           red: '#E35535',

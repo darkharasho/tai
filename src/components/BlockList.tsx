@@ -65,6 +65,18 @@ export function BlockList({
     bottomRef.current?.scrollIntoView({ behavior: 'instant' });
   }, [items]);
 
+  // Also scroll to bottom when the active card enters interactive mode — the
+  // body grows to ~72vh which leaves the prior scroll position mid-card.
+  useEffect(() => {
+    if (activeBodyMode === 'interactive') {
+      // Two passes: one immediately, one after layout settles so the freshly-
+      // sized 72vh container is measured before we scroll.
+      bottomRef.current?.scrollIntoView({ behavior: 'instant' });
+      const t = setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'instant' }), 200);
+      return () => clearTimeout(t);
+    }
+  }, [activeBodyMode]);
+
   const handleToggleCollapse = useCallback((id: string, currentlyCollapsed: boolean) => {
     if (currentlyCollapsed) {
       setManualCollapsed(prev => {
