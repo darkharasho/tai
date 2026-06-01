@@ -15,6 +15,9 @@ declare global {
         onData: (callback: (id: number, data: string) => void) => () => void;
         onResized: (callback: (id: number, cols: number, rows: number) => void) => () => void;
         dataAck: (id: number, bytes: number) => void;
+        startEchoPoll: (id: number) => void;
+        stopEchoPoll: (id: number) => void;
+        onEchoChange: (callback: (id: number, e: { echo: boolean; icanon: boolean; passwordPrompt: boolean }) => void) => () => void;
       };
       window: {
         minimize: () => void;
