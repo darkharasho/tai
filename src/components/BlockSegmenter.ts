@@ -11,6 +11,12 @@ const CURSOR_HIDE = '\x1b[?25l';
 const CURSOR_SHOW = '\x1b[?25h';
 const CURSOR_HOME = '\x1b[H';
 const CLEAR_SCREEN = '\x1b[2J';
+// CUU (cursor up) / CPL (cursor previous line) — Ink-style TUIs (claude,
+// many Node CLIs) redraw frames in place on the main buffer instead of
+// entering alt-screen. Seeing CUU or CPL during an active block's output
+// phase is a near-certain TUI signal — no line-oriented program needs to
+// move the cursor backward up the screen.
+const CURSOR_UP_RE = /\x1b\[\d*[AF]/;
 
 /**
  * Apply carriage-return semantics: for each line, simulate \r by
@@ -514,6 +520,13 @@ export class BlockSegmenter {
         // local shell, so clear any SSH-session flag that didn't get cleared
         // by a D (network drop, kill -9, user reload, etc).
         if (this._inSshSession) this._setSshSession(false, null);
+        // Same reasoning for alt-screen: a fresh prompt means the foreground
+        // program (claude, vim, etc.) has exited. Reset so the next command's
+        // line-oriented output isn't dropped by _routeChunk's alt-screen guard.
+        if (this._inAltScreen) {
+          this._inAltScreen = false;
+          this._altScreenCallbacks.forEach(cb => cb(false));
+        }
         this._osc133Phase = 'prompt';
         this._osc133RawPrompt = '';
         this._osc133RawCommand = '';
@@ -626,6 +639,15 @@ export class BlockSegmenter {
     }
     // Keep the last 7 bytes (max-altSeq-length - 1) for next chunk's scan.
     this._altScreenTail = rawData.slice(-7);
+
+    // Ink-style TUIs (claude, many Node CLIs) never enter alt-screen — they
+    // redraw frames in place on the main buffer using cursor-up. Treat that
+    // as a TUI signal and flip to interactive so the bytes route to xterm
+    // instead of accumulating as garbled text in the line-oriented output.
+    if (!this._inAltScreen && this._osc133Phase === 'output' && CURSOR_UP_RE.test(rawData)) {
+      this._inAltScreen = true;
+      this._altScreenCallbacks.forEach(cb => cb(true));
+    }
 
     if (!this._passwordPromptFired && /(?:password|passphrase).*:\s*$/i.test(stripAnsi(rawData))) {
       this._passwordPromptFired = true;
