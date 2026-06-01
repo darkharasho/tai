@@ -1,4 +1,4 @@
-import { stripAnsi } from '@/utils/stripAnsi';
+import { stripAnsi, normalizeCursorRedraws } from '@/utils/stripAnsi';
 import { parseOsc6973 } from '@/utils/osc6973';
 import type { SegmentedBlock } from '@/types';
 
@@ -606,10 +606,13 @@ export class BlockSegmenter {
         this._osc133RawCommand += chunk;
         break;
       case 'output': {
-        this._osc133RawOutput += chunk;
+        // Rewrite cursor-redraw escapes (ESC[<n>D / ESC[G) to \r in BOTH
+        // raw and clean buffers so applyCR can collapse readline / pyrepl
+        // per-keystroke prompt redraws into a single visible line. The raw
+        // buffer keeps all other ANSI intact for ansiToHtml downstream.
+        const normalized = normalizeCursorRedraws(chunk);
+        this._osc133RawOutput += normalized;
         this._osc133CleanOutput += stripAnsi(chunk);
-        // Apply carriage-return semantics: for each line, keep only
-        // text after the last \r so progress bars overwrite in place.
         const cleanCR = applyCR(this._osc133CleanOutput);
         const rawCR = applyCR(this._osc133RawOutput);
         if (cleanCR.length > 0) {
@@ -676,7 +679,7 @@ export class BlockSegmenter {
 
     const command = stripAnsi(rawCommand).trim();
     const output = applyCR(stripAnsi(rawOutputBytes)).trimEnd();
-    const rawOutput = applyCR(rawOutputBytes).trimEnd();
+    const rawOutput = applyCR(normalizeCursorRedraws(rawOutputBytes)).trimEnd();
     const promptText = stripAnsi(this._osc133RawPrompt) || this._currentPrompt;
 
     // Skip empty bootstrap "blocks" (e.g. the synthetic prompt that fires
