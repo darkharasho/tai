@@ -394,10 +394,15 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       }
     });
 
-    const cleanupEcho = window.tai?.pty?.onEchoChange?.((evtId: number, e: { echo: boolean; icanon: boolean; passwordPrompt: boolean }) => {
+    const cleanupEcho = window.tai?.pty?.onEchoChange?.((evtId: number, e: { echo: boolean; icanon: boolean; passwordPrompt: boolean; interactiveProgram: boolean }) => {
       if (cancelled) return;
       if (evtId !== ptyId) return;
       setPasswordPrompt(e.passwordPrompt);
+      // Raw-mode tty (REPLs like python/node/psql, plus full TUIs) — route
+      // the card through xterm so the user sees keystrokes echo and can
+      // use readline navigation/history.
+      setInteractiveMode(e.interactiveProgram);
+      if (e.interactiveProgram) setInteractiveFullscreen(false);
     });
 
     const cleanupData = window.tai?.pty?.onData((id: number, data: string) => {
@@ -954,7 +959,10 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   }, [ptyId]);
 
   const showFullscreenInteractive = interactiveMode && interactiveFullscreen && !altScreenVisible;
-  const showXterm = altScreenVisible || showFullscreenInteractive;
+  // showXterm now includes any interactiveMode (REPLs flagged by termios raw
+  // mode), not just legacy CURSOR_HIDE-style fullscreen. xterm gets routed
+  // into the card via the interactive-portal target, not the session overlay.
+  const showXterm = altScreenVisible || showFullscreenInteractive || interactiveMode;
   const hasActiveBlock = displayItems.some(item => item.type === 'command' && item.active);
   const blockInputLocked = awaitingInput || passwordPrompt;
   const inputDisabled = blockInputLocked || (hasActiveBlock && !passwordPrompt);

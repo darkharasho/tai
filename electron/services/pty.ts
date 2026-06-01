@@ -149,6 +149,7 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
             echo: e.echo,
             icanon: e.icanon,
             passwordPrompt: e.passwordPrompt,
+            interactiveProgram: e.interactiveProgram,
           });
         });
       } catch (err) {

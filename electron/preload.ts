@@ -26,8 +26,8 @@ contextBridge.exposeInMainWorld('tai', {
     dataAck: (id: number, bytes: number) => ipcRenderer.send('pty:data-ack', id, bytes),
     startEchoPoll: (id: number) => ipcRenderer.send('pty:start-echo-poll', id),
     stopEchoPoll: (id: number) => ipcRenderer.send('pty:stop-echo-poll', id),
-    onEchoChange: (callback: (id: number, e: { echo: boolean; icanon: boolean; passwordPrompt: boolean }) => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, id: number, e: { echo: boolean; icanon: boolean; passwordPrompt: boolean }) =>
+    onEchoChange: (callback: (id: number, e: { echo: boolean; icanon: boolean; passwordPrompt: boolean; interactiveProgram: boolean }) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, id: number, e: { echo: boolean; icanon: boolean; passwordPrompt: boolean; interactiveProgram: boolean }) =>
         callback(id, e);
       ipcRenderer.on('pty:echo-change', listener);
       return () => ipcRenderer.removeListener('pty:echo-change', listener);

@@ -17,7 +17,7 @@ declare global {
         dataAck: (id: number, bytes: number) => void;
         startEchoPoll: (id: number) => void;
         stopEchoPoll: (id: number) => void;
-        onEchoChange: (callback: (id: number, e: { echo: boolean; icanon: boolean; passwordPrompt: boolean }) => void) => () => void;
+        onEchoChange: (callback: (id: number, e: { echo: boolean; icanon: boolean; passwordPrompt: boolean; interactiveProgram: boolean }) => void) => () => void;
       };
       window: {
         minimize: () => void;

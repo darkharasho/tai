@@ -28,10 +28,10 @@ describe('TermiosPoller', () => {
     vi.advanceTimersByTime(1000); // no change
     vi.advanceTimersByTime(1000); // echo off → event
     expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange).toHaveBeenLastCalledWith({ echo: false, icanon: true, passwordPrompt: true });
+    expect(onChange).toHaveBeenLastCalledWith({ echo: false, icanon: true, passwordPrompt: true, interactiveProgram: false });
   });
 
-  it('does not flag passwordPrompt when ICANON is also off (vim-style raw mode)', () => {
+  it('does not flag passwordPrompt when ICANON is also off (vim-style raw mode), but flags interactiveProgram', () => {
     const read = vi.fn()
       .mockReturnValueOnce({ echo: true, icanon: true })
       .mockReturnValue({ echo: false, icanon: false });
@@ -40,7 +40,19 @@ describe('TermiosPoller', () => {
     p.start();
     vi.advanceTimersByTime(1000);
     vi.advanceTimersByTime(1000);
-    expect(onChange).toHaveBeenCalledWith({ echo: false, icanon: false, passwordPrompt: false });
+    expect(onChange).toHaveBeenCalledWith({ echo: false, icanon: false, passwordPrompt: false, interactiveProgram: true });
+  });
+
+  it('flags interactiveProgram for an echo-on raw-mode REPL (python, node)', () => {
+    const read = vi.fn()
+      .mockReturnValueOnce({ echo: true, icanon: true })
+      .mockReturnValue({ echo: true, icanon: false });
+    const onChange = vi.fn();
+    const p = new TermiosPoller(123, read, onChange);
+    p.start();
+    vi.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(1000);
+    expect(onChange).toHaveBeenCalledWith({ echo: true, icanon: false, passwordPrompt: false, interactiveProgram: true });
   });
 
   it('stop() halts the poll loop', () => {

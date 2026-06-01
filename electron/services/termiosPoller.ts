@@ -4,7 +4,14 @@ export interface TermiosState {
 }
 
 export interface EchoChangeEvent extends TermiosState {
+  // !ECHO && ICANON — child program disabled echo while keeping canonical
+  // line mode. Classic sudo/ssh password prompt shape.
   passwordPrompt: boolean;
+  // !ICANON — child program put the tty into raw mode. Indicates an
+  // interactive REPL/TUI (python, node, psql, vim, htop, claude) where
+  // every keystroke is delivered immediately and the program manages its
+  // own line editing. The card should route input through xterm.
+  interactiveProgram: boolean;
 }
 
 export type TermiosReader = (fd: number) => TermiosState;
@@ -54,6 +61,7 @@ export class TermiosPoller {
       echo: state.echo,
       icanon: state.icanon,
       passwordPrompt: !state.echo && state.icanon,
+      interactiveProgram: !state.icanon,
     });
   }
 }
