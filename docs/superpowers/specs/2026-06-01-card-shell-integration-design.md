@@ -48,7 +48,15 @@ Today `tai-bash.sh` emits OSC 133 A/C/D and TAI's segmenter consumes them. Two g
 }
 ```
 
-…and one from `preexec` carrying `{"hook":"preexec","command":"…"}`. OSC 7 continues to carry cwd changes mid-block. The custom OSC uses a unique number (TBD — pick a free range, document it) and is namespaced so it can't collide with terminal emulator extensions.
+…and one from `preexec` carrying `{"hook":"preexec","command":"…"}`. OSC 7 continues to carry cwd changes mid-block.
+
+The custom OSC is **6973**, terminated with `BEL` (`\007`). Wire format:
+
+```
+ESC ] 6973 ; <hex-encoded-json> BEL
+```
+
+6973 was chosen because it sits in a documented dead zone — no known assignment in xterm, iTerm2, VTE, kitty, WezTerm, Alacritty, Konsole, Windows Terminal, or VS Code — and is well clear of Warp's 9277/9278. It's prime, which discourages accidental collisions from emulators picking "round" numbers. BEL terminator is chosen over `ST` for safety inside `tmux`/`screen`, where `ESC \` can be mis-parsed. The segmenter must ignore unrecognized OSC 6973 payloads (unknown `hook` values, malformed JSON, non-hex bodies) without breaking block segmentation.
 
 The segmenter's OSC 133 state machine stays canonical for *boundaries*. The JSON sidechannel only *enriches* a block that's already framed by 133 markers. If the sidechannel is missing, blocks still segment correctly — just with less metadata.
 
@@ -111,7 +119,7 @@ Card input (typed)
 ## Risk and mitigation
 
 - **Termios-echo signal latency.** The renderer needs to know about no-echo within a few hundred ms or the password field arrives after the user has typed half their password into the wrong place. Mitigation: poll termios on every PTY data event in the main process; debounce-emit on change.
-- **OSC number collision.** Pick a number with no known emulator binding and document it. Make the segmenter ignore unrecognized payloads cleanly.
+- **OSC number collision.** Resolved: OSC 6973 + BEL terminator. Segmenter must ignore unrecognized payloads cleanly so future-Warp or future-emulator additions in nearby ranges don't break us.
 - **rc-file injection edge cases.** Users with exotic prompt setups (starship, transient prompts, p10k instant prompt) can break OSC 133 hook ordering. The existing `tai-bash.sh` already deals with this for PS1; the JSON sidechannel must be equally defensive.
 - **Visual regression.** Cards changing body mode mid-stream is new behavior — needs a clear transition (no layout jump). Mitigation: card body has a fixed min-height while active.
 
