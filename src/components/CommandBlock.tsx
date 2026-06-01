@@ -54,6 +54,7 @@ interface CommandBlockProps {
   ptyId?: number;
   onPasswordDone?: () => void;
   isActive?: boolean;
+  onInteractiveContainerRef?: (el: HTMLDivElement | null) => void;
 }
 
 export function CommandBlock({
@@ -70,6 +71,7 @@ export function CommandBlock({
   ptyId,
   onPasswordDone,
   isActive,
+  onInteractiveContainerRef,
 }: CommandBlockProps) {
   const [showAll, setShowAll] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -185,9 +187,13 @@ export function CommandBlock({
               background: `linear-gradient(90deg, ${isRemote ? 'rgba(245,158,11,0.12)' : 'rgba(0,168,132,0.12)'}, transparent 60%)`,
             }}
           />
-          <div className={styles.interactiveBody} style={{ minHeight: 80, padding: '10px 16px', opacity: 0.6, fontStyle: 'italic', fontSize: 12 }}>
-            (interactive program running…)
-          </div>
+          {isActive ? (
+            <div ref={onInteractiveContainerRef} className={styles.interactiveBody} />
+          ) : (
+            <div className={styles.interactiveBody} style={{ minHeight: 80, padding: '10px 16px', opacity: 0.6, fontStyle: 'italic', fontSize: 12 }}>
+              (interactive program running…)
+            </div>
+          )}
         </>
       )}
 

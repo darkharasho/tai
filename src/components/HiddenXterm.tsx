@@ -16,16 +16,41 @@ interface HiddenXtermProps {
   ptyId: number;
   visible: boolean;
   onData?: (data: string) => void;
+  /**
+   * When provided, the xterm DOM container is imperatively re-parented into
+   * this element. Used to relocate the xterm into the active card while
+   * keeping the xterm.js Terminal instance alive (no dispose/recreate).
+   * When the host element changes, only the DOM parent moves; React keeps
+   * this component mounted, so xterm's buffer state is preserved.
+   */
+  hostEl?: HTMLElement | null;
 }
 
 export const HiddenXterm = forwardRef<HiddenXtermHandle, HiddenXtermProps>(
-  function HiddenXterm({ ptyId, visible, onData }, ref) {
-    const containerRef = useRef<HTMLDivElement>(null);
+  function HiddenXterm({ ptyId, visible, onData, hostEl }, ref) {
+    const containerRef = useRef<HTMLDivElement | null>(null);
+    if (containerRef.current === null && typeof document !== 'undefined') {
+      const el = document.createElement('div');
+      el.style.position = 'relative';
+      el.style.flex = '1';
+      el.style.minHeight = '0';
+      el.style.overflow = 'hidden';
+      el.style.width = '100%';
+      el.style.height = '100%';
+      containerRef.current = el;
+    }
     const xtermRef = useRef<Terminal | null>(null);
     const fitRef = useRef<FitAddon | null>(null);
 
     useEffect(() => {
       if (!containerRef.current) return;
+      // Ensure the container is attached to the document before xterm.open,
+      // otherwise xterm cannot measure cell dimensions. Use hostEl if provided,
+      // else attach to body temporarily (the host-reparenting effect will move
+      // it as soon as a real host is available).
+      if (!containerRef.current.parentElement) {
+        (hostEl ?? document.body).appendChild(containerRef.current);
+      }
 
       const xterm = new Terminal({
         theme: {
@@ -76,6 +101,10 @@ export const HiddenXterm = forwardRef<HiddenXtermHandle, HiddenXtermProps>(
         xterm.dispose();
         xtermRef.current = null;
         fitRef.current = null;
+        const el = containerRef.current;
+        if (el && el.parentElement) {
+          el.parentElement.removeChild(el);
+        }
       };
     }, [ptyId]);
 
@@ -189,27 +218,61 @@ export const HiddenXterm = forwardRef<HiddenXtermHandle, HiddenXtermProps>(
       };
     }, []);
 
-    const style: React.CSSProperties = visible
-      ? {
-          position: 'relative',
-          flex: 1,
-          minHeight: 0,
-          overflow: 'hidden',
-        }
-      : {
-          position: 'absolute',
-          inset: 0,
-          visibility: 'hidden',
-          pointerEvents: 'none',
-          overflow: 'hidden',
-        };
+    // Apply visibility styles imperatively to the imperative container.
+    useEffect(() => {
+      const el = containerRef.current;
+      if (!el) return;
+      if (visible) {
+        el.style.visibility = '';
+        el.style.pointerEvents = '';
+        el.style.position = 'relative';
+        el.style.inset = '';
+        el.style.flex = '1';
+        el.style.width = '100%';
+        el.style.height = '100%';
+      } else {
+        el.style.position = 'absolute';
+        el.style.inset = '0';
+        el.style.visibility = 'hidden';
+        el.style.pointerEvents = 'none';
+      }
+    }, [visible]);
 
-    return (
-      <div
-        ref={containerRef}
-        onClick={() => visible && xtermRef.current?.focus()}
-        style={style}
-      />
-    );
+    // Click-to-focus.
+    useEffect(() => {
+      const el = containerRef.current;
+      if (!el) return;
+      const onClick = () => {
+        if (visible) xtermRef.current?.focus();
+      };
+      el.addEventListener('click', onClick);
+      return () => el.removeEventListener('click', onClick);
+    }, [visible]);
+
+    // Re-parent the xterm container into the requested host element.
+    // Crucially, this is a DOM move (not a React unmount), so xterm.js never
+    // notices and its buffer/render state is preserved.
+    useEffect(() => {
+      const el = containerRef.current;
+      if (!el || !hostEl) return;
+      if (el.parentElement !== hostEl) {
+        hostEl.appendChild(el);
+        // After reparenting, ask xterm to refit to the new container size.
+        if (visible && fitRef.current) {
+          requestAnimationFrame(() => {
+            try {
+              fitRef.current?.fit();
+              if (xtermRef.current) {
+                window.tai?.pty?.resize(ptyId, xtermRef.current.cols, xtermRef.current.rows);
+              }
+            } catch { /* ignore */ }
+          });
+        }
+      }
+    }, [hostEl, ptyId, visible]);
+
+    // This component doesn't render any React-owned DOM; the xterm container
+    // is imperative and lives wherever hostEl points to.
+    return null;
   }
 );

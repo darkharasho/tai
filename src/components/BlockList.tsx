@@ -33,6 +33,7 @@ interface BlockListProps {
   activeBodyMode?: BlockBodyMode;
   ptyId?: number;
   onPasswordDone?: () => void;
+  onInteractiveContainerRef?: (el: HTMLDivElement | null) => void;
 }
 
 export function BlockList({
@@ -55,6 +56,7 @@ export function BlockList({
   activeBodyMode,
   ptyId,
   onPasswordDone,
+  onInteractiveContainerRef,
 }: BlockListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [manualCollapsed, setManualCollapsed] = useState<Set<string>>(new Set());
@@ -105,6 +107,7 @@ export function BlockList({
             ptyId={ptyId}
             onPasswordDone={onPasswordDone}
             isActive={isActive}
+            onInteractiveContainerRef={isActive ? onInteractiveContainerRef : undefined}
           />
         </div>
       );

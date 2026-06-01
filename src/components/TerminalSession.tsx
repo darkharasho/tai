@@ -59,6 +59,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const [displayItems, setDisplayItems] = useState<DisplayItem[]>([]);
   const [altScreenVisible, setAltScreenVisible] = useState(false);
   const [interactiveMode, setInteractiveMode] = useState(false);
+  const [interactivePortalTarget, setInteractivePortalTarget] = useState<HTMLDivElement | null>(null);
+  const [xtermFallbackEl, setXtermFallbackEl] = useState<HTMLDivElement | null>(null);
   const [interactiveFullscreen, setInteractiveFullscreen] = useState(false);
   const [inputMode, setInputMode] = useState<'shell' | 'ai'>('shell');
   const handleInputModeChange = useCallback((mode: 'shell' | 'ai') => {
@@ -985,7 +987,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           }}
         />
       )}
-      {!showXterm && (
+      {(
         <BlockList
           items={displayItems}
           activeBlockId={null}
@@ -1012,14 +1014,30 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           activeBodyMode={activeBodyMode}
           ptyId={ptyId ?? undefined}
           onPasswordDone={() => setPasswordPrompt(false)}
+          onInteractiveContainerRef={setInteractivePortalTarget}
         />
       )}
-      {ptyId !== null && (
+      {/* Stable home for the xterm DOM. HiddenXterm always renders here so its
+          xterm.js instance is never disposed/remounted. When alt-screen is active
+          and the active card exposes a portal container, we imperatively relocate
+          the xterm's outer DOM element into the card, then move it back when the
+          card goes away. This preserves xterm's buffer/render state across the
+          transition. */}
+      <div
+        ref={setXtermFallbackEl}
+        style={
+          showXterm && !interactivePortalTarget
+            ? { flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }
+            : { position: 'absolute', width: 0, height: 0, overflow: 'hidden', visibility: 'hidden', pointerEvents: 'none' }
+        }
+      />
+      {ptyId !== null && xtermFallbackEl && (
         <HiddenXterm
           ref={hiddenXtermRef}
           ptyId={ptyId}
           visible={showXterm}
           onData={(data) => segmenterRef.current.feed(data)}
+          hostEl={(showXterm && interactivePortalTarget) ? interactivePortalTarget : xtermFallbackEl}
         />
       )}
       {/* Password prompt is now rendered inside the active CommandBlock via bodyMode='password'. */}
