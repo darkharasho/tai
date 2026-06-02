@@ -9,6 +9,9 @@ import { execSync } from 'node:child_process';
 const modules = ['node-pty'];
 if (process.platform !== 'win32') modules.push('node-termios');
 
-const cmd = `electron-rebuild -w ${modules.join(',')}`;
+// Use --only (restrictive): electron-rebuild auto-detects ALL native modules,
+// so -w/--which-module is additive and cannot exclude node-termios. --only
+// pins the exact set we want built on this platform.
+const cmd = `electron-rebuild --only ${modules.join(',')}`;
 console.log(`[postinstall] ${cmd} (platform=${process.platform})`);
 execSync(cmd, { stdio: 'inherit' });
