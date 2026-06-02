@@ -6,6 +6,7 @@ import { spawn } from 'child_process';
 import { setupPtyService, destroyAllTerminals } from './services/pty';
 import { setupClaudeService, destroyAllClaude } from './services/claude';
 import { setupCodexService, destroyAllCodex } from './services/codex';
+import { setupGitService } from './services/git';
 import { setupGeminiService, destroyAllGemini } from './services/gemini';
 import { initFocusTracking, setupNotifyService } from './services/notify';
 import { registerUpdater } from './services/updater';
@@ -111,6 +112,7 @@ app.whenReady().then(() => {
   setupCodexService(() => mainWindow);
   setupGeminiService(() => mainWindow);
   setupNotifyService(() => mainWindow);
+  setupGitService();
 });
 
 app.on('before-quit', () => {
