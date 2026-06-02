@@ -239,6 +239,52 @@
   border-color: var(--color-agent, #ffa03c);
 }
 
+.markRemoteBtn {
+  background: none;
+  border: none;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.35));
+  font-size: 12px;
+  line-height: 1;
+  padding: 0 4px;
+  margin-right: 2px;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.markRemoteBtn:hover {
+  color: var(--color-agent, #ffa03c);
+}
+
+.markRemoteChip {
+  background: rgba(255, 160, 60, 0.12);
+  border: 1px solid var(--color-agent-dim, rgba(255, 160, 60, 0.3));
+  color: var(--color-agent, #ffa03c);
+  font-size: 9px;
+  font-family: inherit;
+  padding: 1px 5px;
+  border-radius: 3px;
+  cursor: pointer;
+  margin-right: 6px;
+  transition: background 0.15s;
+}
+
+.markRemoteChip:hover {
+  background: rgba(255, 160, 60, 0.22);
+}
+
+.markRemoteInput {
+  background: rgba(255, 160, 60, 0.08);
+  border: 1px solid var(--color-agent-dim, rgba(255, 160, 60, 0.3));
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-right: 6px;
+  width: 130px;
+  outline: none;
+}
+
 @keyframes gradientSweep {
   0% { background-position: 0% 0%; }
   100% { background-position: 100% 100%; }

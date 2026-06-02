@@ -64,6 +64,27 @@ describe('looksLikeShellCommand', () => {
   });
 });
 
+describe('classifyInput — NL stemming/coverage', () => {
+  it('classifies inflected/expanded conversational phrases as AI', () => {
+    // "changes" stems to "change"; "onto"/"latest" newly covered.
+    expect(classifyInput('rebasing onto the latest changes').type).toBe('ai');
+    // adding "everything" tips a phrase that previously fell just short.
+    expect(classifyInput('everything looks good but the deploy failed').type).toBe('ai');
+  });
+
+  it('matches inflected forms of existing NL words via stemming', () => {
+    // "wanting"/"knowing" stem to want/know which are already in the set.
+    expect(classifyInput('wanting to be knowing the reason').type).toBe('ai');
+  });
+
+  it('does not misclassify real shell commands as AI', () => {
+    expect(classifyInput('git rebase main').type).toBe('shell');
+    expect(classifyInput('npm run build').type).toBe('shell');
+    expect(classifyInput('docker compose up -d').type).toBe('shell');
+    expect(classifyInput('kubectl get pods').type).toBe('shell');
+  });
+});
+
 describe('classifyInput', () => {
   it('flags wrapped agent CLIs as high-confidence shell', () => {
     const r = classifyInput('claude how do I fix this');

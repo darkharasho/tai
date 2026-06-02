@@ -1,4 +1,5 @@
 import type { DisplayItem } from '@/components/BlockList';
+import { redactSecrets } from '@/utils/redactSecrets';
 
 export interface RecentContextOptions {
   maxCommands?: number;
@@ -79,5 +80,6 @@ export function buildRecentContext(
     entries.shift();
   }
 
-  return { text: render(), lastId };
+  // Strip credentials before any of this reaches an AI provider.
+  return { text: redactSecrets(render()), lastId };
 }

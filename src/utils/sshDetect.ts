@@ -166,3 +166,66 @@ export function checkSshLoginState(blockOutput: string): SshLoginState {
   if (PROMPT_CHAR_RE.test(lastLine)) return 'prompt-detected';
   return 'non-ssh-output';
 }
+
+export type SshErrorKind =
+  | 'control-master'
+  | 'connection-refused'
+  | 'timeout'
+  | 'auth-failed'
+  | 'host-key'
+  | 'unknown-host';
+
+export interface SshError {
+  kind: SshErrorKind;
+  message: string;
+}
+
+// Ordered most-specific first. ControlMaster/multiplexing errors are checked
+// before the generic connection errors because they silently break command
+// execution over an otherwise-"working" session (mirrors Warp's dedicated
+// ControlMaster-error event).
+const SSH_ERROR_PATTERNS: ReadonlyArray<{ kind: SshErrorKind; re: RegExp; message: string }> = [
+  {
+    kind: 'control-master',
+    re: /mux_client_request_session|muxserver_listen|ControlSocket .* already exists|Control socket connect\(|multiplexing|mux_client_/i,
+    message: 'SSH multiplexing (ControlMaster) error — the shared connection is stale. Try `ssh -O exit <host>` or remove the stale control socket, then reconnect.',
+  },
+  {
+    kind: 'host-key',
+    re: /Host key verification failed|REMOTE HOST IDENTIFICATION HAS CHANGED|known_hosts/i,
+    message: 'SSH host-key verification failed. Update ~/.ssh/known_hosts for this host before reconnecting.',
+  },
+  {
+    kind: 'auth-failed',
+    re: /Permission denied \(|Too many authentication failures|no matching .* found|Authentication failed/i,
+    message: 'SSH authentication failed. Check your key/agent or credentials for this host.',
+  },
+  {
+    kind: 'unknown-host',
+    re: /Could not resolve hostname|Name or service not known|nodename nor servname/i,
+    message: 'SSH could not resolve the hostname. Check the host name or your DNS.',
+  },
+  {
+    kind: 'connection-refused',
+    re: /Connection refused|Connection closed by remote host|ssh_exchange_identification|kex_exchange_identification/i,
+    message: 'SSH connection refused/closed by the remote host. Confirm the SSH service is up and reachable.',
+  },
+  {
+    kind: 'timeout',
+    re: /Connection timed out|Operation timed out|timed out/i,
+    message: 'SSH connection timed out. The host may be unreachable or behind a firewall.',
+  },
+];
+
+/**
+ * Classifies SSH error output (typically stderr or block output) into a known
+ * failure category with a user-facing hint. Returns null when no SSH error is
+ * recognized.
+ */
+export function detectSshError(text: string): SshError | null {
+  if (!text) return null;
+  for (const { kind, re, message } of SSH_ERROR_PATTERNS) {
+    if (re.test(text)) return { kind, message };
+  }
+  return null;
+}

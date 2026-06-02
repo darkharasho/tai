@@ -17,6 +17,9 @@ import type { AIProvider, ContextMode, TrustLevel, AIEntry } from '@/types';
 import { hasActiveAi } from '@/utils/hasActiveAi';
 import { isMultilineCommand } from '@/utils/isMultilineCommand';
 import { buildRecentContext } from '@/utils/aiContext';
+import { redactHistoryEntries } from '@/utils/redactSecrets';
+import { detectSshError } from '@/utils/sshDetect';
+import { resolveEffectiveRemote } from '@/utils/remoteOverride';
 import {
   type QueuedPrompt,
   addQueuedPrompt,
@@ -70,6 +73,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   }, [onContextModeChange]);
   const [cwd, setCwd] = useState(initialCwd);
   const [promptInfo, setPromptInfo] = useState<{ text: string; isRemote: boolean; sshTarget?: string } | null>(null);
+  // Manual remote override — escape hatch when autodetection misses (aliased
+  // ssh, mosh, jump hosts). Takes precedence over the detected prompt info.
+  const [manualRemote, setManualRemote] = useState<string | null>(null);
   const [shellIntegrated, setShellIntegrated] = useState(false);
   const [sshSessionActive, setSshSessionActive] = useState(false);
   const [sshSessionTarget, setSshSessionTarget] = useState<string | null>(null);
@@ -157,7 +163,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         durationMs: item.block.duration,
         timestamp: item.block.startTime,
       }));
-    window.tai?.ai?.updateHistory(tabId, entries);
+    // Strip credentials before history leaves the renderer for the MCP tool.
+    window.tai?.ai?.updateHistory(tabId, redactHistoryEntries(entries));
   }, [displayItems, tabId, cwd]);
 
   useEffect(() => {
@@ -181,15 +188,22 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     });
   }, []);
 
+  // Effective remote state: manual override wins over autodetection.
+  const eff = resolveEffectiveRemote(
+    promptInfo?.isRemote ?? false,
+    promptInfo?.sshTarget ?? null,
+    manualRemote,
+  );
+
   useEffect(() => {
-    if (promptInfo?.isRemote && promptInfo.sshTarget) {
-      window.tai?.pty?.getRemoteShellHistory(promptInfo.sshTarget, 500)
+    if (eff.isRemote && eff.sshTarget) {
+      window.tai?.pty?.getRemoteShellHistory(eff.sshTarget, 500)
         .then((lines: string[]) => setRemoteHistory(lines))
         .catch(() => setRemoteHistory([]));
     } else {
       setRemoteHistory([]);
     }
-  }, [promptInfo?.isRemote, promptInfo?.sshTarget]);
+  }, [eff.isRemote, eff.sshTarget]);
 
   // Persistent listener for daemon lifecycle messages that arrive outside of a conversation
   useEffect(() => {
@@ -211,11 +225,11 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   }, [tabId]);
 
   useEffect(() => {
-    const target = promptInfo?.isRemote ? (promptInfo.sshTarget ?? null) : null;
+    const target = eff.isRemote ? eff.sshTarget : null;
     window.tai?.ai?.setRemoteTarget(tabId, target, remoteExecMode);
-  }, [tabId, promptInfo?.isRemote, promptInfo?.sshTarget, remoteExecMode]);
+  }, [tabId, eff.isRemote, eff.sshTarget, remoteExecMode]);
 
-  const remoteTarget = promptInfo?.isRemote ? (promptInfo.sshTarget ?? null) : null;
+  const remoteTarget = eff.isRemote ? eff.sshTarget : null;
 
   useEffect(() => {
     if (!remoteTarget) {
@@ -544,7 +558,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       ));
     };
 
-    const isRemoteExec = promptInfo?.isRemote && remoteExecMode === 'auto';
+    const isRemoteExec = eff.isRemote && remoteExecMode === 'auto';
 
     let fullPrompt = prompt;
     const lines: string[] = [];
@@ -568,10 +582,10 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         '- You have a TerminalHistory tool that retrieves recent commands and output from this terminal session. Use it when the user references previous commands, errors, or output.',
       );
 
-      if (isRemoteExec && promptInfo?.sshTarget) {
+      if (isRemoteExec && eff.sshTarget) {
         lines.push(
           '',
-          `REMOTE EXECUTION: You are connected to remote host: ${promptInfo.sshTarget}`,
+          `REMOTE EXECUTION: You are connected to remote host: ${eff.sshTarget}`,
           'All tool calls (Bash, Read, Write, Edit, Grep, Glob) execute on the remote host, not locally.',
         );
         if (remoteSystemInfoRef.current) {
@@ -697,14 +711,16 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       }
 
       if (msg.type === 'remote:connection_failed') {
+        const sshErr = detectSshError(msg.error ?? '');
+        const hint = sshErr ? `\n\n${sshErr.message}` : '';
         setDisplayItems(prev => [...prev, {
           type: 'ai' as const,
           id: nextBlockId(),
           question: '',
-          content: `**SSH connection failed:** ${msg.error}\n\nAI commands will run locally. Use key-based SSH auth for remote AI support.`,
+          content: `**SSH connection failed:** ${msg.error}${hint}\n\nAI commands will run locally. Use key-based SSH auth for remote AI support.`,
           suggestedCommands: [],
           streaming: false,
-          entries: [{ kind: 'text' as const, text: `**SSH connection failed:** ${msg.error}\n\nAI commands will run locally.` }],
+          entries: [{ kind: 'text' as const, text: `**SSH connection failed:** ${msg.error}${hint}\n\nAI commands will run locally.` }],
         }]);
         onRemoteExecModeChange('local');
         return;
@@ -785,7 +801,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     aiBlockIdRef.current = aiId;
 
     providerRef.current.send(fullPrompt, cwd, trustLevel, claudeModel, claudeEffort);
-  }, [cwd, trustLevel, handleInputModeChange, promptInfo, remoteExecMode, claudeModel, claudeEffort, displayItems]);
+  }, [cwd, trustLevel, handleInputModeChange, promptInfo, manualRemote, remoteExecMode, claudeModel, claudeEffort, displayItems]);
 
   const handleAIRequestRef = useRef(handleAIRequest);
   useEffect(() => {
@@ -1081,7 +1097,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
             mode={inputMode}
             onModeChange={handleInputModeChange}
             cwd={cwd}
-            promptInfo={promptInfo}
+            promptInfo={eff.isRemote
+              ? { text: promptInfo?.text ?? '', isRemote: true, sshTarget: eff.sshTarget ?? undefined }
+              : promptInfo}
             shellIntegrated={shellIntegrated && !sshSessionActive}
             initialValue={editValue}
             disabled={inputDisabled}
@@ -1089,6 +1107,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
             onClear={() => setDisplayItems([])}
             remoteExecMode={remoteExecMode}
             onRemoteExecModeChange={onRemoteExecModeChange}
+            manualRemote={manualRemote}
+            onSetManualRemote={setManualRemote}
             aiProvider={aiProvider}
             trustLevel={trustLevel}
             onTrustLevelChange={onTrustLevelChange}

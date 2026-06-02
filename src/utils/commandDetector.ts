@@ -70,6 +70,10 @@ const SENTENCE_WORDS = new Set([
   'know', 'known', 'knew', 'think', 'thought', 'want', 'need', 'see', 'saw', 'seen',
   'going', 'gonna', 'wanna', 'gotta',
   'not', 'very', 'really', 'already', 'still', 'even', 'probably', 'definitely',
+  'onto', 'latest', 'change', 'reason', 'instead', 'otherwise', 'however',
+  'therefore', 'though', 'unless', 'until', 'basically', 'currently', 'recently',
+  'together', 'again', 'around', 'without', 'within', 'across',
+  'everything', 'something', 'anything', 'nothing', 'someone', 'anyone', 'everyone',
 ]);
 
 export type InputType = 'shell' | 'ai';
@@ -102,13 +106,26 @@ function tokenHasShellSyntax(token: string): boolean {
   return /[|><;&$*?{}()[\]]/.test(token) || /^-{1,2}[a-zA-Z]/.test(token);
 }
 
+// Light English normalizer: expand contractions and strip a few common
+// inflectional suffixes, so "wanting"/"knowing"/"changes" match the base words
+// in the NL sets. Cheap stand-in for Warp's rust_stemmers pass — no dependency,
+// no 28KB corpus, so it can't destabilize the tuned thresholds.
+function nlMatch(token: string): boolean {
+  const w = token.toLowerCase().replace(/('s|'re|n't|'t|'m|'ve|'ll)$/, '');
+  if (NL_WORDS.has(w) || SENTENCE_WORDS.has(w)) return true;
+  const cands: string[] = [];
+  if (w.length > 4 && w.endsWith('ies')) cands.push(w.slice(0, -3) + 'y');
+  if (w.length > 3 && w.endsWith('s')) cands.push(w.slice(0, -1));
+  if (w.length > 4 && w.endsWith('es')) cands.push(w.slice(0, -2));
+  if (w.length > 5 && w.endsWith('ing')) cands.push(w.slice(0, -3));
+  if (w.length > 4 && w.endsWith('ed')) cands.push(w.slice(0, -2));
+  if (w.length > 4 && w.endsWith('ly')) cands.push(w.slice(0, -2));
+  return cands.some(c => NL_WORDS.has(c) || SENTENCE_WORDS.has(c));
+}
+
 function nlScore(tokens: string[]): number {
   if (tokens.length === 0) return 0;
-  const hits = tokens.filter(t => {
-    const w = t.toLowerCase();
-    return NL_WORDS.has(w) || SENTENCE_WORDS.has(w);
-  }).length;
-  return hits / tokens.length;
+  return tokens.filter(nlMatch).length / tokens.length;
 }
 
 function shellScore(tokens: string[]): number {

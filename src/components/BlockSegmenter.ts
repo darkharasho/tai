@@ -3,7 +3,10 @@ import { parseOsc6973 } from '@/utils/osc6973';
 import { parseInteractiveSshCommand, checkSshLoginState } from '@/utils/sshDetect';
 import type { SegmentedBlock } from '@/types';
 
-const PROMPT_RE = /(\S+[@:]\S+.*[\$#%>❯→➜]|[→➜]\s+\S+|[\$#%>❯→➜])\s*$/;
+// Prompt-final glyphs. Beyond the classic `$#%>` we include theme glyphs
+// (❯ → ➜ λ » ⟫) used by Starship/p10k/fish. Deliberately excludes box-drawing
+// `│` and `▶`, which appear in TUI/table output and would cause false prompts.
+const PROMPT_RE = /(\S+[@:]\S+.*[\$#%>❯→➜λ»⟫]|[→➜]\s+\S+|[\$#%>❯→➜λ»⟫])\s*$/;
 const SSH_TARGET_RE = /(\S+)@(\S+?)[\s:]/;
 const ALT_SCREEN_ENTER_SEQS = ['\x1b[?1049h', '\x1b[?47h', '\x1b[?1047h'];
 const ALT_SCREEN_EXIT_SEQS = ['\x1b[?1049l', '\x1b[?47l', '\x1b[?1047l'];
@@ -377,7 +380,7 @@ export class BlockSegmenter {
       if (strippedPrompt && firstLine.startsWith(strippedPrompt)) {
         command = firstLine.slice(strippedPrompt.length).trim();
       } else {
-        const promptMatch = firstLine.match(/^(?:\S+[@:]\S+[\$#%>❯]|[\$#%❯])\s*/);
+        const promptMatch = firstLine.match(/^(?:\S+[@:]\S+[\$#%>❯λ»⟫]|[\$#%❯λ»⟫])\s*/);
         if (promptMatch) {
           command = firstLine.slice(promptMatch[0].length).trim();
         } else {

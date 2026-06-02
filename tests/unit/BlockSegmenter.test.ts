@@ -89,6 +89,16 @@ describe('BlockSegmenter', () => {
     expect(lastCall[1]).toBe(true); // isRemote
   });
 
+  it('detects prompts ending in a lambda/guillemet glyph (Starship/fish themes)', () => {
+    const segmenter = new BlockSegmenter();
+    segmenter.feed('~/dev λ ');
+    expect(segmenter.seenFirstPrompt).toBe(true);
+
+    const seg2 = new BlockSegmenter();
+    seg2.feed('user in ~ » ');
+    expect(seg2.seenFirstPrompt).toBe(true);
+  });
+
   it('handles carriage returns in partial lines', () => {
     const segmenter = new BlockSegmenter();
     const blockCb = vi.fn();

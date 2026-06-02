@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseInteractiveSshCommand, checkSshLoginState } from '../../src/utils/sshDetect';
+import { parseInteractiveSshCommand, checkSshLoginState, detectSshError } from '../../src/utils/sshDetect';
 
 describe('parseInteractiveSshCommand', () => {
   it('parses a bare host', () => {
@@ -92,5 +92,42 @@ describe('checkSshLoginState', () => {
 
   it('classifies ordinary output as non-ssh-output', () => {
     expect(checkSshLoginState('some build log line\nanother line')).toBe('non-ssh-output');
+  });
+});
+
+describe('detectSshError', () => {
+  it('detects a ControlMaster mux socket error', () => {
+    const r = detectSshError('mux_client_request_session: session request failed: Session open refused by peer');
+    expect(r?.kind).toBe('control-master');
+    expect(r?.message).toMatch(/multiplex/i);
+  });
+
+  it('detects a stale ControlSocket-already-exists error', () => {
+    expect(detectSshError('ControlSocket /tmp/cm-abc already exists, disabling multiplexing')?.kind).toBe('control-master');
+  });
+
+  it('detects connection refused', () => {
+    expect(detectSshError('ssh: connect to host h port 22: Connection refused')?.kind).toBe('connection-refused');
+  });
+
+  it('detects connection timed out', () => {
+    expect(detectSshError('ssh: connect to host h port 22: Connection timed out')?.kind).toBe('timeout');
+  });
+
+  it('detects auth failure', () => {
+    expect(detectSshError('user@host: Permission denied (publickey,password).')?.kind).toBe('auth-failed');
+  });
+
+  it('detects host-key verification failure', () => {
+    expect(detectSshError('Host key verification failed.')?.kind).toBe('host-key');
+  });
+
+  it('detects unknown host', () => {
+    expect(detectSshError('ssh: Could not resolve hostname nope: Name or service not known')?.kind).toBe('unknown-host');
+  });
+
+  it('returns null for ordinary output', () => {
+    expect(detectSshError('Last login: Mon Jun 1\nuser@host:~$ ')).toBeNull();
+    expect(detectSshError('')).toBeNull();
   });
 });
