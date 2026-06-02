@@ -102,7 +102,6 @@ export function RemoteAiPill({ view, onEnable, onSetMode, onDismiss }: RemoteAiP
           onClick={(e) => { e.stopPropagation(); onSetMode('run'); }}
         ><span aria-hidden="true">▸</span> run</button>
       </span>
-      <span className={styles.raiHost}>{view.target}</span>
       {view.error && <span className={styles.raiErr} title={view.error}>!</span>}
     </span>
   );

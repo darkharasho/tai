@@ -387,6 +387,32 @@ describe('BlockSegmenter', () => {
       expect(sshCb).not.toHaveBeenCalled();
     });
 
+    it('keeps the ssh session active through a nested integrated remote', () => {
+      // When the remote host ALSO has shell integration, its prompt (A/B) and
+      // each remote command (C/D) arrive as nested OSC 133 markers between the
+      // local `ssh` command's C and its eventual D. These must NOT clear the
+      // ssh session — otherwise the remote-AI pill flashes on then vanishes.
+      const segmenter = new BlockSegmenter();
+      const sshCb = vi.fn();
+      segmenter.onSshSession(sshCb);
+
+      segmenter.feed(`${A}local@box:~$ ${B}ssh user@remote\n${C}`);
+      expect(segmenter.sshSessionActive).toBe(true);
+
+      // Nested remote prompt + a remote command (remote is integrated too).
+      segmenter.feed(`${A}user@remote:~$ ${B}ls${C}file.txt\n${D(0)}`);
+      expect(segmenter.sshSessionActive).toBe(true);
+      segmenter.feed(`${A}user@remote:~$ ${B}pwd${C}/home/user\n${D(0)}`);
+      expect(segmenter.sshSessionActive).toBe(true);
+
+      // `exit` on the remote (a nested command), then the local ssh command
+      // itself completes (its own D) — only now is the session over.
+      segmenter.feed(`${A}user@remote:~$ ${B}exit${C}logout\n${D(0)}`);
+      expect(segmenter.sshSessionActive).toBe(true);
+      segmenter.feed(D(0));
+      expect(segmenter.sshSessionActive).toBe(false);
+    });
+
     it('does not flag `ssh -T git@github.com` (no-pty git transport) as a session', () => {
       const segmenter = new BlockSegmenter();
       const sshCb = vi.fn();

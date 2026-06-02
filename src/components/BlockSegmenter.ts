@@ -86,6 +86,12 @@ export class BlockSegmenter {
   private _sshSessionCallbacks: SshSessionCallback[] = [];
   private _blockActiveCallbacks: BlockActiveCallback[] = [];
   private _inSshSession = false;
+  // OSC 133 command-nesting depth (incremented on C, decremented on D). Used to
+  // tell a nested integrated-remote command's A/D markers apart from a genuine
+  // return to the local shell, so an ssh session opened at `_sshDepth` is only
+  // cleared once we pop back out of its frame.
+  private _cmdDepth = 0;
+  private _sshDepth = 0;
   private _seenFirstPrompt = false;
   private _inAltScreen = false;
   // Carry the trailing bytes of each chunk so alt-screen sequences split
@@ -541,7 +547,12 @@ export class BlockSegmenter {
         // Reaching a new local prompt is unambiguous proof we're back at the
         // local shell, so clear any SSH-session flag that didn't get cleared
         // by a D (network drop, kill -9, user reload, etc).
-        if (this._inSshSession) this._setSshSession(false, null);
+        // A nested integrated-remote prompt also emits 'A'; only treat it as a
+        // return to the local shell once we've popped out of the ssh frame.
+        if (this._inSshSession && this._cmdDepth < this._sshDepth) {
+          this._sshDepth = 0;
+          this._setSshSession(false, null);
+        }
         // Same reasoning for alt-screen: a fresh prompt means the foreground
         // program (claude, vim, etc.) has exited. Reset so the next command's
         // line-oriented output isn't dropped by _routeChunk's alt-screen guard.
@@ -584,9 +595,11 @@ export class BlockSegmenter {
         // it there prevents the prompt characters from leaking into outputBuf.
         if (this._osc133Phase !== 'command') break;
         this._osc133Phase = 'output';
+        this._cmdDepth++;
         this._setCommandActive(true);
         const ssh = parseInteractiveSshCommand(stripAnsi(this._osc133RawCommand).trim());
         if (ssh) {
+          this._sshDepth = this._cmdDepth;
           this._setSshSession(true, ssh.host);
         }
         break;
@@ -598,7 +611,14 @@ export class BlockSegmenter {
         // Stay in output phase until the next A — trailing newlines or
         // shell-emitted text before the next prompt belong to this block.
         this._setCommandActive(false);
-        if (this._inSshSession) this._setSshSession(false, null);
+        this._cmdDepth = Math.max(0, this._cmdDepth - 1);
+        // Only end the ssh session once we've popped back out of the frame the
+        // ssh command opened — a nested integrated-remote command's D sits at
+        // a deeper level and must not clear it.
+        if (this._inSshSession && this._cmdDepth < this._sshDepth) {
+          this._sshDepth = 0;
+          this._setSshSession(false, null);
+        }
         break;
       }
     }
@@ -765,6 +785,8 @@ export class BlockSegmenter {
     this._sshSessionCallbacks = [];
     this._blockActiveCallbacks = [];
     this._inSshSession = false;
+    this._cmdDepth = 0;
+    this._sshDepth = 0;
     this._integrationActive = false;
     this._osc133Phase = 'idle';
     this._osc133RawPrompt = '';
