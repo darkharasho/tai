@@ -262,6 +262,11 @@
   min-width: 0;
 }
 
+.dockedInteractiveBody {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
 .interactiveInput {
   display: block;
   width: calc(100% + 32px);
