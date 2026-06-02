@@ -19,7 +19,11 @@ import { isMultilineCommand } from '@/utils/isMultilineCommand';
 import { buildRecentContext } from '@/utils/aiContext';
 import { redactHistoryEntries } from '@/utils/redactSecrets';
 import { detectSshError } from '@/utils/sshDetect';
-import { resolveEffectiveRemote } from '@/utils/remoteOverride';
+import {
+  initialRemoteAi, pillView, onSshChange, enableWatch, setMode,
+  setInstalling, setHelperInstalled, dismissOffer, setError,
+  type RemoteAiMode, type RememberedHost,
+} from '@/utils/remoteAiSession';
 import {
   type QueuedPrompt,
   addQueuedPrompt,
@@ -73,9 +77,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   }, [onContextModeChange]);
   const [cwd, setCwd] = useState(initialCwd);
   const [promptInfo, setPromptInfo] = useState<{ text: string; isRemote: boolean; sshTarget?: string } | null>(null);
-  // Manual remote override — escape hatch when autodetection misses (aliased
-  // ssh, mosh, jump hosts). Takes precedence over the detected prompt info.
-  const [manualRemote, setManualRemote] = useState<string | null>(null);
+  const [remoteAi, setRemoteAi] = useState(initialRemoteAi());
+  // Per-host memory so re-entering a known host restores its mode without re-asking.
+  const remoteAiMemory = useRef<Map<string, RememberedHost>>(new Map());
   const [shellIntegrated, setShellIntegrated] = useState(false);
   const [sshSessionActive, setSshSessionActive] = useState(false);
   const [sshSessionTarget, setSshSessionTarget] = useState<string | null>(null);
@@ -188,12 +192,13 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     });
   }, []);
 
-  // Effective remote state: manual override wins over autodetection.
-  const eff = resolveEffectiveRemote(
-    promptInfo?.isRemote ?? false,
-    promptInfo?.sshTarget ?? null,
-    manualRemote,
-  );
+  // Effective remote target for AI: driven by the remote-AI pill.
+  const eff = {
+    isRemote: remoteAi.mode === 'watch' || remoteAi.mode === 'run',
+    sshTarget: remoteAi.target,
+    // Only "run" routes tool execution to the host; "watch" keeps exec local.
+    exec: remoteAi.mode === 'run' ? ('auto' as const) : ('local' as const),
+  };
 
   useEffect(() => {
     if (eff.isRemote && eff.sshTarget) {
@@ -226,8 +231,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
 
   useEffect(() => {
     const target = eff.isRemote ? eff.sshTarget : null;
-    window.tai?.ai?.setRemoteTarget(tabId, target, remoteExecMode);
-  }, [tabId, eff.isRemote, eff.sshTarget, remoteExecMode]);
+    window.tai?.ai?.setRemoteTarget(tabId, target, eff.exec);
+  }, [tabId, eff.isRemote, eff.sshTarget, eff.exec]);
 
   const remoteTarget = eff.isRemote ? eff.sshTarget : null;
 
@@ -410,6 +415,10 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       if (cancelled) return;
       setSshSessionActive(active);
       setSshSessionTarget(active ? target : null);
+      setRemoteAi(prev => onSshChange(
+        prev, active, target,
+        active && target ? remoteAiMemory.current.get(target) : undefined,
+      ));
     });
 
     segmenter.onBlockActive((active) => {
@@ -558,7 +567,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       ));
     };
 
-    const isRemoteExec = eff.isRemote && remoteExecMode === 'auto';
+    const isRemoteExec = eff.isRemote && eff.exec === 'auto';
 
     let fullPrompt = prompt;
     const lines: string[] = [];
@@ -801,7 +810,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     aiBlockIdRef.current = aiId;
 
     providerRef.current.send(fullPrompt, cwd, trustLevel, claudeModel, claudeEffort);
-  }, [cwd, trustLevel, handleInputModeChange, promptInfo, manualRemote, remoteExecMode, claudeModel, claudeEffort, displayItems]);
+  }, [cwd, trustLevel, handleInputModeChange, promptInfo, remoteAi, claudeModel, claudeEffort, displayItems]);
 
   const handleAIRequestRef = useRef(handleAIRequest);
   useEffect(() => {
@@ -898,6 +907,55 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     setQueuedPrompts([]);
     queuedPromptsRef.current = [];
   }, [handleInputModeChange]);
+
+  const rememberRemoteAi = useCallback((s: ReturnType<typeof initialRemoteAi>) => {
+    if (s.target) {
+      remoteAiMemory.current.set(s.target, {
+        mode: s.mode,
+        helperInstalled: s.helperInstalled,
+        dismissed: s.dismissed,
+      });
+    }
+  }, []);
+
+  const handleEnableRemoteAi = useCallback(() => {
+    setRemoteAi(prev => { const next = enableWatch(prev); rememberRemoteAi(next); return next; });
+  }, [rememberRemoteAi]);
+
+  const handleDismissRemoteAi = useCallback(() => {
+    setRemoteAi(prev => { const next = dismissOffer(prev); rememberRemoteAi(next); return next; });
+  }, [rememberRemoteAi]);
+
+  const handleSetRemoteAiMode = useCallback(async (mode: RemoteAiMode) => {
+    if (mode !== 'run') {
+      setRemoteAi(prev => { const next = setMode(prev, mode); rememberRemoteAi(next); return next; });
+      return;
+    }
+    let target: string | null = null;
+    let alreadyInstalled = false;
+    setRemoteAi(prev => {
+      target = prev.target;
+      alreadyInstalled = prev.helperInstalled;
+      return prev.helperInstalled ? prev : setInstalling(prev, true);
+    });
+    if (!target) return;
+    try {
+      if (!alreadyInstalled) {
+        const res = await window.tai.daemon.check(target);
+        if (!res.installed) {
+          const r = await window.tai.daemon.install(target);
+          if (!r?.success) throw new Error(r?.error || 'daemon install failed');
+        }
+      }
+      await window.tai.ai.setDaemonEnabled(tabId, true);
+      setRemoteAi(prev => {
+        const next = setMode(setHelperInstalled(setInstalling(prev, false), true), 'run');
+        rememberRemoteAi(next); return next;
+      });
+    } catch (e: any) {
+      setRemoteAi(prev => { const next = setError(setInstalling(prev, false), String(e?.message || e)); rememberRemoteAi(next); return next; });
+    }
+  }, [tabId, rememberRemoteAi]);
 
   const handleToolApprove = useCallback((item: DisplayItem & { type: 'approval' }) => {
     if (providerRef.current.id === 'gemini') {
@@ -1107,8 +1165,10 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
             onClear={() => setDisplayItems([])}
             remoteExecMode={remoteExecMode}
             onRemoteExecModeChange={onRemoteExecModeChange}
-            manualRemote={manualRemote}
-            onSetManualRemote={setManualRemote}
+            remoteAiView={pillView(remoteAi)}
+            onEnableRemoteAi={handleEnableRemoteAi}
+            onSetRemoteAiMode={handleSetRemoteAiMode}
+            onDismissRemoteAi={handleDismissRemoteAi}
             aiProvider={aiProvider}
             trustLevel={trustLevel}
             onTrustLevelChange={onTrustLevelChange}
