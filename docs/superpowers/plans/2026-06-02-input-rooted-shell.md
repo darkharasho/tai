@@ -655,3 +655,23 @@ git commit -m "test(input-rooted): integration verification + graph refresh"
 - **Do not** touch `BlockSegmenter`, the PTY layer, the AI request pipeline, or `remoteAiSession.ts`. If you find yourself editing them, stop — the design says this is renderer-only.
 - The hidden xterm is a **single instance** relocated via portal. The pinned block must be the only rendered active interactive `CommandBlock` while `isPinned`, or two elements will fight over `onInteractiveContainerRef`. Task 3 Step 3 guarantees this by removing the trailing active block from `historyItems`.
 - If the pinned block flickers on dock/undock, it's a portal-relocation timing issue, not a layout bug — check that `interactivePortalTarget` updates after the pinned `CommandBlock` mounts.
+
+## Post-implementation status (2026-06-02)
+
+All six tasks implemented on `feat/input-rooted-shell`; build clean, 317/317 tests green; final whole-feature review = Ready to merge. `graphify update` could not run (binary not installed in this environment).
+
+**Tracked follow-ups (non-blocking):**
+- DRY: the pinned `CommandBlock` re-wires ~14 props that `BlockList` also passes to active blocks. Extract a shared `ActiveCommandBlock` wrapper if a third call site or prop drift appears.
+- The window-`focus` handler in `TerminalSession` (~L1061) still uses raw `!altScreenVisible && !awaitingInput && !passwordPrompt` checks; route it through `focusTargetFor(surface)` so a docked session refocuses the xterm on window refocus (needs `surface` hoisted above that effect).
+- Minor: `showComposer`'s `&& !showXterm` is dead-defensive (`composerVisible` already implies it). `pinnedBlock` assumes the active command is the last display item; `findLast(active)` would be more robust.
+- Verify the docked↔fullscreen portal handoff doesn't visibly flicker; if it does, coalesce `interactivePortalTarget` so it never passes through `null` while `showXterm` stays true.
+
+**Manual in-app verification still required (automated tests structurally cannot cover):**
+1. python REPL — native tab-completion / Ctrl-R / arrow history / echo in the docked block; Ctrl-D → composer returns, block detaches with duration.
+2. `ssh host` — docks; remote-AI pill in the block header (orange), watch/run toggles, AI usable out-of-band.
+3. nesting: `ssh` → `vim` promotes to fullscreen, `:q` returns to docked ssh with focus back in xterm (watch for flicker).
+4. sudo/ssh password — tier1 masked input on the pinned block, focus in the card input.
+5. `tail -f` — grows then internally scrolls at 70vh, Ctrl-C flows through.
+6. quick `ls`/`git status` — no dock, composer stays free.
+7. tab switching mid-session — dock survives `visible` toggle, xterm buffer preserved.
+8. multi-line shell command at the composer still submits.
