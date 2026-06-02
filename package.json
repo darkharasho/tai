@@ -23,6 +23,7 @@
   "build": {
     "appId": "com.tai.app",
     "productName": "tai",
+    "npmRebuild": false,
     "directories": {
       "output": "release"
     },

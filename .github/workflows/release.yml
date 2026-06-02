@@ -78,10 +78,10 @@ jobs:
           GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/tai-daemon-darwin-amd64 .
           GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/tai-daemon-darwin-arm64 .
       - name: Build Windows
-        # npmRebuild=false: rely on the platform-gated postinstall electron-rebuild
-        # (node-pty only on Windows) instead of letting electron-builder try to
-        # rebuild every native dep — node-termios is POSIX-only and won't compile here.
-        run: npx electron-builder --win --publish never -c.npmRebuild=false
+        # npmRebuild is disabled in package.json build config; the gated postinstall
+        # (electron-rebuild --only node-pty on Windows) prepares native modules, so
+        # electron-builder never tries to rebuild POSIX-only node-termios here.
+        run: npx electron-builder --win --publish never
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
