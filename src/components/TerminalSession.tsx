@@ -7,7 +7,7 @@ import { TerminalInput, RemoteAiPill } from './TerminalInput';
 import type { TerminalInputHandle } from './TerminalInput';
 import { CommandBlock } from './CommandBlock';
 import {
-  deriveInputSurface, composerVisible, pinnedActiveBlock,
+  deriveInputSurface, focusTargetFor, composerVisible, pinnedActiveBlock,
 } from '@/utils/inputSurface';
 import { DaemonInstallCard } from './DaemonInstallCard';
 import { ShellIntegrationInstallCard } from './ShellIntegrationInstallCard';
@@ -1065,13 +1065,22 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     return () => window.removeEventListener('focus', handleFocus);
   }, [visible, altScreenVisible, awaitingInput, passwordPrompt]);
 
+  const surface = deriveInputSurface({
+    altScreenVisible, interactiveMode, interactiveFullscreen, awaitingInput, passwordPrompt,
+  });
+
   useEffect(() => {
-    if (awaitingInput || passwordPrompt) {
-      inputRef.current?.blur();
-    } else if (!altScreenVisible) {
+    const target = focusTargetFor(surface);
+    if (target === 'composer') {
       requestAnimationFrame(() => inputRef.current?.focus());
+    } else if (target === 'xterm') {
+      inputRef.current?.blur();
+      requestAnimationFrame(() => hiddenXtermRef.current?.focus());
+    } else {
+      // tier1: the card's own line/password input self-focuses (CommandBlock effect).
+      inputRef.current?.blur();
     }
-  }, [awaitingInput, passwordPrompt, altScreenVisible]);
+  }, [surface]);
 
   const isRemote = promptInfo?.isRemote ?? false;
   const sessionHistory = displayItems
@@ -1089,9 +1098,6 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     window.tai?.pty?.write(ptyId, data);
   }, [ptyId]);
 
-  const surface = deriveInputSurface({
-    altScreenVisible, interactiveMode, interactiveFullscreen, awaitingInput, passwordPrompt,
-  });
   const showFullscreenInteractive = surface === 'fullscreen' && !altScreenVisible;
   // showXterm now includes any interactiveMode (REPLs flagged by termios raw
   // mode), not just legacy CURSOR_HIDE-style fullscreen. xterm gets routed
