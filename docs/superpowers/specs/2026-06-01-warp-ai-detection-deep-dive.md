@@ -93,8 +93,15 @@ Port the high-value, ML-free ideas:
 ### P2 — Autodetect UX in `TerminalInput.tsx`
 Surface the P1 classifier: an inline badge ("→ shell" / "→ ai") with a confidence gate, a toggle key (e.g. Ctrl+I), and a `!` prefix to force shell. Make manual overrides sticky for the current line.
 
-### P3 — Running-agent `!` escape (depends on P2)
-When TAI has routed input to a wrapped CLI agent through xterm (termios raw mode), allow a `!cmd` escape to run a one-off shell command, mirroring Warp's CLI-agent rich input. Lower priority — TAI's termios routing already handles the common case.
+### P3 — Running-agent `!` escape — DROPPED (2026-06-01)
+Originally: when TAI routed input to a wrapped CLI agent through xterm (termios raw mode), allow a `!cmd` escape to run a one-off shell command, mirroring Warp's CLI-agent rich input.
+
+**Decision: dropped after an architecture review.** It doesn't translate to TAI's model:
+- **The agent already owns `!`.** When `claude`/`codex` runs as an interactive REPL in the PTY, every keystroke (including `!`) routes straight through `HiddenXterm → pty.write` to the program, and Claude Code has its *own* `!` bash mode. Intercepting `!` in TAI would break the agent's native handling. (Warp's own spec does the same — it passes `!cmd` through to the agent's PTY; the agent interprets it.) Nothing to build.
+- **The composer case is already done in P2.** When the agent runs as TAI's *provider* (a structured child process, not the PTY), the user types in `TerminalInput` AI mode, where P2 already added the `!` force-shell.
+- **The only novel slice** — running a one-off shell command while a *generic* REPL (python, psql) holds the single per-tab PTY — is OS-constrained: it requires spawning a second scratch PTY, which is high-effort with marginal payoff (you can suspend/exit the REPL). Not pursued.
+
+Net: P3 is redundant with P2 + the agents' own `!` handling, or OS-constrained. The roadmap closes at P0–P2.
 
 ### Not recommended (now)
 - **Embedding a BERT-tiny ONNX model.** Warp's heuristic layer already resolves most cases; the model is a refinement. The heuristic ports (P1) capture most of the benefit without the ONNX runtime, model bytes, and inference latency in an Electron renderer. Revisit only if heuristic accuracy plateaus.
@@ -106,7 +113,7 @@ Each becomes its own spec → plan → implementation cycle:
 1. **P0 AI context enrichment** — standalone, immediate value.
 2. **P1 classifier rework** — start with the `claude/codex/gemini` guardrail (one-line risk reduction), then the probabilistic/context refactor.
 3. **P2 autodetect UX** — consumes P1's probabilistic output.
-4. **P3 `!` escape** — consumes P2.
+4. ~~**P3 `!` escape**~~ — dropped (see P3 section above); roadmap closes at P0–P2.
 
 ## Appendix — Warp source references
 - `crates/input_classifier/src/lib.rs` — `InputClassifier` trait, `ClassificationResult`, `InputClassifierDecisionSource`, `Context`.
