@@ -834,8 +834,16 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     handleAIRequestRef.current = handleAIRequest;
   }, [handleAIRequest]);
 
+  // Derived early so handleSubmit can reference it for the shell-submit guard.
+  const hasActiveBlock = displayItems.some(item => item.type === 'command' && item.active);
+
   const handleSubmit = useCallback((value: string) => {
     if (inputMode === 'shell') {
+      // When remote-AI is active the composer is unlocked during a foreground
+      // command, but shell submits must not write to the PTY mid-command
+      // (the running command owns stdin). Block the submit; the user can switch
+      // to AI mode to send queries while the foreground command is running.
+      if (hasActiveBlock) return;
       const isMultiline = isMultilineCommand(value);
       // Multi-line inputs are sent raw — bash handles each line as a separate
       // command (or as a continuation for heredocs/loops), and each gets its
@@ -876,7 +884,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     } else {
       handleAIRequest(value);
     }
-  }, [inputMode, executeCommand, promptInfo, aiWorking, handleAIRequest]);
+  }, [inputMode, hasActiveBlock, executeCommand, promptInfo, aiWorking, handleAIRequest]);
 
   const handleAskAI = useCallback((block: import('@/types').SegmentedBlock) => {
     const prompt = `The following command ran:\n\n\`\`\`\n$ ${block.command}\n${block.output}\n\`\`\`\n\nAnalyze this and suggest a fix if needed. If you suggest a command, put it in a \`\`\`bash code block.`;
@@ -1082,9 +1090,12 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   // mode), not just legacy CURSOR_HIDE-style fullscreen. xterm gets routed
   // into the card via the interactive-portal target, not the session overlay.
   const showXterm = altScreenVisible || showFullscreenInteractive || interactiveMode;
-  const hasActiveBlock = displayItems.some(item => item.type === 'command' && item.active);
   const blockInputLocked = awaitingInput || passwordPrompt;
-  const inputDisabled = blockInputLocked || (hasActiveBlock && !passwordPrompt);
+  // When remote-AI is active, keep the composer usable during a foreground
+  // command (e.g. the interactive ssh) — AI input is out-of-band from the PTY.
+  // Shell submits still queue (handled in the submit path); password/awaiting locks stay.
+  const remoteAiActive = remoteAi.mode === 'watch' || remoteAi.mode === 'run';
+  const inputDisabled = blockInputLocked || (hasActiveBlock && !passwordPrompt && !remoteAiActive);
   const activeBodyMode: import('@/types').BlockBodyMode =
     passwordPrompt ? 'password'
     : (altScreenVisible || interactiveMode) ? 'interactive'
