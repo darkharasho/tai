@@ -55,6 +55,8 @@ interface CommandBlockProps {
   onPasswordDone?: () => void;
   isActive?: boolean;
   onInteractiveContainerRef?: (el: HTMLDivElement | null) => void;
+  /** True when the tab's AI session is on a remote host — forces the remote (orange) accent. */
+  sessionRemote?: boolean;
 }
 
 export function CommandBlock({
@@ -72,6 +74,7 @@ export function CommandBlock({
   onPasswordDone,
   isActive,
   onInteractiveContainerRef,
+  sessionRemote,
 }: CommandBlockProps) {
   const [showAll, setShowAll] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -107,7 +110,7 @@ export function CommandBlock({
     const shortCwd = cwd.replace(/^\/var\/home\/[^/]+/, '~').replace(/^\/home\/[^/]+/, '~');
     path = shortCwd;
   }
-  const isRemote = block.isRemote;
+  const isRemote = block.isRemote || !!sessionRemote;
   const modeColor = isRemote ? 'var(--color-agent)' : 'var(--color-shell)';
 
   if (collapsed) {

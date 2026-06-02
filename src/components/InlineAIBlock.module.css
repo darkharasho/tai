@@ -37,6 +37,16 @@
   /* same colour and size — class exists for future tweaks (e.g. lower opacity) */
 }
 
+/* Remote (on-a-host) variants: swap the default shell-green accent for the
+   agent-orange used across remote cards. */
+.promptRemote {
+  border-left-color: var(--color-agent);
+}
+
+.promptLabelRemote {
+  color: var(--color-agent);
+}
+
 .promptText {
   color: var(--text-primary);
   font-family: var(--font-sans);

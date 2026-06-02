@@ -1153,6 +1153,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           ptyId={ptyId ?? undefined}
           onPasswordDone={() => setPasswordPrompt(false)}
           onInteractiveContainerRef={setInteractivePortalTarget}
+          sessionRemote={eff.isRemote}
         />
       )}
       {/* Stable home for the xterm DOM. HiddenXterm always renders here so its

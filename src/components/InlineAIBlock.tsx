@@ -41,6 +41,8 @@ interface InlineAIBlockProps {
   onEditQueued?: (id: string, text: string) => void;
   onRemoveQueued?: (id: string) => void;
   isFollowup?: boolean;
+  /** True when this message was sent to AI operating on a remote host. */
+  isRemote?: boolean;
 }
 
 const TOOL_ICONS: Record<string, LucideIcon> = {
@@ -75,6 +77,7 @@ export function InlineAIBlock({
   onEditQueued,
   onRemoveQueued,
   isFollowup = false,
+  isRemote = false,
 }: InlineAIBlockProps) {
   const runnableCommands = new Set(suggestedCommands ?? []);
   const { config } = useSettings();
@@ -144,8 +147,8 @@ export function InlineAIBlock({
   return (
     <div className={styles.wrapper}>
       {question && (
-        <div className={styles.prompt}>
-          <span className={`${styles.promptLabel}${isFollowup ? ` ${styles.promptLabelFollowup}` : ''}`}>
+        <div className={`${styles.prompt}${isRemote ? ` ${styles.promptRemote}` : ''}`}>
+          <span className={`${styles.promptLabel}${isFollowup ? ` ${styles.promptLabelFollowup}` : ''}${isRemote ? ` ${styles.promptLabelRemote}` : ''}`}>
             {isFollowup && <CornerDownRight size={10} className={styles.promptLabelIcon} />}
             You
           </span>

@@ -34,6 +34,8 @@ interface BlockListProps {
   ptyId?: number;
   onPasswordDone?: () => void;
   onInteractiveContainerRef?: (el: HTMLDivElement | null) => void;
+  /** True when this tab's AI session is operating on a remote host (pill on). */
+  sessionRemote?: boolean;
 }
 
 export function BlockList({
@@ -57,6 +59,7 @@ export function BlockList({
   ptyId,
   onPasswordDone,
   onInteractiveContainerRef,
+  sessionRemote,
 }: BlockListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [manualCollapsed, setManualCollapsed] = useState<Set<string>>(new Set());
@@ -122,6 +125,7 @@ export function BlockList({
             onPasswordDone={onPasswordDone}
             isActive={isActive}
             onInteractiveContainerRef={isActive ? onInteractiveContainerRef : undefined}
+            sessionRemote={sessionRemote}
           />
         </div>
       );
@@ -145,6 +149,7 @@ export function BlockList({
           onEditQueued={item.streaming ? onEditQueued : undefined}
           onRemoveQueued={item.streaming ? onRemoveQueued : undefined}
           isFollowup={opts.isFollowup}
+          isRemote={sessionRemote}
         />
       );
     }
