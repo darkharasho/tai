@@ -152,9 +152,13 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         command: item.block.command,
         output: item.block.output,
         exitCode: item.block.exitCode,
+        cwd: item.block.cwd ?? cwd,
+        gitBranch: gitBranchRef.current,
+        durationMs: item.block.duration,
+        timestamp: item.block.startTime,
       }));
     window.tai?.ai?.updateHistory(tabId, entries);
-  }, [displayItems, tabId]);
+  }, [displayItems, tabId, cwd]);
 
   useEffect(() => {
     if (initialCwd) setCwd(initialCwd);
