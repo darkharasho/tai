@@ -4,7 +4,7 @@
   "description": "An AI-native terminal that understands what you're doing.",
   "main": "dist-electron/main.js",
   "scripts": {
-    "postinstall": "electron-rebuild -w node-pty,node-termios",
+    "postinstall": "node scripts/postinstall.mjs",
     "dev": "vite",
     "build": "tsc && vite build",
     "predist": "cd daemon && make all",
