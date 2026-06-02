@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect, type ReactNode } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { ansiToHtml } from '@/utils/ansiToHtml';
 import type { SegmentedBlock, BlockBodyMode } from '@/types';
@@ -57,6 +57,10 @@ interface CommandBlockProps {
   onInteractiveContainerRef?: (el: HTMLDivElement | null) => void;
   /** True when the tab's AI session is on a remote host — forces the remote (orange) accent. */
   sessionRemote?: boolean;
+  /** Render as the bottom-pinned live edge: cap the interactive body height + scroll. */
+  docked?: boolean;
+  /** Optional node rendered in the prompt-right header area (e.g. the remote-AI pill). */
+  headerExtra?: ReactNode;
 }
 
 export function CommandBlock({
@@ -75,6 +79,8 @@ export function CommandBlock({
   isActive,
   onInteractiveContainerRef,
   sessionRemote,
+  docked,
+  headerExtra,
 }: CommandBlockProps) {
   const [showAll, setShowAll] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -151,6 +157,7 @@ export function CommandBlock({
           {aiSuggested && <span className={styles.viaAi}>ai</span>}
         </div>
         <div className={styles.promptRight}>
+          {headerExtra}
           {active ? (
             <>
               {awaitingInput ? (
@@ -224,7 +231,10 @@ export function CommandBlock({
             }}
           />
           {isActive ? (
-            <div ref={onInteractiveContainerRef} className={styles.interactiveBody} />
+            <div
+              ref={onInteractiveContainerRef}
+              className={`${styles.interactiveBody}${docked ? ` ${styles.dockedInteractiveBody}` : ''}`}
+            />
           ) : (
             <div className={styles.interactiveBody} style={{ minHeight: 80, padding: '10px 16px', opacity: 0.6, fontStyle: 'italic', fontSize: 12 }}>
               (interactive program running…)
