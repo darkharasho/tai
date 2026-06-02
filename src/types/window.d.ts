@@ -36,6 +36,9 @@ declare global {
         setRemoteTarget: (key: string, target: string | null, mode: string) => Promise<boolean>;
         setDaemonEnabled: (key: string, enabled: boolean) => Promise<boolean>;
       };
+      git: {
+        branch: (cwd: string) => Promise<string | null>;
+      };
       daemon: {
         check: (target: string) => Promise<{ installed: boolean; version?: string }>;
         install: (target: string) => Promise<{ success: boolean; error?: string }>;

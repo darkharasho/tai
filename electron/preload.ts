@@ -71,6 +71,9 @@ contextBridge.exposeInMainWorld('tai', {
     setDaemonEnabled: (key: string, enabled: boolean) =>
       ipcRenderer.invoke('ai:setDaemonEnabled', key, enabled),
   },
+  git: {
+    branch: (cwd: string): Promise<string | null> => ipcRenderer.invoke('git:branch', cwd),
+  },
   codex: {
     send: (key: string, cwd: string, message: string, permMode: string, model: string) =>
       ipcRenderer.invoke('codex:send', key, cwd, message, permMode, model),
