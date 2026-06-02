@@ -59,12 +59,17 @@ pill drives.
 ```
 (no ssh)            → no pill
 ssh detected        → [ ✦ AI · piclock  enable ]      (amber, dismissable per-host)
-click enable
-  host has helper   → active (default: watch)
-  host needs helper → [ ⟳ installing… ] → active
+click enable        → active, default WATCH (instant — watch needs no helper)
+toggle to RUN
+  host has helper   → run
+  host needs helper → [ ⟳ installing… ] → run  (install fails → stays watch + error)
 active              → [ 👁 watch | ▸ run ]  piclock   (+ disconnect via ✕/long-press)
-revisit set-up host → active (watch) immediately, no install prompt
+revisit set-up host → active (last mode) immediately, no install prompt
 ```
+
+Watch requires no daemon (local execution + remote context). The one-time
+helper install is deferred to the first switch to **run**, which is the only
+mode that executes on the host.
 
 State lives per tab (and remembered per host for skip-install + last mode).
 
@@ -115,12 +120,12 @@ BlockSegmenter.onSshSession(true, "piclock")
   → TerminalSession: remoteAi = { sshActive:true, target:"piclock", mode:'off' }
   → TerminalInput renders OFFER pill
 user clicks enable
-  → daemon.check("piclock")
-      installed   → mode='watch'
-      not install → installing=true → install → installed → mode='watch'
-  → setRemoteTarget(tab,"piclock", mode==='run'?'auto':'local')
+  → mode='watch'  (instant)
+  → setRemoteTarget(tab,"piclock",'local')   // local exec, remote context
 toggle → onSetRemoteAiMode('run')
+  → if !helperInstalled: installing=true → daemon.check/install → installed
   → setRemoteTarget(tab,"piclock",'auto'); setDaemonEnabled(tab,true)
+  → install fails → mode stays 'watch', show error
 ssh exits (onSshSession(false)) → pill clears; mode resets to 'off'
 ```
 
