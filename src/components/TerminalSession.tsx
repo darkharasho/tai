@@ -17,7 +17,7 @@ import type { AIProvider, ContextMode, TrustLevel, AIEntry } from '@/types';
 import { hasActiveAi } from '@/utils/hasActiveAi';
 import { isMultilineCommand } from '@/utils/isMultilineCommand';
 import { buildRecentContext } from '@/utils/aiContext';
-import { redactHistoryEntries } from '@/utils/redactSecrets';
+import { redactHistoryEntries, redactSecrets } from '@/utils/redactSecrets';
 import { detectSshError } from '@/utils/sshDetect';
 import {
   initialRemoteAi, pillView, onSshChange, enableWatch, setMode,
@@ -599,6 +599,23 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         );
         if (remoteSystemInfoRef.current) {
           lines.push(`Remote system: ${remoteSystemInfoRef.current}`);
+        }
+      }
+
+      // Watch mode: AI runs locally but should see the remote session.
+      if (eff.isRemote && eff.exec === 'local' && eff.sshTarget) {
+        const remoteOut = displayItems
+          .filter((it): it is DisplayItem & { type: 'command' } => it.type === 'command' && !!it.block.isRemote)
+          .slice(-5)
+          .map(it => `$ ${it.block.command}\n${(it.block.output || '').trim()}`.trim())
+          .join('\n\n');
+        if (remoteOut.trim()) {
+          lines.push(
+            '',
+            `REMOTE SESSION (observe-only): the user is in an ssh session on ${eff.sshTarget}.`,
+            'Recent remote activity follows. Your tools still run locally; help by reading this context.',
+            redactSecrets(remoteOut),
+          );
         }
       }
     }
