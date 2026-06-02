@@ -5,6 +5,7 @@ import { stripForceShellPrefix, shouldShowAutoBadge } from '@/utils/inputModeUx'
 import styles from './TerminalInput.module.css';
 import { ShieldCheck, ShieldOff } from 'lucide-react';
 import type { AIProvider, TrustLevel } from '@/types';
+import type { PillView, RemoteAiMode } from '@/utils/remoteAiSession';
 
 const PERM_LABELS: Record<AIProvider, Record<TrustLevel, string>> = {
   claude: { 'ask': 'Default', 'approve-edits': 'Auto Edits', 'bypass': 'Bypass' },
@@ -68,6 +69,45 @@ interface TerminalInputProps {
   aiProvider?: AIProvider;
   trustLevel?: TrustLevel;
   onTrustLevelChange?: (level: TrustLevel) => void;
+}
+
+export function RemoteAiPill({
+  view, onEnable, onSetMode, onDismiss,
+}: {
+  view: PillView;
+  onEnable: () => void;
+  onSetMode: (mode: RemoteAiMode) => void;
+  onDismiss: () => void;
+}) {
+  if (view.kind === 'hidden') return null;
+  if (view.kind === 'offer') {
+    return (
+      <span className={styles.raiOffer}>
+        <span className={styles.raiSpark}>✦</span> AI · {view.target}
+        <button className={styles.raiAction} onClick={(e) => { e.stopPropagation(); onEnable(); }}>enable</button>
+        <button className={styles.raiX} title="Dismiss" onClick={(e) => { e.stopPropagation(); onDismiss(); }}>✕</button>
+      </span>
+    );
+  }
+  if (view.kind === 'installing') {
+    return <span className={styles.raiActive}>⟳ installing on {view.target}…</span>;
+  }
+  return (
+    <span className={styles.raiActive} title={view.error ?? undefined}>
+      <span className={styles.raiSeg}>
+        <button
+          className={`${styles.raiSegBtn} ${view.mode === 'watch' ? styles.raiWatchOn : ''}`}
+          onClick={(e) => { e.stopPropagation(); onSetMode('watch'); }}
+        >👁 watch</button>
+        <button
+          className={`${styles.raiSegBtn} ${view.mode === 'run' ? styles.raiRunOn : ''}`}
+          onClick={(e) => { e.stopPropagation(); onSetMode('run'); }}
+        >▸ run</button>
+      </span>
+      <span className={styles.raiHost}>{view.target}</span>
+      {view.error && <span className={styles.raiErr} title={view.error}>!</span>}
+    </span>
+  );
 }
 
 export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>(function TerminalInput({ onSubmit, mode, onModeChange, disabled, cwd, promptInfo, shellIntegrated, history = [], onClear, initialValue, remoteExecMode, onRemoteExecModeChange, manualRemote, onSetManualRemote, aiProvider, trustLevel, onTrustLevelChange }, ref) {
