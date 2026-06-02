@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { HiddenXterm } from './HiddenXterm';
 import type { HiddenXtermHandle } from './HiddenXterm';
 import { BlockList } from './BlockList';
@@ -22,7 +22,7 @@ import { detectSshError } from '@/utils/sshDetect';
 import {
   initialRemoteAi, pillView, onSshChange, enableWatch, setMode,
   setInstalling, setHelperInstalled, dismissOffer, setError,
-  type RemoteAiMode, type RememberedHost,
+  type RemoteAiMode, type RememberedHost, type RemoteAiState,
 } from '@/utils/remoteAiSession';
 import {
   type QueuedPrompt,
@@ -193,12 +193,12 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   }, []);
 
   // Effective remote target for AI: driven by the remote-AI pill.
-  const eff = {
+  const eff = useMemo(() => ({
     isRemote: remoteAi.mode === 'watch' || remoteAi.mode === 'run',
     sshTarget: remoteAi.target,
     // Only "run" routes tool execution to the host; "watch" keeps exec local.
     exec: remoteAi.mode === 'run' ? ('auto' as const) : ('local' as const),
-  };
+  }), [remoteAi]);
 
   useEffect(() => {
     if (eff.isRemote && eff.sshTarget) {
@@ -810,7 +810,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     aiBlockIdRef.current = aiId;
 
     providerRef.current.send(fullPrompt, cwd, trustLevel, claudeModel, claudeEffort);
-  }, [cwd, trustLevel, handleInputModeChange, promptInfo, remoteAi, claudeModel, claudeEffort, displayItems]);
+  }, [cwd, trustLevel, handleInputModeChange, promptInfo, eff, claudeModel, claudeEffort, displayItems]);
 
   const handleAIRequestRef = useRef(handleAIRequest);
   useEffect(() => {
@@ -908,7 +908,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     queuedPromptsRef.current = [];
   }, [handleInputModeChange]);
 
-  const rememberRemoteAi = useCallback((s: ReturnType<typeof initialRemoteAi>) => {
+  const rememberRemoteAi = useCallback((s: RemoteAiState) => {
     if (s.target) {
       remoteAiMemory.current.set(s.target, {
         mode: s.mode,
@@ -931,16 +931,13 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       setRemoteAi(prev => { const next = setMode(prev, mode); rememberRemoteAi(next); return next; });
       return;
     }
-    let target: string | null = null;
-    let alreadyInstalled = false;
-    setRemoteAi(prev => {
-      target = prev.target;
-      alreadyInstalled = prev.helperInstalled;
-      return prev.helperInstalled ? prev : setInstalling(prev, true);
-    });
+    const { target, helperInstalled } = remoteAi;
     if (!target) return;
+    if (!helperInstalled) {
+      setRemoteAi(prev => setInstalling(prev, true));
+    }
     try {
-      if (!alreadyInstalled) {
+      if (!helperInstalled) {
         const res = await window.tai.daemon.check(target);
         if (!res.installed) {
           const r = await window.tai.daemon.install(target);
@@ -949,13 +946,20 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       }
       await window.tai.ai.setDaemonEnabled(tabId, true);
       setRemoteAi(prev => {
-        const next = setMode(setHelperInstalled(setInstalling(prev, false), true), 'run');
-        rememberRemoteAi(next); return next;
+        const base = setInstalling(prev, false);
+        const withHelper = setHelperInstalled(base, true);
+        const next = setMode(withHelper, 'run');
+        rememberRemoteAi(next);
+        return next;
       });
     } catch (e: any) {
-      setRemoteAi(prev => { const next = setError(setInstalling(prev, false), String(e?.message || e)); rememberRemoteAi(next); return next; });
+      setRemoteAi(prev => {
+        const next = setError(setInstalling(prev, false), e instanceof Error ? e.message : String(e));
+        rememberRemoteAi(next);
+        return next;
+      });
     }
-  }, [tabId, rememberRemoteAi]);
+  }, [tabId, remoteAi, rememberRemoteAi]);
 
   const handleToolApprove = useCallback((item: DisplayItem & { type: 'approval' }) => {
     if (providerRef.current.id === 'gemini') {
