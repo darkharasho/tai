@@ -83,7 +83,21 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const [promptInfo, setPromptInfo] = useState<{ text: string; isRemote: boolean; sshTarget?: string } | null>(null);
   const [remoteAi, setRemoteAi] = useState(initialRemoteAi());
   // Per-host memory so re-entering a known host restores its mode without re-asking.
+  // Persisted to settings.json so it survives app restarts.
   const remoteAiMemory = useRef<Map<string, RememberedHost>>(new Map());
+  const remoteAiMemoryLoaded = useRef(false);
+  useEffect(() => {
+    if (remoteAiMemoryLoaded.current) return;
+    remoteAiMemoryLoaded.current = true;
+    window.tai?.config?.get().then((cfg: Record<string, any>) => {
+      const saved = cfg['remote.rememberedHosts'];
+      if (saved && typeof saved === 'object') {
+        for (const [host, mem] of Object.entries(saved)) {
+          remoteAiMemory.current.set(host, mem as RememberedHost);
+        }
+      }
+    });
+  }, []);
   const [shellIntegrated, setShellIntegrated] = useState(false);
   const [sshSessionActive, setSshSessionActive] = useState(false);
   const [sshSessionTarget, setSshSessionTarget] = useState<string | null>(null);
@@ -952,6 +966,10 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         helperInstalled: s.helperInstalled,
         dismissed: s.dismissed,
       });
+      // Persist to disk so the setting survives app restarts.
+      const obj: Record<string, RememberedHost> = {};
+      remoteAiMemory.current.forEach((v, k) => { obj[k] = v; });
+      window.tai?.config?.set('remote.rememberedHosts', obj);
     }
   }, []);
 
