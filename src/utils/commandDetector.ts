@@ -1,5 +1,3 @@
-import { parse as shellParse } from 'shell-quote';
-
 const KNOWN_COMMANDS = new Set([
   'cd', 'ls', 'll', 'la', 'pwd', 'echo', 'cat', 'head', 'tail', 'less', 'more',
   'cp', 'mv', 'rm', 'mkdir', 'rmdir', 'touch', 'chmod', 'chown', 'chgrp', 'ln',
@@ -74,42 +72,122 @@ const SENTENCE_WORDS = new Set([
   'not', 'very', 'really', 'already', 'still', 'even', 'probably', 'definitely',
 ]);
 
-export function looksLikeShellCommand(input: string): boolean {
+export type InputType = 'shell' | 'ai';
+
+export interface ClassifyContext {
+  /** Current input mode, used for asymmetric stickiness. */
+  currentMode?: InputType;
+}
+
+export type DecisionSource =
+  | 'empty' | 'agent-cli' | 'shell-syntax' | 'known-command'
+  | 'nl-starter' | 'nl-pronoun' | 'question-mark'
+  | 'nl-word-score' | 'shell-token-score' | 'short-token' | 'sticky-fallback';
+
+export interface ClassificationResult {
+  type: InputType;
+  /** 0..1 — synthesized rule-strength, not a true probability. */
+  confidence: number;
+  source: DecisionSource;
+}
+
+export const CONFIDENCE = { HIGH: 0.95, MED: 0.75, LOW: 0.55 } as const;
+
+/** Minimum confidence required for a consumer to auto-flip the input mode. */
+export const FLIP_THRESHOLD = 0.7;
+
+const END_TOKEN_COMPLETE = new Set([' ', '?', '!', '.', '"', ',']);
+
+function tokenHasShellSyntax(token: string): boolean {
+  return /[|><;&$*?{}()[\]]/.test(token) || /^-{1,2}[a-zA-Z]/.test(token);
+}
+
+function nlScore(tokens: string[]): number {
+  if (tokens.length === 0) return 0;
+  const hits = tokens.filter(t => {
+    const w = t.toLowerCase();
+    return NL_WORDS.has(w) || SENTENCE_WORDS.has(w);
+  }).length;
+  return hits / tokens.length;
+}
+
+function shellScore(tokens: string[]): number {
+  if (tokens.length === 0) return 0;
+  const hits = tokens.filter((t, i) => {
+    if (i === 0 && KNOWN_COMMANDS.has(t.toLowerCase())) return true;
+    return tokenHasShellSyntax(t);
+  }).length;
+  return hits / tokens.length;
+}
+
+function nlThreshold(n: number): number {
+  if (n <= 3) return 1.0;
+  if (n <= 4) return 0.8;
+  return 0.6;
+}
+
+function shellThreshold(n: number): number {
+  if (n <= 2) return 1.0;
+  if (n <= 4) return 0.7;
+  return 0.5;
+}
+
+export function classifyInput(input: string, ctx?: ClassifyContext): ClassificationResult {
   const trimmed = input.trim();
-  if (!trimmed) return false;
+  if (!trimmed) return { type: 'ai', confidence: 0, source: 'empty' };
 
-  // Wrapped agent CLIs are always shell launches, even with NL-looking args or
-  // a trailing '?' — checked before any natural-language short-circuit below.
-  if (WRAPPED_AGENT_CLIS.has(trimmed.split(/\s+/)[0].toLowerCase())) return true;
+  const tokens = trimmed.split(/\s+/);
+  const firstWord = tokens[0].toLowerCase();
+  const H = CONFIDENCE.HIGH;
+  const M = CONFIDENCE.MED;
+  const L = CONFIDENCE.LOW;
 
-  if (/^[.~\/]/.test(trimmed)) return true;
-  if (/^[A-Z_][A-Z0-9_]*=/.test(trimmed)) return true;
-  if (/[|><;&]/.test(trimmed)) return true;
-  if (/\s-{1,2}[a-zA-Z]/.test(trimmed)) return true;
-  if (trimmed.includes('?')) return false;
+  // Wrapped agent CLI launch — always shell, ahead of every NL signal.
+  if (WRAPPED_AGENT_CLIS.has(firstWord)) return { type: 'shell', confidence: H, source: 'agent-cli' };
 
-  const firstWord = trimmed.split(/\s+/)[0].toLowerCase();
+  // Explicit shell syntax.
+  if (/^[.~/]/.test(trimmed)) return { type: 'shell', confidence: H, source: 'shell-syntax' };
+  if (/^[A-Z_][A-Z0-9_]*=/.test(trimmed)) return { type: 'shell', confidence: H, source: 'shell-syntax' };
+  if (/[|><;&]/.test(trimmed)) return { type: 'shell', confidence: H, source: 'shell-syntax' };
+  if (/\s-{1,2}[a-zA-Z]/.test(trimmed)) return { type: 'shell', confidence: H, source: 'shell-syntax' };
 
-  if (KNOWN_COMMANDS.has(firstWord)) return true;
-  if (NL_STARTERS.test(trimmed)) return false;
-  if (NL_WORDS.has(firstWord)) return false;
-  if (trimmed.length === 1) return false;
-  if (!trimmed.includes(' ')) return true;
+  // Question mark is a strong natural-language signal.
+  if (trimmed.includes('?')) return { type: 'ai', confidence: H, source: 'question-mark' };
 
-  const words = trimmed.split(/\s+/);
-  if (words.length <= 3 && /^[a-z0-9_][\w.-]*$/i.test(firstWord)) return true;
-  if (words.some(w => PRONOUNS.has(w.toLowerCase()))) return false;
+  // Known command as the first token.
+  if (KNOWN_COMMANDS.has(firstWord)) return { type: 'shell', confidence: H, source: 'known-command' };
 
-  const nlCount = words.filter(w => SENTENCE_WORDS.has(w.toLowerCase())).length;
-  if (nlCount >= 2) return false;
+  // Leading natural-language starter ("how", "explain", "please", ...).
+  if (NL_STARTERS.test(trimmed)) return { type: 'ai', confidence: H, source: 'nl-starter' };
 
-  try {
-    const parsed = shellParse(trimmed);
-    const hasShellTokens = parsed.some(t => typeof t === 'object');
-    if (hasShellTokens) return true;
-  } catch {}
+  // A pronoun anywhere is a strong conversational signal.
+  if (tokens.some(w => PRONOUNS.has(w.toLowerCase()))) return { type: 'ai', confidence: H, source: 'nl-pronoun' };
 
-  if (/^[a-z0-9_][\w.-]*$/i.test(firstWord)) return true;
+  // Natural-language word scoring, token-count-scaled. Classify with AND
+  // without a still-being-typed last token; AI wins (mirrors Warp).
+  const lastChar = trimmed[trimmed.length - 1];
+  const lastComplete = END_TOKEN_COMPLETE.has(lastChar);
+  let nlPass = nlScore(tokens) >= nlThreshold(tokens.length);
+  if (!nlPass && !lastComplete && tokens.length > 2) {
+    const dropped = tokens.slice(0, -1);
+    nlPass = nlScore(dropped) >= nlThreshold(dropped.length);
+  }
+  if (nlPass) return { type: 'ai', confidence: M, source: 'nl-word-score' };
 
-  return false;
+  if (shellScore(tokens) >= shellThreshold(tokens.length)) {
+    return { type: 'shell', confidence: M, source: 'shell-token-score' };
+  }
+
+  // A lone unknown token is probably a command.
+  if (tokens.length === 1 && /^[a-z0-9_][\w.-]*$/i.test(firstWord)) {
+    return { type: 'shell', confidence: L, source: 'short-token' };
+  }
+
+  // No decisive signal — stay in the current mode rather than guess.
+  return { type: ctx?.currentMode ?? 'shell', confidence: L, source: 'sticky-fallback' };
+}
+
+export function looksLikeShellCommand(input: string): boolean {
+  if (!input.trim()) return false;
+  return classifyInput(input).type === 'shell';
 }
