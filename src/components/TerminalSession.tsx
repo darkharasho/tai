@@ -154,6 +154,11 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const lastContextBlockIdRef = useRef<string | null>(null);
   const gitBranchRef = useRef<string | null>(null);
   const capturedOutputRef = useRef<string | null>(null);
+  // Debounce timer for echo-poller interactiveMode activation. Commands like
+  // `brew` briefly disable ICANON for progress bars; without debouncing, the
+  // surface flips to `docked` and the card pops out of the scroll list instead
+  // of morphing in-place from the pending block.
+  const echoInteractiveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   altScreenRef.current = altScreenVisible;
   interactiveModeRef.current = interactiveMode;
 
@@ -454,6 +459,10 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         // A completed block means the foreground is the shell again, so no
         // raw-mode program can be running — clear interactiveMode so a stale
         // value can never strand the surface off `composer`.
+        if (echoInteractiveTimerRef.current) {
+          clearTimeout(echoInteractiveTimerRef.current);
+          echoInteractiveTimerRef.current = null;
+        }
         setInteractiveMode(false);
       }
     });
@@ -465,8 +474,27 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       // Raw-mode tty (REPLs like python/node/psql, plus full TUIs) — route
       // the card through xterm so the user sees keystrokes echo and can
       // use readline navigation/history.
-      setInteractiveMode(e.interactiveProgram);
-      if (e.interactiveProgram) setInteractiveFullscreen(false);
+      //
+      // Debounce activation: commands like `brew` briefly disable ICANON for
+      // progress bars, causing a false `interactiveProgram` signal. Require
+      // the raw-mode state to persist before flipping the surface to `docked`.
+      // Deactivation is immediate so the surface snaps back to `composer`
+      // the moment the child restores canonical mode or exits.
+      if (e.interactiveProgram) {
+        if (!interactiveModeRef.current && !echoInteractiveTimerRef.current) {
+          echoInteractiveTimerRef.current = setTimeout(() => {
+            echoInteractiveTimerRef.current = null;
+            setInteractiveMode(true);
+            setInteractiveFullscreen(false);
+          }, 1500);
+        }
+      } else {
+        if (echoInteractiveTimerRef.current) {
+          clearTimeout(echoInteractiveTimerRef.current);
+          echoInteractiveTimerRef.current = null;
+        }
+        setInteractiveMode(false);
+      }
     });
 
     const cleanupData = window.tai?.pty?.onData((id: number, data: string) => {
@@ -490,6 +518,10 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       cleanupData?.();
       cleanupResized?.();
       cleanupEcho?.();
+      if (echoInteractiveTimerRef.current) {
+        clearTimeout(echoInteractiveTimerRef.current);
+        echoInteractiveTimerRef.current = null;
+      }
       if (outputRafId !== null) cancelAnimationFrame(outputRafId);
       segmenter.reset();
       setShellIntegrated(false);
