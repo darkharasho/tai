@@ -4,6 +4,7 @@ import {
   focusTargetFor,
   composerVisible,
   pinnedActiveBlock,
+  shouldShowXterm,
   type InteractiveSignals,
 } from '../../src/utils/inputSurface';
 
@@ -67,5 +68,15 @@ describe('predicates', () => {
     expect(pinnedActiveBlock('tier1')).toBe(true);
     expect(pinnedActiveBlock('fullscreen')).toBe(false);
     expect(pinnedActiveBlock('composer')).toBe(false);
+  });
+
+  it('shows the xterm only for docked and fullscreen, never tier1/composer', () => {
+    // tier1 (password / line prompt) uses light widgets; if the xterm rendered
+    // it would steal focus from the PasswordPrompt and the masked dots would
+    // never update. composer never shows the xterm either.
+    expect(shouldShowXterm('docked')).toBe(true);
+    expect(shouldShowXterm('fullscreen')).toBe(true);
+    expect(shouldShowXterm('tier1')).toBe(false);
+    expect(shouldShowXterm('composer')).toBe(false);
   });
 });

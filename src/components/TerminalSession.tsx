@@ -7,7 +7,7 @@ import { TerminalInput, RemoteAiPill } from './TerminalInput';
 import type { TerminalInputHandle } from './TerminalInput';
 import { CommandBlock } from './CommandBlock';
 import {
-  deriveInputSurface, focusTargetFor, composerVisible, pinnedActiveBlock,
+  deriveInputSurface, focusTargetFor, composerVisible, pinnedActiveBlock, shouldShowXterm,
 } from '@/utils/inputSurface';
 import { DaemonInstallCard } from './DaemonInstallCard';
 import { ShellIntegrationInstallCard } from './ShellIntegrationInstallCard';
@@ -400,8 +400,12 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
 
     segmenter.onPasswordPrompt(() => {
       if (cancelled) return;
+      // A password prompt is the `tier1` surface, driven solely by passwordPrompt
+      // (it wins in deriveInputSurface). Do NOT set interactiveMode here: it would
+      // pull the surface to `docked`, show the xterm over the PasswordPrompt widget,
+      // and — since nothing cleanly resets it for this path — leave the surface
+      // stuck off `composer` after the prompt clears (sudo never "kicks back").
       setPasswordPrompt(true);
-      setInteractiveMode(true);
     });
 
     segmenter.onPromptChange((prompt, isRemote, sshTarget) => {
@@ -433,6 +437,10 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       } else {
         window.tai?.pty?.stopEchoPoll?.(ptyId);
         setPasswordPrompt(false);
+        // A completed block means the foreground is the shell again, so no
+        // raw-mode program can be running — clear interactiveMode so a stale
+        // value can never strand the surface off `composer`.
+        setInteractiveMode(false);
       }
     });
 
@@ -1099,10 +1107,12 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   }, [ptyId]);
 
   const showFullscreenInteractive = surface === 'fullscreen' && !altScreenVisible;
-  // showXterm now includes any interactiveMode (REPLs flagged by termios raw
-  // mode), not just legacy CURSOR_HIDE-style fullscreen. xterm gets routed
-  // into the card via the interactive-portal target, not the session overlay.
-  const showXterm = altScreenVisible || showFullscreenInteractive || interactiveMode;
+  // Surface-driven: the xterm renders only for `docked` (portaled into the
+  // pinned block) and `fullscreen`. Crucially NOT for `tier1` — a password
+  // prompt sets interactiveMode=true, so the old `|| interactiveMode` formula
+  // rendered the fallback xterm over the PasswordPrompt widget and stole its
+  // keystrokes (masked dots never updated).
+  const showXterm = shouldShowXterm(surface);
   // When remote-AI is active, keep the composer usable during a foreground
   // command (e.g. the interactive ssh) — AI input is out-of-band from the PTY.
   // Shell submits still queue (handled in the submit path); password/awaiting locks stay.

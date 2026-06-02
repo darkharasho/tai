@@ -46,3 +46,13 @@ export function composerVisible(surface: InputSurface): boolean {
 export function pinnedActiveBlock(surface: InputSurface): boolean {
   return surface === 'docked' || surface === 'tier1';
 }
+
+/**
+ * The real terminal (xterm) renders only for `docked` (portaled into the pinned
+ * block) and `fullscreen` (takeover). It must NOT render for `tier1`: password
+ * and line prompts use light widgets, and a live xterm would steal their focus
+ * and keystrokes (the masked dots never update). `composer` never shows it.
+ */
+export function shouldShowXterm(surface: InputSurface): boolean {
+  return surface === 'docked' || surface === 'fullscreen';
+}
