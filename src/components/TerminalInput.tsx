@@ -71,26 +71,26 @@ interface TerminalInputProps {
   onTrustLevelChange?: (level: TrustLevel) => void;
 }
 
-export function RemoteAiPill({
-  view, onEnable, onSetMode, onDismiss,
-}: {
+interface RemoteAiPillProps {
   view: PillView;
   onEnable: () => void;
   onSetMode: (mode: RemoteAiMode) => void;
   onDismiss: () => void;
-}) {
+}
+
+export function RemoteAiPill({ view, onEnable, onSetMode, onDismiss }: RemoteAiPillProps) {
   if (view.kind === 'hidden') return null;
   if (view.kind === 'offer') {
     return (
       <span className={styles.raiOffer}>
-        <span className={styles.raiSpark}>✦</span> AI · {view.target}
+        <span className={styles.raiSpark} aria-hidden="true">✦</span> AI · {view.target}
         <button className={styles.raiAction} onClick={(e) => { e.stopPropagation(); onEnable(); }}>enable</button>
-        <button className={styles.raiX} title="Dismiss" onClick={(e) => { e.stopPropagation(); onDismiss(); }}>✕</button>
+        <button className={styles.raiX} title="Dismiss" aria-label="Dismiss" onClick={(e) => { e.stopPropagation(); onDismiss(); }}><span aria-hidden="true">✕</span></button>
       </span>
     );
   }
   if (view.kind === 'installing') {
-    return <span className={styles.raiActive}>⟳ installing on {view.target}…</span>;
+    return <span role="status" className={styles.raiActive}><span aria-hidden="true">⟳</span> installing on {view.target}…</span>;
   }
   return (
     <span className={styles.raiActive} title={view.error ?? undefined}>
@@ -98,11 +98,11 @@ export function RemoteAiPill({
         <button
           className={`${styles.raiSegBtn} ${view.mode === 'watch' ? styles.raiWatchOn : ''}`}
           onClick={(e) => { e.stopPropagation(); onSetMode('watch'); }}
-        >👁 watch</button>
+        ><span aria-hidden="true">👁</span> watch</button>
         <button
           className={`${styles.raiSegBtn} ${view.mode === 'run' ? styles.raiRunOn : ''}`}
           onClick={(e) => { e.stopPropagation(); onSetMode('run'); }}
-        >▸ run</button>
+        ><span aria-hidden="true">▸</span> run</button>
       </span>
       <span className={styles.raiHost}>{view.target}</span>
       {view.error && <span className={styles.raiErr} title={view.error}>!</span>}

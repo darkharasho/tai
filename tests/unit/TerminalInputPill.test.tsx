@@ -23,6 +23,7 @@ describe('RemoteAiPill', () => {
   it('renders the watch/run toggle and switches mode', () => {
     const onSetMode = vi.fn();
     render(<RemoteAiPill view={{ kind: 'active', target: 'piclock', mode: 'watch', error: null }} onEnable={() => {}} onSetMode={onSetMode} onDismiss={() => {}} />);
+    expect(screen.getByRole('button', { name: /watch/i }).className).toMatch(/raiWatchOn|watchOn/i);
     fireEvent.click(screen.getByRole('button', { name: /run/i }));
     expect(onSetMode).toHaveBeenCalledWith('run');
   });
