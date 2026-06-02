@@ -60,8 +60,6 @@ interface TerminalInputProps {
   history?: string[];
   onClear?: () => void;
   initialValue?: string;
-  remoteExecMode?: 'auto' | 'local';
-  onRemoteExecModeChange?: (mode: 'auto' | 'local') => void;
   remoteAiView?: PillView;
   onEnableRemoteAi?: () => void;
   onSetRemoteAiMode?: (mode: RemoteAiMode) => void;
@@ -110,7 +108,7 @@ export function RemoteAiPill({ view, onEnable, onSetMode, onDismiss }: RemoteAiP
   );
 }
 
-export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>(function TerminalInput({ onSubmit, mode, onModeChange, disabled, cwd, promptInfo, shellIntegrated, history = [], onClear, initialValue, remoteExecMode, onRemoteExecModeChange, remoteAiView, onEnableRemoteAi, onSetRemoteAiMode, onDismissRemoteAi, aiProvider, trustLevel, onTrustLevelChange }, ref) {
+export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>(function TerminalInput({ onSubmit, mode, onModeChange, disabled, cwd, promptInfo, shellIntegrated, history = [], onClear, initialValue, remoteAiView, onEnableRemoteAi, onSetRemoteAiMode, onDismissRemoteAi, aiProvider, trustLevel, onTrustLevelChange }, ref) {
   const [value, setValue] = useState(initialValue || '');
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const historyIndexRef = useRef(-1);
@@ -367,18 +365,6 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
           {isAI ? (
             <>
               <span className={styles.promptAi}>{'\u2726'}</span>
-              {promptIsRemote && onRemoteExecModeChange && (
-                <button
-                  className={styles.remoteToggle}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRemoteExecModeChange(remoteExecMode === 'auto' ? 'local' : 'auto');
-                  }}
-                  title={remoteExecMode === 'auto' ? 'AI executes on remote host \u2014 click for local' : 'AI executes locally \u2014 click for remote'}
-                >
-                  {remoteExecMode === 'auto' ? 'Remote' : 'Local'}
-                </button>
-              )}
               <span className={styles.path}>{promptPath}</span>
             </>
           ) : (

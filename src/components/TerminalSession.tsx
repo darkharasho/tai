@@ -602,22 +602,6 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         }
       }
 
-      // Watch mode: AI runs locally but should see the remote session.
-      if (eff.isRemote && eff.exec === 'local' && eff.sshTarget) {
-        const remoteOut = displayItems
-          .filter((it): it is DisplayItem & { type: 'command' } => it.type === 'command' && !!it.block.isRemote)
-          .slice(-5)
-          .map(it => `$ ${it.block.command}\n${(it.block.output || '').trim()}`.trim())
-          .join('\n\n');
-        if (remoteOut.trim()) {
-          lines.push(
-            '',
-            `REMOTE SESSION (observe-only): the user is in an ssh session on ${eff.sshTarget}.`,
-            'Recent remote activity follows. Your tools still run locally; help by reading this context.',
-            redactSecrets(remoteOut),
-          );
-        }
-      }
     }
     const recent = buildRecentContext(displayItems, lastContextBlockIdRef.current, {
       cwd,
@@ -629,6 +613,23 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       lines.push(`Working directory: ${cwd}`);
     }
     lastContextBlockIdRef.current = recent.lastId;
+    // Watch mode: AI runs locally but should see the remote session.
+    // Runs every turn so the context stays current.
+    if (eff.isRemote && eff.exec === 'local' && eff.sshTarget) {
+      const remoteOut = displayItems
+        .filter((it): it is DisplayItem & { type: 'command' } => it.type === 'command' && !!it.block.isRemote)
+        .slice(-5)
+        .map(it => `$ ${it.block.command}\n${(it.block.output || '').trim()}`.trim())
+        .join('\n\n');
+      if (remoteOut.trim()) {
+        lines.push(
+          '',
+          `REMOTE SESSION (observe-only): the user is in an ssh session on ${eff.sshTarget}.`,
+          'Recent remote activity follows. Your tools still run locally; help by reading this context.',
+          redactSecrets(remoteOut),
+        );
+      }
+    }
     if (lines.length > 0) {
       fullPrompt = `<system>\n${lines.join('\n')}\n</system>\n\n${prompt}`;
     }
@@ -748,7 +749,6 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           streaming: false,
           entries: [{ kind: 'text' as const, text: `**SSH connection failed:** ${msg.error}${hint}\n\nAI commands will run locally.` }],
         }]);
-        onRemoteExecModeChange('local');
         return;
       }
 
@@ -1195,8 +1195,6 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
             disabled={inputDisabled}
             history={inputHistory}
             onClear={() => setDisplayItems([])}
-            remoteExecMode={remoteExecMode}
-            onRemoteExecModeChange={onRemoteExecModeChange}
             remoteAiView={pillView(remoteAi)}
             onEnableRemoteAi={handleEnableRemoteAi}
             onSetRemoteAiMode={handleSetRemoteAiMode}
