@@ -15,6 +15,7 @@ export interface InteractiveSignals {
   altScreenVisible: boolean;
   /** A raw-mode child program is foreground (termios poll: e.interactiveProgram). */
   interactiveMode: boolean;
+  /** Only meaningful when interactiveMode is true (a fullscreen raw-mode program). */
   interactiveFullscreen: boolean;
   /** A cooked, line-at-a-time read() is blocking. */
   awaitingInput: boolean;

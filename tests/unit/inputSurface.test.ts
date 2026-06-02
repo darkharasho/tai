@@ -39,6 +39,10 @@ describe('deriveInputSurface', () => {
   it('is docked for a raw-mode REPL/ssh (Tier 2)', () => {
     expect(deriveInputSurface({ ...base, interactiveMode: true })).toBe('docked');
   });
+
+  it('ignores interactiveFullscreen without interactiveMode (invariant: it implies interactiveMode)', () => {
+    expect(deriveInputSurface({ ...base, interactiveFullscreen: true })).toBe('composer');
+  });
 });
 
 describe('focusTargetFor', () => {
