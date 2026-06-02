@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useImperativeHandle, forwardRef, useMemo } from 'react';
 import { predictCommand } from '@/hooks/useGhostText';
-import { looksLikeShellCommand } from '@/utils/commandDetector';
+import { classifyInput, FLIP_THRESHOLD } from '@/utils/commandDetector';
 import styles from './TerminalInput.module.css';
 import { ShieldCheck, ShieldOff } from 'lucide-react';
 import type { AIProvider, TrustLevel } from '@/types';
@@ -247,10 +247,11 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
       const trimmed = newVal.trim();
       if (trimmed.length === 0) {
         if (mode !== 'shell') onModeChange('shell');
-      } else if (mode === 'shell' && !looksLikeShellCommand(trimmed)) {
-        onModeChange('ai');
-      } else if (mode === 'ai' && looksLikeShellCommand(trimmed)) {
-        onModeChange('shell');
+      } else {
+        const { type, confidence } = classifyInput(trimmed, { currentMode: mode });
+        if (confidence >= FLIP_THRESHOLD && type !== mode) {
+          onModeChange(type);
+        }
       }
     }
   };
