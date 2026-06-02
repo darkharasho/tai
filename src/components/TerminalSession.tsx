@@ -3,8 +3,12 @@ import { HiddenXterm } from './HiddenXterm';
 import type { HiddenXtermHandle } from './HiddenXterm';
 import { BlockList } from './BlockList';
 import type { DisplayItem } from './BlockList';
-import { TerminalInput } from './TerminalInput';
+import { TerminalInput, RemoteAiPill } from './TerminalInput';
 import type { TerminalInputHandle } from './TerminalInput';
+import { CommandBlock } from './CommandBlock';
+import {
+  deriveInputSurface, composerVisible, pinnedActiveBlock,
+} from '@/utils/inputSurface';
 import { DaemonInstallCard } from './DaemonInstallCard';
 import { ShellIntegrationInstallCard } from './ShellIntegrationInstallCard';
 import { DAEMON_VERSION } from '../daemonVersion';
@@ -1085,21 +1089,36 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     window.tai?.pty?.write(ptyId, data);
   }, [ptyId]);
 
-  const showFullscreenInteractive = interactiveMode && interactiveFullscreen && !altScreenVisible;
+  const surface = deriveInputSurface({
+    altScreenVisible, interactiveMode, interactiveFullscreen, awaitingInput, passwordPrompt,
+  });
+  const showFullscreenInteractive = surface === 'fullscreen' && !altScreenVisible;
   // showXterm now includes any interactiveMode (REPLs flagged by termios raw
   // mode), not just legacy CURSOR_HIDE-style fullscreen. xterm gets routed
   // into the card via the interactive-portal target, not the session overlay.
   const showXterm = altScreenVisible || showFullscreenInteractive || interactiveMode;
-  const blockInputLocked = awaitingInput || passwordPrompt;
   // When remote-AI is active, keep the composer usable during a foreground
   // command (e.g. the interactive ssh) — AI input is out-of-band from the PTY.
   // Shell submits still queue (handled in the submit path); password/awaiting locks stay.
   const remoteAiActive = remoteAi.mode === 'watch' || remoteAi.mode === 'run';
+  // The active interactive block (Tier 2 / Tier 1) is pinned to the bottom region.
+  const isPinned = pinnedActiveBlock(surface);
+  const showComposer = composerVisible(surface) && !showXterm;
+  const blockInputLocked = awaitingInput || passwordPrompt;
   const inputDisabled = blockInputLocked || (hasActiveBlock && !passwordPrompt && !remoteAiActive);
   const activeBodyMode: import('@/types').BlockBodyMode =
     passwordPrompt ? 'password'
     : (altScreenVisible || interactiveMode) ? 'interactive'
     : 'output';
+
+  // While docked/tier1, the trailing active command block is rendered in the
+  // bottom-pinned region (Personality 2), not inside the scrolling history.
+  const lastItem = displayItems[displayItems.length - 1];
+  const pinnedBlock =
+    isPinned && lastItem?.type === 'command' && (lastItem as DisplayItem & { type: 'command' }).active
+      ? (lastItem as DisplayItem & { type: 'command' })
+      : null;
+  const historyItems = pinnedBlock ? displayItems.slice(0, -1) : displayItems;
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0, position: 'relative' }}>
@@ -1127,7 +1146,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       )}
       {(
         <BlockList
-          items={displayItems}
+          items={historyItems}
           activeBlockId={null}
           awaitingInput={awaitingInput}
           cwd={cwd}
@@ -1180,7 +1199,38 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         />
       )}
       {/* Password prompt is now rendered inside the active CommandBlock via bodyMode='password'. */}
-      {!showXterm && (
+      {isPinned && pinnedBlock && (
+        <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <CommandBlock
+            block={pinnedBlock.block}
+            active
+            isActive
+            awaitingInput={awaitingInput}
+            cwd={cwd}
+            bodyMode={activeBodyMode}
+            ptyId={ptyId ?? undefined}
+            docked={surface === 'docked'}
+            sessionRemote={eff.isRemote}
+            onCopy={handleCopy}
+            onAskAI={handleAskAI}
+            onRerun={handleRerun}
+            onSendInput={handleSendInput}
+            onPasswordDone={() => setPasswordPrompt(false)}
+            onInteractiveContainerRef={setInteractivePortalTarget}
+            headerExtra={
+              eff.isRemote && remoteAi.target ? (
+                <RemoteAiPill
+                  view={pillView(remoteAi)}
+                  onEnable={handleEnableRemoteAi}
+                  onSetMode={handleSetRemoteAiMode}
+                  onDismiss={handleDismissRemoteAi}
+                />
+              ) : undefined
+            }
+          />
+        </div>
+      )}
+      {showComposer && (
         <div style={{ flexShrink: 0, opacity: inputDisabled ? (blockInputLocked ? 0.3 : 0.5) : 1, pointerEvents: blockInputLocked ? 'none' : 'auto', transition: 'opacity 0.15s', cursor: inputDisabled && !blockInputLocked ? 'not-allowed' : undefined }}>
           <TerminalInput
             ref={inputRef}
