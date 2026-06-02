@@ -62,10 +62,10 @@ interface TerminalInputProps {
   initialValue?: string;
   remoteExecMode?: 'auto' | 'local';
   onRemoteExecModeChange?: (mode: 'auto' | 'local') => void;
-  /** Manual remote-host override (null when autodetection governs). */
-  manualRemote?: string | null;
-  /** Set/clear the manual remote override (host string, or null to clear). */
-  onSetManualRemote?: (host: string | null) => void;
+  remoteAiView?: PillView;
+  onEnableRemoteAi?: () => void;
+  onSetRemoteAiMode?: (mode: RemoteAiMode) => void;
+  onDismissRemoteAi?: () => void;
   aiProvider?: AIProvider;
   trustLevel?: TrustLevel;
   onTrustLevelChange?: (level: TrustLevel) => void;
@@ -110,10 +110,8 @@ export function RemoteAiPill({ view, onEnable, onSetMode, onDismiss }: RemoteAiP
   );
 }
 
-export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>(function TerminalInput({ onSubmit, mode, onModeChange, disabled, cwd, promptInfo, shellIntegrated, history = [], onClear, initialValue, remoteExecMode, onRemoteExecModeChange, manualRemote, onSetManualRemote, aiProvider, trustLevel, onTrustLevelChange }, ref) {
+export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>(function TerminalInput({ onSubmit, mode, onModeChange, disabled, cwd, promptInfo, shellIntegrated, history = [], onClear, initialValue, remoteExecMode, onRemoteExecModeChange, remoteAiView, onEnableRemoteAi, onSetRemoteAiMode, onDismissRemoteAi, aiProvider, trustLevel, onTrustLevelChange }, ref) {
   const [value, setValue] = useState(initialValue || '');
-  const [markingRemote, setMarkingRemote] = useState(false);
-  const [markValue, setMarkValue] = useState('');
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const historyIndexRef = useRef(-1);
   const savedInputRef = useRef('');
@@ -358,46 +356,13 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
               : 'Shell integration not detected \u2014 falling back to prompt-text heuristics. Block boundaries may be flaky.'}
             aria-label={shellIntegrated ? 'Shell integration active' : 'Shell integration not detected'}
           />
-          {onSetManualRemote && (
-            markingRemote ? (
-              <input
-                className={styles.markRemoteInput}
-                autoFocus
-                value={markValue}
-                placeholder="user@host"
-                onChange={(e) => setMarkValue(e.target.value)}
-                onClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => {
-                  e.stopPropagation();
-                  if (e.key === 'Enter') {
-                    onSetManualRemote(markValue.trim() || null);
-                    setMarkingRemote(false);
-                    setMarkValue('');
-                  } else if (e.key === 'Escape') {
-                    setMarkingRemote(false);
-                    setMarkValue('');
-                  }
-                }}
-                onBlur={() => { setMarkingRemote(false); setMarkValue(''); }}
-              />
-            ) : manualRemote ? (
-              <button
-                className={styles.markRemoteChip}
-                onClick={(e) => { e.stopPropagation(); onSetManualRemote(null); }}
-                title={`Manually marked remote: ${manualRemote} — click to clear`}
-              >
-                {manualRemote} {'✕'}
-              </button>
-            ) : (
-              <button
-                className={styles.markRemoteBtn}
-                onClick={(e) => { e.stopPropagation(); setMarkValue(promptInfo?.sshTarget ?? ''); setMarkingRemote(true); }}
-                title="Mark this tab as a remote SSH session (when autodetection misses)"
-                aria-label="Mark tab as remote"
-              >
-                {'⥂'}
-              </button>
-            )
+          {remoteAiView && onEnableRemoteAi && onSetRemoteAiMode && onDismissRemoteAi && (
+            <RemoteAiPill
+              view={remoteAiView}
+              onEnable={onEnableRemoteAi}
+              onSetMode={onSetRemoteAiMode}
+              onDismiss={onDismissRemoteAi}
+            />
           )}
           {isAI ? (
             <>
