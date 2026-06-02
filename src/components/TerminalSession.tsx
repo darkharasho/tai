@@ -16,6 +16,7 @@ import { useSettings } from '@/hooks/useSettings';
 import type { AIProvider, ContextMode, TrustLevel, AIEntry } from '@/types';
 import { hasActiveAi } from '@/utils/hasActiveAi';
 import { isMultilineCommand } from '@/utils/isMultilineCommand';
+import { buildRecentContext } from '@/utils/aiContext';
 import {
   type QueuedPrompt,
   addQueuedPrompt,
@@ -122,6 +123,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const altScreenRef = useRef(false);
   const interactiveModeRef = useRef(false);
   const preambleSentRef = useRef(false);
+  const lastContextBlockIdRef = useRef<string | null>(null);
+  const gitBranchRef = useRef<string | null>(null);
   const capturedOutputRef = useRef<string | null>(null);
   altScreenRef.current = altScreenVisible;
   interactiveModeRef.current = interactiveMode;
@@ -136,6 +139,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     providerRef.current.stop();
     providerRef.current = createProvider(aiProvider, tabId);
     preambleSentRef.current = false;
+    lastContextBlockIdRef.current = null;
   }, [aiProvider, tabId]);
 
   // Sync completed command blocks to the main process so the MCP history
@@ -148,13 +152,24 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         command: item.block.command,
         output: item.block.output,
         exitCode: item.block.exitCode,
+        cwd: item.block.cwd ?? cwd,
+        gitBranch: gitBranchRef.current,
+        durationMs: item.block.duration,
+        timestamp: item.block.startTime,
       }));
     window.tai?.ai?.updateHistory(tabId, entries);
-  }, [displayItems, tabId]);
+  }, [displayItems, tabId, cwd]);
 
   useEffect(() => {
     if (initialCwd) setCwd(initialCwd);
   }, [initialCwd]);
+
+  useEffect(() => {
+    if (!cwd) { gitBranchRef.current = null; return; }
+    let cancelled = false;
+    window.tai?.git?.branch(cwd).then(b => { if (!cancelled) gitBranchRef.current = b; });
+    return () => { cancelled = true; };
+  }, [cwd]);
 
   useEffect(() => {
     window.tai?.pty?.getShellHistory(500).then((lines: string[]) => setShellHistory(lines));
@@ -564,7 +579,16 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         }
       }
     }
-    lines.push(`Working directory: ${cwd}`);
+    const recent = buildRecentContext(displayItems, lastContextBlockIdRef.current, {
+      cwd,
+      gitBranch: gitBranchRef.current,
+    });
+    if (recent.text) {
+      lines.push('', recent.text);
+    } else {
+      lines.push(`Working directory: ${cwd}`);
+    }
+    lastContextBlockIdRef.current = recent.lastId;
     if (lines.length > 0) {
       fullPrompt = `<system>\n${lines.join('\n')}\n</system>\n\n${prompt}`;
     }
@@ -761,7 +785,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     aiBlockIdRef.current = aiId;
 
     providerRef.current.send(fullPrompt, cwd, trustLevel, claudeModel, claudeEffort);
-  }, [cwd, trustLevel, handleInputModeChange, promptInfo, remoteExecMode, claudeModel, claudeEffort]);
+  }, [cwd, trustLevel, handleInputModeChange, promptInfo, remoteExecMode, claudeModel, claudeEffort, displayItems]);
 
   const handleAIRequestRef = useRef(handleAIRequest);
   useEffect(() => {

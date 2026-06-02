@@ -48,7 +48,7 @@ contextBridge.exposeInMainWorld('tai', {
       ipcRenderer.invoke('ai:send', key, cwd, message, permMode, model, effort),
     cancel: (key: string) => ipcRenderer.send('ai:cancel', key),
     stop: (key: string) => ipcRenderer.send('ai:stop', key),
-    updateHistory: (key: string, entries: Array<{ command: string; output: string; exitCode?: number }>) =>
+    updateHistory: (key: string, entries: Array<{ command: string; output: string; exitCode?: number; cwd?: string; gitBranch?: string | null; durationMs?: number; timestamp?: number }>) =>
       ipcRenderer.send('ai:updateHistory', key, entries),
     approve: (key: string, toolUseId: string, approved: boolean) =>
       ipcRenderer.invoke('ai:approve', key, toolUseId, approved),
@@ -70,6 +70,9 @@ contextBridge.exposeInMainWorld('tai', {
       ipcRenderer.invoke('ai:setRemoteTarget', key, target, mode),
     setDaemonEnabled: (key: string, enabled: boolean) =>
       ipcRenderer.invoke('ai:setDaemonEnabled', key, enabled),
+  },
+  git: {
+    branch: (cwd: string): Promise<string | null> => ipcRenderer.invoke('git:branch', cwd),
   },
   codex: {
     send: (key: string, cwd: string, message: string, permMode: string, model: string) =>

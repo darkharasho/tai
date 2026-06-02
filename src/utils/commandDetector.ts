@@ -28,6 +28,13 @@ const KNOWN_COMMANDS = new Set([
   'systemctl', 'journalctl', 'lsof', 'strace',
 ]);
 
+// CLI agents that TAI wraps as AI providers. When typed as the first token
+// these are real shell commands (launching the CLI), but their natural-language
+// arguments ("claude how do I fix this") would otherwise classify as AI and
+// misroute the launch into the provider instead of running the binary. Always
+// treat them as shell. Mirrors Warp's input_classifier guardrail.
+const WRAPPED_AGENT_CLIS = new Set(['claude', 'codex', 'gemini']);
+
 const NL_STARTERS = /^(what|why|how|when|where|who|which|can|could|would|should|is|are|do|does|did|will|shall|tell|explain|help|show|describe|fix|find|list|create|make|write|give|suggest|compare|check|analyze|summarize|refactor|debug|implement|add|remove|update|change|convert|translate|generate|optimize|review|please|hey|hi|sorry|thanks|thank)\b/i;
 
 const NL_WORDS = new Set([
@@ -70,6 +77,10 @@ const SENTENCE_WORDS = new Set([
 export function looksLikeShellCommand(input: string): boolean {
   const trimmed = input.trim();
   if (!trimmed) return false;
+
+  // Wrapped agent CLIs are always shell launches, even with NL-looking args or
+  // a trailing '?' — checked before any natural-language short-circuit below.
+  if (WRAPPED_AGENT_CLIS.has(trimmed.split(/\s+/)[0].toLowerCase())) return true;
 
   if (/^[.~\/]/.test(trimmed)) return true;
   if (/^[A-Z_][A-Z0-9_]*=/.test(trimmed)) return true;

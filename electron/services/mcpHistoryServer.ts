@@ -1,3 +1,5 @@
+import { formatHistoryEntries } from './historyFormat';
+
 /**
  * Generates a self-contained Node.js MCP server script that exposes a
  * TerminalHistory tool.  The tool reads a JSON file maintained by the
@@ -38,24 +40,7 @@ function readHistory(count) {
   }
 }
 
-function formatHistory(entries) {
-  if (entries.length === 0) return 'No terminal history available.';
-  const lines = [];
-  for (const entry of entries) {
-    const exitStr = entry.exitCode !== undefined && entry.exitCode !== 0 ? ' [exit ' + entry.exitCode + ']' : '';
-    lines.push('$ ' + entry.command + exitStr);
-    if (entry.output && entry.output.trim()) {
-      // Truncate very long output
-      let out = entry.output;
-      if (out.length > 2000) {
-        out = out.slice(0, 1000) + '\\n... (' + (out.length - 2000) + ' chars truncated) ...\\n' + out.slice(-1000);
-      }
-      lines.push(out.trim());
-    }
-    lines.push('');
-  }
-  return lines.join('\\n');
-}
+const formatHistoryEntries = ${formatHistoryEntries.toString()};
 
 // --- MCP JSON-RPC protocol over stdio ---
 let inputBuf = '';
@@ -105,7 +90,7 @@ async function handleRequest(msg) {
       const { name, arguments: args } = params;
       if (name === 'TerminalHistory') {
         const entries = readHistory(args?.count);
-        const text = formatHistory(entries);
+        const text = formatHistoryEntries(entries);
         respond(id, { content: [{ type: 'text', text }], isError: false });
       } else {
         respond(id, { content: [{ type: 'text', text: 'Unknown tool: ' + name }], isError: true });

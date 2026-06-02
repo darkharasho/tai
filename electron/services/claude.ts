@@ -381,7 +381,7 @@ export function setupClaudeService(getWindow: () => BrowserWindow | null) {
 
   // Receive terminal history snapshots from the renderer and persist to the
   // temp file that the MCP history server reads from.
-  ipcMain.on('ai:updateHistory', (_event, key: string, entries: Array<{ command: string; output: string; exitCode?: number }>) => {
+  ipcMain.on('ai:updateHistory', (_event, key: string, entries: Array<{ command: string; output: string; exitCode?: number; cwd?: string; gitBranch?: string | null; durationMs?: number; timestamp?: number }>) => {
     const state = getState(key);
     if (state.historyFilePath) {
       try {
