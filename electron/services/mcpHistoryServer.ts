@@ -40,7 +40,7 @@ function readHistory(count) {
   }
 }
 
-${formatHistoryEntries.toString()}
+const formatHistoryEntries = ${formatHistoryEntries.toString()};
 
 // --- MCP JSON-RPC protocol over stdio ---
 let inputBuf = '';
