@@ -66,6 +66,11 @@ export function onSshChange(
   };
 }
 
+/**
+ * Accepts the offer: enters watch mode and clears any prior dismissal. This is
+ * the explicit "enable" entry point; `setMode` is the watch/run toggle used
+ * once already active and deliberately leaves `dismissed` untouched.
+ */
 export function enableWatch(s: RemoteAiState): RemoteAiState {
   return { ...s, mode: 'watch', dismissed: false, error: null };
 }
@@ -87,6 +92,5 @@ export function dismissOffer(s: RemoteAiState): RemoteAiState {
 }
 
 export function setError(s: RemoteAiState, error: string | null): RemoteAiState {
-  // An error only surfaces in the active view; ensure we are at least in watch.
-  return { ...s, error, installing: false, mode: s.mode === 'off' ? 'watch' : s.mode };
+  return { ...s, error, installing: false };
 }
