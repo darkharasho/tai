@@ -122,6 +122,42 @@ describe('BlockSegmenter', () => {
     expect(blockCb.mock.calls[0][0].isRemote).toBe(true);
   });
 
+  it('detects a non-OSC133 ssh session via login-state when the remote prompt lacks user@host', () => {
+    const segmenter = new BlockSegmenter();
+    segmenter.setLocalHostname('localbox');
+    const sshCb = vi.fn();
+    segmenter.onSshSession(sshCb);
+
+    segmenter.feed('me@localbox:~$ ');
+    segmenter.feed('ssh myserver\n');
+    segmenter.feed('Last login: Mon Jun  1 10:00:00 2026\n');
+    segmenter.feed('$ '); // minimal remote prompt — no user@host
+
+    expect(segmenter.sshSessionActive).toBe(true);
+    expect(sshCb).toHaveBeenLastCalledWith(true, 'myserver');
+
+    // Exit back to the original local prompt clears the session.
+    segmenter.feed('exit\n');
+    segmenter.feed('me@localbox:~$ ');
+    expect(segmenter.sshSessionActive).toBe(false);
+    expect(sshCb).toHaveBeenLastCalledWith(false, null);
+  });
+
+  it('does not start a non-OSC133 ssh session when output never shows a login/prompt', () => {
+    const segmenter = new BlockSegmenter();
+    segmenter.setLocalHostname('localbox');
+    const sshCb = vi.fn();
+    segmenter.onSshSession(sshCb);
+
+    segmenter.feed('me@localbox:~$ ');
+    segmenter.feed('ssh badhost\n');
+    segmenter.feed('ssh: connect to host badhost port 22: Connection refused\n');
+    segmenter.feed('me@localbox:~$ ');
+
+    expect(segmenter.sshSessionActive).toBe(false);
+    expect(sshCb).not.toHaveBeenCalled();
+  });
+
   it('cleans junk from prompt when bare CR precedes it', () => {
     const segmenter = new BlockSegmenter();
     const promptCb = vi.fn();
@@ -337,6 +373,26 @@ describe('BlockSegmenter', () => {
       segmenter.onSshSession(sshCb);
 
       segmenter.feed(`${A}$ ${B}ls\n${C}file\n${D(0)}`);
+      expect(segmenter.sshSessionActive).toBe(false);
+      expect(sshCb).not.toHaveBeenCalled();
+    });
+
+    it('does not flag `ssh -T git@github.com` (no-pty git transport) as a session', () => {
+      const segmenter = new BlockSegmenter();
+      const sshCb = vi.fn();
+      segmenter.onSshSession(sshCb);
+
+      segmenter.feed(`${A}$ ${B}ssh -T git@github.com\n${C}`);
+      expect(segmenter.sshSessionActive).toBe(false);
+      expect(sshCb).not.toHaveBeenCalled();
+    });
+
+    it('does not flag a one-shot `ssh host ls` as a session', () => {
+      const segmenter = new BlockSegmenter();
+      const sshCb = vi.fn();
+      segmenter.onSshSession(sshCb);
+
+      segmenter.feed(`${A}$ ${B}ssh user@host ls\n${C}`);
       expect(segmenter.sshSessionActive).toBe(false);
       expect(sshCb).not.toHaveBeenCalled();
     });

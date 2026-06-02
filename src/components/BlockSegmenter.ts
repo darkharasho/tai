@@ -1,10 +1,10 @@
 import { stripAnsi, normalizeCursorRedraws } from '@/utils/stripAnsi';
 import { parseOsc6973 } from '@/utils/osc6973';
+import { parseInteractiveSshCommand, checkSshLoginState } from '@/utils/sshDetect';
 import type { SegmentedBlock } from '@/types';
 
 const PROMPT_RE = /(\S+[@:]\S+.*[\$#%>❯→➜]|[→➜]\s+\S+|[\$#%>❯→➜])\s*$/;
 const SSH_TARGET_RE = /(\S+)@(\S+?)[\s:]/;
-const SSH_CMD_RE = /^ssh\s+(?:.*\s)?(?:(\S+)@)?(\S+)\s*$/;
 const ALT_SCREEN_ENTER_SEQS = ['\x1b[?1049h', '\x1b[?47h', '\x1b[?1047h'];
 const ALT_SCREEN_EXIT_SEQS = ['\x1b[?1049l', '\x1b[?47l', '\x1b[?1047l'];
 const CURSOR_HIDE = '\x1b[?25l';
@@ -403,11 +403,24 @@ export class BlockSegmenter {
       hooksAvailable: false,
     };
 
-    const sshMatch = command.match(SSH_CMD_RE);
-    if (sshMatch) {
-      const user = sshMatch[1] || '';
-      const host = sshMatch[2];
-      this._sshConnectionTarget = user ? `${user}@${host}` : host;
+    const ssh = parseInteractiveSshCommand(command);
+    if (ssh && ssh.host) {
+      this._sshConnectionTarget = ssh.host;
+    }
+
+    // Legacy (non-OSC 133) SSH-session detection. When an interactive ssh
+    // command's output shows a login banner or a remote shell prompt, mark the
+    // session active — this works even when the remote PS1 lacks `user@host`
+    // and no OSC 133 markers arrive. Gated on the command parser so stray
+    // output can't flip the flag. Clearing is best-effort: returning to the
+    // original local prompt ends it (the OSC 133 path uses explicit D markers).
+    if (ssh) {
+      const loginState = checkSshLoginState(output);
+      if (loginState === 'last-login' || loginState === 'prompt-detected') {
+        this._setSshSession(true, ssh.host ?? this._sshConnectionTarget);
+      }
+    } else if (this._inSshSession && newPromptText === this._initialPrompt) {
+      this._setSshSession(false, null);
     }
 
     this._blockCallbacks.forEach(cb => cb(block));
@@ -569,12 +582,9 @@ export class BlockSegmenter {
         if (this._osc133Phase !== 'command') break;
         this._osc133Phase = 'output';
         this._setCommandActive(true);
-        const cmdMatch = stripAnsi(this._osc133RawCommand).trim().match(SSH_CMD_RE);
-        if (cmdMatch) {
-          const user = cmdMatch[1] || '';
-          const host = cmdMatch[2];
-          const target = user ? `${user}@${host}` : host;
-          this._setSshSession(true, target);
+        const ssh = parseInteractiveSshCommand(stripAnsi(this._osc133RawCommand).trim());
+        if (ssh) {
+          this._setSshSession(true, ssh.host);
         }
         break;
       }
@@ -714,11 +724,9 @@ export class BlockSegmenter {
       } : {}),
     };
 
-    const sshMatch = command.match(SSH_CMD_RE);
-    if (sshMatch) {
-      const user = sshMatch[1] || '';
-      const host = sshMatch[2];
-      this._sshConnectionTarget = user ? `${user}@${host}` : host;
+    const ssh = parseInteractiveSshCommand(command);
+    if (ssh && ssh.host) {
+      this._sshConnectionTarget = ssh.host;
     }
 
     this._blockCallbacks.forEach(cb => cb(block));
