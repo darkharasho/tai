@@ -1114,10 +1114,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   // While docked/tier1, the trailing active command block is rendered in the
   // bottom-pinned region (Personality 2), not inside the scrolling history.
   const lastItem = displayItems[displayItems.length - 1];
-  const pinnedBlock =
-    isPinned && lastItem?.type === 'command' && (lastItem as DisplayItem & { type: 'command' }).active
-      ? (lastItem as DisplayItem & { type: 'command' })
-      : null;
+  const lastCommand = lastItem?.type === 'command' ? lastItem : null;
+  const pinnedBlock = isPinned && lastCommand?.active ? lastCommand : null;
   const historyItems = pinnedBlock ? displayItems.slice(0, -1) : displayItems;
 
   return (
