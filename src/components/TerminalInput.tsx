@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useImperativeHandle, forwardRef, useMemo } from 'react';
 import { predictCommand } from '@/hooks/useGhostText';
 import { classifyInput, FLIP_THRESHOLD } from '@/utils/commandDetector';
+import { stripForceShellPrefix, shouldShowAutoBadge } from '@/utils/inputModeUx';
 import styles from './TerminalInput.module.css';
 import { ShieldCheck, ShieldOff } from 'lucide-react';
 import type { AIProvider, TrustLevel } from '@/types';
@@ -70,7 +71,7 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const historyIndexRef = useRef(-1);
   const savedInputRef = useRef('');
-  const manualOverrideRef = useRef(false);
+  const [manualOverride, setManualOverride] = useState(false);
   const [tabCompletions, setTabCompletions] = useState<string[]>([]);
   const [tabIndex, setTabIndex] = useState(-1);
   const tabPrefixRef = useRef('');
@@ -111,7 +112,7 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Tab' && e.shiftKey) {
       e.preventDefault();
-      manualOverrideRef.current = true;
+      setManualOverride(true);
       onModeChange(mode === 'shell' ? 'ai' : 'shell');
       return;
     }
@@ -194,7 +195,7 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
     if (e.key === 'Escape') {
       e.preventDefault();
       setValue('');
-      manualOverrideRef.current = false;
+      setManualOverride(false);
       return;
     }
     if (e.key === 'ArrowRight' && prediction && inputRef.current?.selectionStart === value.length) {
@@ -227,7 +228,7 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
       e.preventDefault();
       onSubmit(value);
       setValue('');
-      manualOverrideRef.current = false;
+      setManualOverride(false);
       historyIndexRef.current = -1;
       savedInputRef.current = '';
       setTabCompletions([]);
@@ -238,25 +239,42 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newVal = e.target.value;
+    // In AI mode, a leading '!' forces a one-off shell command: strip it,
+    // lock to shell, and skip autodetect for this change.
+    const forced = stripForceShellPrefix(mode, e.target.value);
+    if (forced.forceShell) {
+      setValue(forced.value);
+      setTabCompletions([]);
+      setTabIndex(-1);
+      tabPrefixRef.current = '';
+      setManualOverride(true);
+      onModeChange('shell');
+      return;
+    }
+
+    const newVal = forced.value;
     setValue(newVal);
     setTabCompletions([]);
     setTabIndex(-1);
     tabPrefixRef.current = '';
-    if (!manualOverrideRef.current) {
-      const trimmed = newVal.trim();
-      if (trimmed.length === 0) {
-        if (mode !== 'shell') onModeChange('shell');
-      } else {
-        const { type, confidence } = classifyInput(trimmed, { currentMode: mode });
-        if (confidence >= FLIP_THRESHOLD && type !== mode) {
-          onModeChange(type);
-        }
+
+    const trimmed = newVal.trim();
+    if (trimmed.length === 0) {
+      // Clearing the field resumes autodetect for the next input.
+      setManualOverride(false);
+      if (mode !== 'shell') onModeChange('shell');
+      return;
+    }
+    if (!manualOverride) {
+      const { type, confidence } = classifyInput(trimmed, { currentMode: mode });
+      if (confidence >= FLIP_THRESHOLD && type !== mode) {
+        onModeChange(type);
       }
     }
   };
 
   const isAI = mode === 'ai';
+  const showAutoBadge = shouldShowAutoBadge(value, manualOverride);
   const shortCwd = cwd.replace(/^\/var\/home\/[^/]+/, '~').replace(/^\/home\/[^/]+/, '~');
   const modKey = isMac ? '\u2318' : 'Ctrl+';
 
@@ -355,6 +373,11 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
             </button>
           )}
           <div className={styles.hint}>
+            {showAutoBadge && (
+              <span className={styles.autoBadge} title="Mode auto-detected — Shift+Tab to lock, ! to force shell">
+                auto
+              </span>
+            )}
             <span className={styles.kbd}>Shift+Tab</span>
             <span className={styles.hintLabel}>{isAI ? 'Shell' : 'AI'}</span>
           </div>
