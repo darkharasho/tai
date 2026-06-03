@@ -338,6 +338,10 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
 
     segmenter.onBlock((block) => {
       if (cancelled) return;
+      // Hide the initial shell-integration injection (`. /path/to/tai-zsh.zsh`
+      // or `source .../tai-bash.sh` etc.) — this is an internal concern and
+      // should never appear as a visible card.
+      if (/^(?:\.|source)\s+.*\btai-(?:zsh|bash|fish)\b/.test(block.command)) return;
       setPasswordPrompt(false);
       const pending = pendingCommandRef.current;
       pendingCommandRef.current = null;

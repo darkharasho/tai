@@ -57,7 +57,16 @@ function TabItem({ tab, index, isActive, modeColor, tabCount, editingId, editVal
         />
       )}
       <span className={styles.tabIndex}>{index + 1}:</span>
-      {tab.aiWorking && <span className={styles.workingDot} aria-label="AI working" />}
+      {tab.aiWorking && (
+        <span
+          className={styles.workingDot}
+          style={{
+            background: modeColor,
+            boxShadow: `0 0 6px ${modeColor}`,
+          }}
+          aria-label="AI working"
+        />
+      )}
       {editingId === tab.id ? (
         <input
           autoFocus

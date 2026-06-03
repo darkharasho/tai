@@ -241,6 +241,14 @@ export function InlineAIBlock({
                   </ReactMarkdown>
                 </div>
               ) : null}
+
+              {streaming && (
+                <div className={styles.thinkingBar}>
+                  <span className={styles.thinkingDot} />
+                  <span className={styles.thinkingDot} />
+                  <span className={styles.thinkingDot} />
+                </div>
+              )}
             </div>
 
             {queuedPrompts && queuedPrompts.length > 0 && onEditQueued && onRemoveQueued && (

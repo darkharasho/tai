@@ -276,8 +276,7 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--color-agent);
-  box-shadow: 0 0 6px var(--color-agent);
+  /* background and box-shadow set inline based on local/remote context */
   animation: tabDotPulse 1.4s ease-in-out infinite;
   flex-shrink: 0;
 }

@@ -493,6 +493,41 @@
   color: #ef4444;
 }
 
+/* Bottom-anchored thinking indicator — stays visible at the bottom of the
+   card viewport regardless of scroll, disappears when streaming ends. */
+.thinkingBar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 0 4px;
+  background: linear-gradient(to bottom, transparent 0%, var(--bg-card) 40%);
+  z-index: 2;
+}
+
+.thinkingDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-ai);
+  animation: thinkingPulse 1.4s ease-in-out infinite;
+}
+
+.thinkingDot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.thinkingDot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes thinkingPulse {
+  0%, 100% { opacity: 0.2; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
 .queueRow {
   display: flex;
   flex-wrap: wrap;
