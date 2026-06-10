@@ -11,7 +11,7 @@ import { initScrollbarHover } from './utils/scrollbarHover';
 import { initExternalLinks } from './utils/externalLinks';
 import { useWhatsNew } from './hooks/useWhatsNew';
 import { useUpdateNotifier } from './hooks/useUpdateNotifier';
-import type { AIProvider, ContextMode, TabState, TrustLevel } from './types';
+import type { AIProvider, ContextMode, TabState, TrustLevel, ClaudeModelOption } from './types';
 
 const SHELL_NAMES = new Set(['bash', 'zsh', 'sh', 'fish', 'dash', 'ksh', 'csh', 'tcsh', 'nu', 'pwsh', 'powershell', 'cmd']);
 
@@ -23,6 +23,7 @@ function createTabState(defaults?: { trustLevel?: TrustLevel; aiProvider?: AIPro
 
 export default function App() {
   const { config, loaded: configLoaded, setSetting } = useSettings();
+  const [claudeModels, setClaudeModels] = useState<ClaudeModelOption[]>([]);
   const whatsNew = useWhatsNew();
   const updater = useUpdateNotifier();
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -40,6 +41,26 @@ export default function App() {
   useEffect(() => {
     return window.tai?.window?.onMaximizedChange?.((m: boolean) => setMaximized(m));
   }, []);
+
+  // Prefetch the Claude models this account/org can actually use. Orgs can
+  // restrict models and 1M context is gated per-org, so we don't assume every
+  // model is available — ai:models derives the real set from ~/.claude.json.
+  useEffect(() => {
+    window.tai?.ai?.models?.().then((r) => {
+      if (r?.models?.length) setClaudeModels(r.models);
+    }).catch(() => {});
+  }, []);
+
+  // If the persisted model isn't in the account's allowed set (e.g. access was
+  // revoked, or a stale value), fall back to the recommended/first model so we
+  // never spawn the CLI with a disallowed --model. Runs once the live list and
+  // the loaded settings are both available, covering the settings-load race.
+  useEffect(() => {
+    if (!configLoaded || !claudeModels.length) return;
+    const current = config['claude.model'] || 'sonnet';
+    if (claudeModels.some((m) => m.value === current)) return;
+    setSetting('claude.model', claudeModels.find((m) => m.recommended)?.value ?? claudeModels[0].value);
+  }, [configLoaded, claudeModels, config['claude.model'], setSetting]);
 
   useEffect(() => {
     window.tai?.notify?.setActiveTab(activeTabId);
@@ -233,6 +254,7 @@ export default function App() {
         onAIProviderChange={handleAIProviderChange}
         claudeModel={config['claude.model'] || 'sonnet'}
         onClaudeModelChange={(model) => setSetting('claude.model', model)}
+        availableModels={claudeModels}
         claudeEffort={config['claude.effort'] || 'auto'}
         onClaudeEffortChange={(effort) => setSetting('claude.effort', effort)}
         expandToolCalls={!!config['ai.expandToolCalls']}

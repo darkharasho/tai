@@ -19,6 +19,7 @@ interface QuickSettingsProps {
   onAIProviderChange: (provider: AIProvider) => void;
   claudeModel: string;
   onClaudeModelChange: (model: string) => void;
+  availableModels?: { value: string; label: string; description?: string; recommended?: boolean }[];
   claudeEffort: string;
   onClaudeEffortChange: (effort: string) => void;
   expandToolCalls: boolean;
@@ -58,11 +59,11 @@ const PROVIDER_OPTIONS = [
 const CLAUDE_MODEL_OPTIONS = [
   { value: 'default', label: 'Default' },
   { value: 'best', label: 'Best' },
-  { value: 'opus', label: 'Opus' },
-  { value: 'opus[1m]', label: 'Opus (1M context)' },
-  { value: 'sonnet', label: 'Sonnet' },
-  { value: 'sonnet[1m]', label: 'Sonnet (1M context)' },
-  { value: 'haiku', label: 'Haiku' },
+  { value: 'opus', label: 'Opus 4.8' },
+  { value: 'opus[1m]', label: 'Opus 4.8 (1M context)' },
+  { value: 'sonnet', label: 'Sonnet 4.6' },
+  { value: 'sonnet[1m]', label: 'Sonnet 4.6 (1M context)' },
+  { value: 'haiku', label: 'Haiku 4.5' },
   { value: 'opusplan', label: 'Opus Plan' },
 ];
 
@@ -122,10 +123,12 @@ function CustomDropdown({ value, options, onChange }: {
   );
 }
 
-export function QuickSettings({ visible, onClose, colorMode, onColorModeChange, cardAccent, onCardAccentChange, noise, onNoiseChange, trustLevel, onTrustLevelChange, aiProvider, onAIProviderChange, claudeModel, onClaudeModelChange, claudeEffort, onClaudeEffortChange, expandToolCalls, onExpandToolCallsChange, systemNotifications, onSystemNotificationsChange }: QuickSettingsProps) {
+export function QuickSettings({ visible, onClose, colorMode, onColorModeChange, cardAccent, onCardAccentChange, noise, onNoiseChange, trustLevel, onTrustLevelChange, aiProvider, onAIProviderChange, claudeModel, onClaudeModelChange, availableModels, claudeEffort, onClaudeEffortChange, expandToolCalls, onExpandToolCallsChange, systemNotifications, onSystemNotificationsChange }: QuickSettingsProps) {
   const [category, setCategory] = useState<Category>('general');
   const [version, setVersion] = useState('');
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'up-to-date' | 'available' | 'error'>('idle');
+
+  const modelOptions = availableModels?.length ? availableModels : CLAUDE_MODEL_OPTIONS;
 
   useEffect(() => {
     if (visible) {
@@ -254,7 +257,7 @@ export function QuickSettings({ visible, onClose, colorMode, onColorModeChange, 
                   <span className={styles.settingLabel}>Model</span>
                   <CustomDropdown
                     value={claudeModel}
-                    options={CLAUDE_MODEL_OPTIONS}
+                    options={modelOptions}
                     onChange={onClaudeModelChange}
                   />
                 </div>

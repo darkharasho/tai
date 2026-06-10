@@ -35,6 +35,7 @@ declare global {
         onError: (key: string, callback: (error: string) => void) => () => void;
         setRemoteTarget: (key: string, target: string | null, mode: string) => Promise<boolean>;
         setDaemonEnabled: (key: string, enabled: boolean) => Promise<boolean>;
+        models: () => Promise<{ models: import('../types').ClaudeModelOption[]; detected: boolean }>;
       };
       git: {
         branch: (cwd: string) => Promise<string | null>;

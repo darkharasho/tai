@@ -9,6 +9,7 @@ import { RemoteDaemonProxy } from './remoteDaemonProxy';
 import { generateMcpServerScript, generateMcpConfig } from './mcpRemoteServer';
 import { generateHistoryServerScript, generateHistoryMcpConfig } from './mcpHistoryServer';
 import { enrichEnv, resolveBinary } from './platform';
+import { getAvailableClaudeModels } from './claudeModels';
 
 const sshManager = new RemoteSshManager();
 const toolProxy = new RemoteToolProxy(sshManager);
@@ -433,6 +434,11 @@ export function setupClaudeService(getWindow: () => BrowserWindow | null) {
     }
     return state.daemonEnabled;
   });
+
+  // ai:models — which Claude models this account/org can actually use (org
+  // allow-lists and 1M gating vary), derived from the CLI cache in ~/.claude.json
+  // rather than hardcoded. Falls back to the built-in set when not logged in.
+  ipcMain.handle('ai:models', () => getAvailableClaudeModels());
 
   ipcMain.handle('ai:send', (_event, key: string, cwd: string, message: string, permMode: string, model: string, effort?: string) => {
     const win = getWindow();

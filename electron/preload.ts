@@ -70,6 +70,7 @@ contextBridge.exposeInMainWorld('tai', {
       ipcRenderer.invoke('ai:setRemoteTarget', key, target, mode),
     setDaemonEnabled: (key: string, enabled: boolean) =>
       ipcRenderer.invoke('ai:setDaemonEnabled', key, enabled),
+    models: () => ipcRenderer.invoke('ai:models'),
   },
   git: {
     branch: (cwd: string): Promise<string | null> => ipcRenderer.invoke('git:branch', cwd),
