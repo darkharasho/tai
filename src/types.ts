@@ -62,3 +62,12 @@ export interface TabState {
   aiProvider: AIProvider;
   aiWorking?: boolean;
 }
+
+export interface ClaudeModelOption {
+  value: string;
+  label: string;
+  description?: string;
+  recommended?: boolean;
+  oneM?: boolean;
+  extra?: boolean;
+}
