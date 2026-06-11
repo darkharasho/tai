@@ -1,7 +1,8 @@
 import { useState, useMemo, useCallback, useRef, useEffect, memo, type ReactNode } from 'react';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check, GitBranch } from 'lucide-react';
 import { ansiToHtml } from '@/utils/ansiToHtml';
 import { headLines, tailLines } from '@/utils/outputWindow';
+import { classifyExit } from '@/utils/exitStatus';
 import type { SegmentedBlock, BlockBodyMode } from '@/types';
 import { PasswordPrompt } from './PasswordPrompt';
 import styles from './CommandBlock.module.css';
@@ -105,6 +106,8 @@ export const CommandBlock = memo(function CommandBlock({
   aiSuggested,
   cwd,
   onCopy,
+  onAskAI,
+  onRerun,
   onSendInput,
   bodyMode = 'output',
   ptyId,
@@ -118,7 +121,25 @@ export const CommandBlock = memo(function CommandBlock({
   const [showAll, setShowAll] = useState(false);
   const [copied, setCopied] = useState(false);
   const [inputValue, setInputValue] = useState('');
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const interactiveRef = useRef<HTMLInputElement>(null);
+
+  const openMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setMenuPos({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  useEffect(() => {
+    if (!menuPos) return;
+    const close = () => setMenuPos(null);
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
+    window.addEventListener('mousedown', close);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [menuPos]);
 
   useEffect(() => {
     if (active && awaitingInput && onSendInput) {
@@ -164,14 +185,49 @@ export const CommandBlock = memo(function CommandBlock({
   const isRemote = block.isRemote || !!sessionRemote;
   const modeColor = isRemote ? 'var(--color-agent)' : 'var(--color-shell)';
 
+  // Warp-style exit affordance: failures get a red tag, interrupts/signals a
+  // neutral one, success stays clean. Never shown while still running.
+  const exitClass = active ? 'unknown' : classifyExit(block.exitCode, block.signal);
+  const exitLabel =
+    exitClass === 'failure' ? `exit ${block.exitCode}`
+    : exitClass === 'neutral'
+      ? (block.signal ? block.signal : block.exitCode === 130 ? '^C' : `exit ${block.exitCode}`)
+      : null;
+  const exitTag = exitLabel ? (
+    <span className={`${styles.exitTag}${exitClass === 'failure' ? ` ${styles.exitFailure}` : ''}`}>
+      {exitLabel}
+    </span>
+  ) : null;
+
+  // Warp's block action set, on right-click. Rendered for both the collapsed
+  // and expanded forms; mousedown is stopped so the window-level closer
+  // doesn't race the item's click handler.
+  const contextMenu = menuPos ? (
+    <div
+      className={styles.contextMenu}
+      style={{ left: menuPos.x, top: menuPos.y }}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button className={styles.contextItem} onClick={() => { onCopy(block.command); setMenuPos(null); }}>Copy command</button>
+      <button className={styles.contextItem} onClick={() => { onCopy(block.output); setMenuPos(null); }}>Copy output</button>
+      <button className={styles.contextItem} onClick={() => { onCopy(`${block.command}\n${block.output}`); setMenuPos(null); }}>Copy command + output</button>
+      <div className={styles.contextSep} />
+      <button className={styles.contextItem} onClick={() => { onRerun(block.command); setMenuPos(null); }}>Re-run command</button>
+      <button className={styles.contextItem} onClick={() => { onAskAI(block); setMenuPos(null); }}>Ask AI about this</button>
+    </div>
+  ) : null;
+
   if (collapsed) {
     return (
-      <div className={styles.collapsed} onClick={() => onToggleCollapse?.()}>
+      <div className={styles.collapsed} onClick={() => onToggleCollapse?.()} onContextMenu={openMenu}>
         <span className={styles.promptUser} style={{ color: modeColor }}>{user}</span>
         {path && <span className={styles.promptPath}>{path}</span>}
         <span className={styles.promptSep}>$</span>
         <span className={styles.cmdDim}>{block.command}</span>
+        {exitTag}
         <span className={styles.meta}>{formatDuration(block.duration)}</span>
+        {contextMenu}
       </div>
     );
   }
@@ -192,14 +248,21 @@ export const CommandBlock = memo(function CommandBlock({
         ...(replActive ? REPL_ACTIVE_STYLE : {}),
       } as React.CSSProperties}
       onClick={() => { if (active && awaitingInput && onSendInput) interactiveRef.current?.focus(); }}
+      onContextMenu={openMenu}
     >
       <div className={styles.promptLine} onClick={() => onToggleCollapse?.()}>
         <div className={styles.promptLeft}>
           <span className={styles.promptUser} style={{ color: modeColor }}>{user}</span>
-          {path && <span className={styles.promptPath}>{path}</span>}
+          {path && <span className={styles.promptPath} title={block.cwd}>{path}</span>}
           <span className={styles.promptSep}>$</span>
           <span className={styles.cmd}>{block.command}</span>
           {aiSuggested && <span className={styles.viaAi}>ai</span>}
+          {!active && block.gitBranch && (
+            <span className={styles.branchChip} title={block.cwd}>
+              <GitBranch size={10} />
+              {block.gitBranch}
+            </span>
+          )}
         </div>
         <div className={styles.promptRight}>
           {headerExtra}
@@ -238,6 +301,7 @@ export const CommandBlock = memo(function CommandBlock({
               >
                 {copied ? <Check size={11} /> : <Copy size={11} />}
               </span>
+              {exitTag}
               <span className={styles.meta}>{formatDuration(block.duration)}</span>
             </>
           )}
@@ -316,6 +380,7 @@ export const CommandBlock = memo(function CommandBlock({
           }}
         />
       )}
+      {contextMenu}
     </div>
   );
 });

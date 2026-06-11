@@ -132,7 +132,7 @@ export function BlockList({
       const id = item.block.id;
       const isActive = item.active || id === activeBlockId;
       return (
-        <div key={id}>
+        <div key={id} data-item-id={id}>
           <CommandBlock
             block={item.block}
             collapsed={collapsed}

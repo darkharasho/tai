@@ -229,3 +229,11 @@ html, body {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* Find-in-blocks: transient ring on the card the finder navigated to. */
+.tai-find-flash {
+  outline: 2px solid rgba(17, 183, 212, 0.65);
+  outline-offset: 2px;
+  border-radius: 10px;
+  transition: outline-color 0.6s ease;
+}

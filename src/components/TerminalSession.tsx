@@ -19,6 +19,8 @@ import { createGeminiProvider } from '@/providers/gemini';
 import { useSettings } from '@/hooks/useSettings';
 import type { AIProvider, ContextMode, TrustLevel, AIEntry } from '@/types';
 import { hasActiveAi } from '@/utils/hasActiveAi';
+import { patchBlock } from '@/utils/blockMeta';
+import { BlockFinder } from './BlockFinder';
 import { isMultilineCommand } from '@/utils/isMultilineCommand';
 import { buildRecentContext } from '@/utils/aiContext';
 import { redactHistoryEntries, redactSecrets } from '@/utils/redactSecrets';
@@ -69,6 +71,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const claudeModel = config['claude.model'] || 'sonnet';
   const claudeEffort = config['claude.effort'] || 'auto';
   const [displayItems, setDisplayItems] = useState<DisplayItem[]>([]);
+  const [findOpen, setFindOpen] = useState(false);
   const [altScreenVisible, setAltScreenVisible] = useState(false);
   const [interactiveMode, setInteractiveMode] = useState(false);
   const [interactivePortalTarget, setInteractivePortalTarget] = useState<HTMLDivElement | null>(null);
@@ -374,6 +377,18 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           command: fixedBlock.command,
           duration: fixedBlock.duration,
         });
+      }
+      // Resolve the git branch for the card chip from the post-exec cwd
+      // (cached main-process lookup). Local blocks only — the cwd of a
+      // remote block means nothing on this machine.
+      if (fixedBlock.cwd && !fixedBlock.isRemote) {
+        const blockId = fixedBlock.id;
+        window.tai?.git?.branch?.(fixedBlock.cwd)
+          .then((branch) => {
+            if (cancelled || !branch) return;
+            setDisplayItems(prev => patchBlock(prev, blockId, { gitBranch: branch }));
+          })
+          .catch(() => {});
       }
       refreshCwd(ptyId);
     });
@@ -1164,6 +1179,31 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   // for every card on every session render.
   const handlePasswordDone = useCallback(() => setPasswordPrompt(false), []);
 
+  // Find-in-blocks (Ctrl/Cmd+F), visible tab only.
+  const sessionRootRef = useRef<HTMLDivElement>(null);
+  const findFlashTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!visible) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        setFindOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [visible]);
+
+  const handleFindNavigate = useCallback((itemId: string) => {
+    const el = sessionRootRef.current?.querySelector(`[data-item-id="${itemId}"]`) as HTMLElement | null;
+    if (!el) return;
+    el.scrollIntoView({ block: 'center', behavior: 'instant' as ScrollBehavior });
+    el.classList.add('tai-find-flash');
+    if (findFlashTimerRef.current) window.clearTimeout(findFlashTimerRef.current);
+    findFlashTimerRef.current = window.setTimeout(() => el.classList.remove('tai-find-flash'), 1200);
+  }, []);
+  const handleFindClose = useCallback(() => setFindOpen(false), []);
+
   const showFullscreenInteractive = surface === 'fullscreen' && !altScreenVisible;
   // Surface-driven: the xterm renders only for `docked` (portaled into the
   // pinned block) and `fullscreen`. Crucially NOT for `tier1` — a password
@@ -1193,7 +1233,14 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const historyItems = pinnedBlock ? displayItems.slice(0, -1) : displayItems;
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0, position: 'relative' }}>
+    <div ref={sessionRootRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0, position: 'relative' }}>
+      {findOpen && (
+        <BlockFinder
+          items={historyItems}
+          onClose={handleFindClose}
+          onNavigate={handleFindNavigate}
+        />
+      )}
       {!showXterm && daemonCardState?.show && remoteTarget && (
         <DaemonInstallCard
           target={remoteTarget}
