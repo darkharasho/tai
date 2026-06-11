@@ -135,7 +135,7 @@ export function BlockList({
       const id = item.block.id;
       const isActive = item.active || id === activeBlockId;
       return (
-        <div key={id} data-item-id={id}>
+        <div key={id} data-item-id={id} className={isActive ? undefined : styles.cardWindow}>
           <CommandBlock
             block={item.block}
             collapsed={collapsed}

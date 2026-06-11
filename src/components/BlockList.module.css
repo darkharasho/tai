@@ -142,3 +142,12 @@
 .toolBtnDeny:hover {
   background: rgba(239, 68, 68, 0.08);
 }
+
+/* Offscreen history cards skip layout/paint entirely (Warp renders only
+   visible grid rows; this is the CSS-native equivalent). The intrinsic
+   size placeholder keeps scrollbar geometry sane before first paint;
+   once a card has rendered, the browser remembers its real size. */
+.cardWindow {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
+}
