@@ -1,9 +1,10 @@
-import { useState, useMemo, useCallback, useRef, useEffect, memo, type ReactNode } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect, memo, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Copy, Check, GitBranch } from 'lucide-react';
 import { ansiToHtml } from '@/utils/ansiToHtml';
 import { headLines, tailLines } from '@/utils/outputWindow';
 import { classifyExit } from '@/utils/exitStatus';
+import { clampMenuPos } from '@/utils/menuPosition';
 import type { SegmentedBlock, BlockBodyMode } from '@/types';
 import { PasswordPrompt } from './PasswordPrompt';
 import styles from './CommandBlock.module.css';
@@ -130,6 +131,17 @@ export const CommandBlock = memo(function CommandBlock({
     e.preventDefault();
     setMenuPos({ x: e.clientX, y: e.clientY });
   }, []);
+
+  // Clamp to the viewport once the menu has real dimensions; right-clicks
+  // near the bottom/right edge would otherwise push it off-screen. Runs
+  // again after its own setState, where the equality guard settles it.
+  useLayoutEffect(() => {
+    if (!menuPos || !menuRef.current) return;
+    const rect = menuRef.current.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const clamped = clampMenuPos(menuPos, rect, { width: window.innerWidth, height: window.innerHeight });
+    if (clamped.x !== menuPos.x || clamped.y !== menuPos.y) setMenuPos(clamped);
+  }, [menuPos]);
 
   useEffect(() => {
     if (!menuPos) return;
