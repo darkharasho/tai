@@ -1419,7 +1419,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
             cwd={cwd}
             bodyMode={activeBodyMode}
             ptyId={ptyId ?? undefined}
-            docked={surface === 'docked'}
+            docked={pinnedActiveBlock(surface)}
             sessionRemote={eff.isRemote}
             onCopy={handleCopy}
             onAskAI={handleAskAI}
