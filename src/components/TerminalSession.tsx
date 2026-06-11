@@ -25,6 +25,8 @@ import { persistBlocks, loadBlocks } from '@/utils/sessionRestore';
 import { classifySessionCommand, shouldRootSession, detectPort, LONG_RUN_PROMOTE_MS, type SessionKind } from '@/utils/sessionKind';
 import { summarizeSession } from '@/utils/sessionSummary';
 import { classifyExit } from '@/utils/exitStatus';
+import { preserveStreamedOutput } from '@/utils/finalizeOutput';
+import { classifyKeyTarget } from '@/utils/keyRouting';
 import { isMultilineCommand } from '@/utils/isMultilineCommand';
 import { buildRecentContext } from '@/utils/aiContext';
 import { redactHistoryEntries, redactSecrets } from '@/utils/redactSecrets';
@@ -386,7 +388,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       let fixedBlock = pending
         ? { ...block, command: pending.command, duration: Date.now() - pending.startTime }
         : block;
-      if (captured) {
+      if (captured && captured.trim()) {
         fixedBlock = { ...fixedBlock, output: captured, rawOutput: captured };
       }
       const isSuggested = aiSuggestedCommands.current.has(fixedBlock.command);
@@ -417,7 +419,15 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           const idx = prev.findIndex(item => item.type === 'command' && item.block.id === 'pending');
           if (idx !== -1) {
             const next = [...prev];
-            next[idx] = { type: 'command', block: fixedBlock, aiSuggested: isSuggested, defaultCollapsed: sessionCollapse };
+            const prevItem = next[idx] as DisplayItem & { type: 'command' };
+            // A raw-mode flip (vite shortcuts etc.) can finalize with empty
+            // output — keep what was streamed into the pending card, and
+            // recompute the summary against the preserved text.
+            let finalBlock = preserveStreamedOutput(fixedBlock, prevItem.block);
+            if (sessionEnded && sess && finalBlock.output !== fixedBlock.output) {
+              finalBlock = { ...finalBlock, summaryLine: summarizeSession(sess.kind, finalBlock.output, sess.port) };
+            }
+            next[idx] = { type: 'command', block: finalBlock, aiSuggested: isSuggested, defaultCollapsed: sessionCollapse };
             return next;
           }
         }
@@ -495,7 +505,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         hiddenXtermRef.current?.clear();
       } else if (!entered) {
         const content = hiddenXtermRef.current?.getBufferContent();
-        if (content) capturedOutputRef.current = content;
+        if (content && content.trim()) capturedOutputRef.current = content;
       }
       setInteractiveMode(entered);
       setInteractiveFullscreen(entered && !!fullscreen);
@@ -1165,7 +1175,13 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   useEffect(() => {
     if (!visible) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (altScreenRef.current || interactiveModeRef.current) return;
+      // Target-aware instead of a blanket interactive-mode bail: the xterm
+      // and single-line inputs forward their own keys (double-handling would
+      // send two SIGINTs); anywhere else — including during a raw-mode
+      // session with focus on the page — the chord must still work, or
+      // Ctrl+C appears to need two presses.
+      const keyTarget = classifyKeyTarget(e.target);
+      if (keyTarget !== 'page') return;
 
       const isMac = navigator.platform.startsWith('Mac');
       const ctrlOrMeta = e.ctrlKey || e.metaKey;
@@ -1410,9 +1426,10 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       )}
       {/* Password prompt is now rendered inside the active CommandBlock via bodyMode='password'. */}
       {isPinned && pinnedBlock && (
-        /* Horizontal padding matches the block list (10px 14px) so the pinned
-           live card aligns with history cards instead of running full-bleed. */
-        <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '0 14px' }}>
+        /* Match the block list's geometry: 14px padding plus the 14px
+           scrollbar gutter the list always reserves on the right, so the
+           pinned live card's edges line up exactly with history cards. */
+        <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '0 28px 0 14px' }}>
           <CommandBlock
             block={pinnedBlock.block}
             active

@@ -3,6 +3,9 @@
   min-height: 0;
   padding: 10px 14px 0;
   overflow-y: auto;
+  /* Always reserve the scrollbar's 14px so card width doesn't jump when the
+     list starts overflowing, and the pinned card below can match it. */
+  scrollbar-gutter: stable;
   display: flex;
   flex-direction: column;
 }
