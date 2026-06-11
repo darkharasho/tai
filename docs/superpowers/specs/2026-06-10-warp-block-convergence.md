@@ -80,22 +80,24 @@ Streaming is RAF-coalesced (good). Verified jank, ranked:
   memoized line-count, stable per-id toggle callbacks in `BlockList`,
   `useCallback` for `onPasswordDone` (#4).
 
-### P1 — block interaction parity
-Copy-output / copy-command+output / copy-both on the card action cluster;
-exit-code affordance (color dot; treat 130/141 as neutral like Warp); cwd +
-git-branch chip from the OSC 6973 metadata we already collect; find-in-blocks
-(Ctrl+F overlay filtering/highlighting across cards — Warp `model/find.rs`
-semantics, plain JS regex is fine at our scale).
+### P1 — block interaction parity — IMPLEMENTED 2026-06-10 (17ca95d)
+Right-click context menu (copy command / output / both, re-run, ask AI);
+exit-code tag (`src/utils/exitStatus.ts`, 130/141/signals neutral like Warp);
+git-branch chip resolved from post-exec cwd via the cached `git:branch` IPC
+(`src/utils/blockMeta.ts` patches immutably); find-in-blocks Ctrl+F overlay
+(`src/utils/blockFind.ts`, `BlockFinder.tsx`) with match cycling and a
+transient ring on the matched card.
 
-### P2 — session restore
-Persist last ~50 blocks per tab (command, head/tail-capped rawOutput à la
-Warp's 5000-line serialization cap, exit code, cwd, branch, timestamps) to
-disk in the electron main; restore cards collapsed on relaunch.
+### P2 — session restore — IMPLEMENTED 2026-06-10 (98aab44)
+`src/utils/sessionRestore.ts`: last 50 finished blocks per tab, 200-line tail
+cap, localStorage (not electron-main SQLite — our payloads are small enough);
+restored cards seed `displayItems` flagged `restored` and default collapsed.
+AI items and active/pending blocks never persist.
 
-### P3 — list virtualization
-Windowed rendering of history cards (only near-viewport cards mount) once P0's
-bounding is in. Revisit only if profiling still shows list-scale cost; P0's
-output windowing removes most of the weight.
+### P3 — render windowing — IMPLEMENTED 2026-06-10 (a93a31d)
+Went with `content-visibility: auto` + `contain-intrinsic-size` on finished
+history-card wrappers instead of JS virtualization — offscreen cards skip
+layout/paint natively, no mount/unmount churn, scroll anchoring intact.
 
 ### Dropped / not transferable
 - Cell-grid output model + Alacritty reflow: xterm.js already owns grid/reflow
