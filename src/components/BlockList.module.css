@@ -153,4 +153,12 @@
 .cardWindow {
   content-visibility: auto;
   contain-intrinsic-size: auto 120px;
+  /* Spacing lives on the wrapper: while contents are in the skipped state,
+     inner margins don't contribute to layout, so cards would visually touch
+     until the visibility pass materializes them. */
+  margin-bottom: 8px;
+}
+
+.cardWindow > :first-child {
+  margin-bottom: 0;
 }
