@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect, memo, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Copy, Check, GitBranch } from 'lucide-react';
 import { ansiToHtml } from '@/utils/ansiToHtml';
 import { headLines, tailLines } from '@/utils/outputWindow';
@@ -123,6 +124,7 @@ export const CommandBlock = memo(function CommandBlock({
   const [inputValue, setInputValue] = useState('');
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const interactiveRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const openMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -131,8 +133,14 @@ export const CommandBlock = memo(function CommandBlock({
 
   useEffect(() => {
     if (!menuPos) return;
-    const close = () => setMenuPos(null);
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
+    // Target-based dismissal: the menu lives in a body portal, so native
+    // events from it still bubble to window — check containment instead of
+    // relying on stopPropagation.
+    const close = (e: MouseEvent) => {
+      if (menuRef.current?.contains(e.target as Node)) return;
+      setMenuPos(null);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuPos(null); };
     window.addEventListener('mousedown', close);
     window.addEventListener('keydown', onKey);
     return () => {
@@ -199,11 +207,14 @@ export const CommandBlock = memo(function CommandBlock({
     </span>
   ) : null;
 
-  // Warp's block action set, on right-click. Rendered for both the collapsed
-  // and expanded forms; mousedown is stopped so the window-level closer
-  // doesn't race the item's click handler.
-  const contextMenu = menuPos ? (
+  // Warp's block action set, on right-click. Portaled to document.body:
+  // the card wrapper has content-visibility containment, which would turn
+  // it into the containing block for position:fixed and offset the menu
+  // away from the cursor. Click handling stops propagation so the card's
+  // own onClick (focus/collapse) never fires from menu interactions.
+  const contextMenu = menuPos ? createPortal(
     <div
+      ref={menuRef}
       className={styles.contextMenu}
       style={{ left: menuPos.x, top: menuPos.y }}
       onMouseDown={(e) => e.stopPropagation()}
@@ -215,7 +226,8 @@ export const CommandBlock = memo(function CommandBlock({
       <div className={styles.contextSep} />
       <button className={styles.contextItem} onClick={() => { onRerun(block.command); setMenuPos(null); }}>Re-run command</button>
       <button className={styles.contextItem} onClick={() => { onAskAI(block); setMenuPos(null); }}>Ask AI about this</button>
-    </div>
+    </div>,
+    document.body,
   ) : null;
 
   if (collapsed) {

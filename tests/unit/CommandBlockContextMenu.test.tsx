@@ -82,4 +82,17 @@ describe('CommandBlock context menu', () => {
     fireEvent.contextMenu(card);
     expect(screen.getByText('Copy command')).toBeInTheDocument();
   });
+
+  it('portals the menu to document.body so card containment cannot offset it', () => {
+    // content-visibility on the card wrapper creates a containing block for
+    // position:fixed descendants; the menu must escape the card subtree or
+    // viewport coordinates land relative to the card.
+    const { card, container } = setup();
+    fireEvent.contextMenu(card, { clientX: 40, clientY: 50 });
+    const menu = screen.getByText('Copy command').closest('[class*="contextMenu"]') as HTMLElement;
+    expect(container.contains(menu)).toBe(false);
+    expect(menu.parentElement).toBe(document.body);
+    expect(menu.style.left).toBe('40px');
+    expect(menu.style.top).toBe('50px');
+  });
 });
