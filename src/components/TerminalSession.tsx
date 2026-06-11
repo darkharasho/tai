@@ -1160,6 +1160,10 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     window.tai?.pty?.write(ptyId, data);
   }, [ptyId]);
 
+  // Stable identity: an inline closure here would defeat memo(CommandBlock)
+  // for every card on every session render.
+  const handlePasswordDone = useCallback(() => setPasswordPrompt(false), []);
+
   const showFullscreenInteractive = surface === 'fullscreen' && !altScreenVisible;
   // Surface-driven: the xterm renders only for `docked` (portaled into the
   // pinned block) and `fullscreen`. Crucially NOT for `tier1` — a password
@@ -1238,7 +1242,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           aiProvider={aiProvider}
           activeBodyMode={activeBodyMode}
           ptyId={ptyId ?? undefined}
-          onPasswordDone={() => setPasswordPrompt(false)}
+          onPasswordDone={handlePasswordDone}
           onInteractiveContainerRef={setInteractivePortalTarget}
           sessionRemote={eff.isRemote}
         />
@@ -1283,7 +1287,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
             onAskAI={handleAskAI}
             onRerun={handleRerun}
             onSendInput={handleSendInput}
-            onPasswordDone={() => setPasswordPrompt(false)}
+            onPasswordDone={handlePasswordDone}
             onInteractiveContainerRef={setInteractivePortalTarget}
             headerExtra={
               eff.isRemote && remoteAi.target ? (

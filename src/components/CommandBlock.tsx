@@ -1,11 +1,16 @@
-import { useState, useMemo, useCallback, useRef, useEffect, type ReactNode } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect, memo, type ReactNode } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { ansiToHtml } from '@/utils/ansiToHtml';
+import { headLines, tailLines } from '@/utils/outputWindow';
 import type { SegmentedBlock, BlockBodyMode } from '@/types';
 import { PasswordPrompt } from './PasswordPrompt';
 import styles from './CommandBlock.module.css';
 
 const LONG_OUTPUT_LINES = 30;
+// Live tail window for the active streaming card. Bounds both the per-frame
+// ansiToHtml cost and the DOM size; the full output stays on the block for
+// copy/AI/expand once the command finishes.
+const MAX_ACTIVE_LINES = 500;
 
 function formatDuration(ms: number): string {
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
@@ -63,7 +68,35 @@ interface CommandBlockProps {
   headerExtra?: ReactNode;
 }
 
-export function CommandBlock({
+// Separator gradients depend only on the remote accent; hoisted so finished
+// cards keep referentially-stable styles across streaming re-renders.
+const SEPARATOR_STYLE_LOCAL = {
+  background: 'linear-gradient(90deg, rgba(0,168,132,0.12), transparent 60%)',
+} as const;
+const SEPARATOR_STYLE_REMOTE = {
+  background: 'linear-gradient(90deg, rgba(245,158,11,0.12), transparent 60%)',
+} as const;
+
+const REPL_ACTIVE_STYLE = {
+  minHeight: '60vh',
+  display: 'flex',
+  flexDirection: 'column',
+} as const;
+
+const STOP_BTN_STYLE = {
+  background: 'none',
+  border: '1px solid rgba(255,255,255,0.18)',
+  borderRadius: 4,
+  color: 'var(--text-muted)',
+  cursor: 'pointer',
+  padding: '1px 8px',
+  fontSize: 10,
+  fontFamily: 'var(--font-mono)',
+  marginLeft: 8,
+  letterSpacing: '0.5px',
+} as const;
+
+export const CommandBlock = memo(function CommandBlock({
   block,
   collapsed,
   onToggleCollapse,
@@ -93,13 +126,25 @@ export function CommandBlock({
     }
   }, [active, awaitingInput, onSendInput]);
 
-  const outputLines = block.output ? block.output.split('\n') : [];
-  const isLong = outputLines.length > LONG_OUTPUT_LINES;
+  const outputLineCount = useMemo(
+    () => (block.output ? block.output.split('\n').length : 0),
+    [block.output],
+  );
+  const isLong = outputLineCount > LONG_OUTPUT_LINES;
   const isClamped = isLong && !showAll && !active;
+  // Only the windowed slice is converted to HTML and materialized in the DOM:
+  // active cards show the live tail, clamped cards the head (the visual clip
+  // used to hide the rest while the full HTML still sat in the DOM).
   const coloredOutput = useMemo(() => {
     const raw = block.rawOutput || block.output;
-    return raw ? ansiToHtml(raw) : '';
-  }, [block.rawOutput, block.output]);
+    if (!raw) return '';
+    const windowed = active
+      ? tailLines(raw, MAX_ACTIVE_LINES).text
+      : isClamped
+        ? headLines(raw, LONG_OUTPUT_LINES).text
+        : raw;
+    return ansiToHtml(windowed);
+  }, [block.rawOutput, block.output, active, isClamped]);
 
   const handleOutputClick = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -144,7 +189,7 @@ export function CommandBlock({
       data-card-surface
       style={{
         '--accent-color': modeColor,
-        ...(replActive ? { minHeight: '60vh', display: 'flex', flexDirection: 'column' } : {}),
+        ...(replActive ? REPL_ACTIVE_STYLE : {}),
       } as React.CSSProperties}
       onClick={() => { if (active && awaitingInput && onSendInput) interactiveRef.current?.focus(); }}
     >
@@ -173,18 +218,7 @@ export function CommandBlock({
                   type="button"
                   onClick={(e) => { e.stopPropagation(); window.tai?.pty?.write?.(ptyId, '\x03'); }}
                   title="Send Ctrl-C to running command"
-                  style={{
-                    background: 'none',
-                    border: '1px solid rgba(255,255,255,0.18)',
-                    borderRadius: 4,
-                    color: 'var(--text-muted)',
-                    cursor: 'pointer',
-                    padding: '1px 8px',
-                    fontSize: 10,
-                    fontFamily: 'var(--font-mono)',
-                    marginLeft: 8,
-                    letterSpacing: '0.5px',
-                  }}
+                  style={STOP_BTN_STYLE}
                 >
                   STOP
                 </button>
@@ -212,24 +246,14 @@ export function CommandBlock({
 
       {bodyMode === 'password' && ptyId !== undefined && (
         <>
-          <div
-            className={styles.separator}
-            style={{
-              background: `linear-gradient(90deg, ${isRemote ? 'rgba(245,158,11,0.12)' : 'rgba(0,168,132,0.12)'}, transparent 60%)`,
-            }}
-          />
+          <div className={styles.separator} style={isRemote ? SEPARATOR_STYLE_REMOTE : SEPARATOR_STYLE_LOCAL} />
           <PasswordPrompt ptyId={ptyId} onDone={onPasswordDone ?? (() => {})} />
         </>
       )}
 
       {bodyMode === 'interactive' && (
         <>
-          <div
-            className={styles.separator}
-            style={{
-              background: `linear-gradient(90deg, ${isRemote ? 'rgba(245,158,11,0.12)' : 'rgba(0,168,132,0.12)'}, transparent 60%)`,
-            }}
-          />
+          <div className={styles.separator} style={isRemote ? SEPARATOR_STYLE_REMOTE : SEPARATOR_STYLE_LOCAL} />
           {isActive ? (
             <div
               ref={onInteractiveContainerRef}
@@ -245,12 +269,7 @@ export function CommandBlock({
 
       {bodyMode === 'output' && block.output && (
         <>
-          <div
-            className={styles.separator}
-            style={{
-              background: `linear-gradient(90deg, ${isRemote ? 'rgba(245,158,11,0.12)' : 'rgba(0,168,132,0.12)'}, transparent 60%)`,
-            }}
-          />
+          <div className={styles.separator} style={isRemote ? SEPARATOR_STYLE_REMOTE : SEPARATOR_STYLE_LOCAL} />
           <div className={styles.outputArea}>
             <div
               className={styles.output}
@@ -260,7 +279,7 @@ export function CommandBlock({
             />
             {isLong && !active && (
               <div className={styles.showMore} onClick={() => setShowAll(v => !v)}>
-                {showAll ? 'less' : `${outputLines.length} lines`}
+                {showAll ? 'less' : `${outputLineCount} lines`}
               </div>
             )}
           </div>
@@ -299,7 +318,7 @@ export function CommandBlock({
       )}
     </div>
   );
-}
+});
 
 function CardInput({ ptyId }: { ptyId: number }) {
   const [value, setValue] = useState('');

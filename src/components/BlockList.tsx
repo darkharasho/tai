@@ -6,6 +6,7 @@ import { AIConversation } from './AIConversation';
 import { ApprovalPrompt } from './ApprovalPrompt';
 import type { SegmentedBlock, AIEntry, AIProvider, BlockBodyMode } from '@/types';
 import { groupConversations } from '@/utils/groupConversations';
+import { isPinnedToBottom } from '@/utils/scrollPolicy';
 import styles from './BlockList.module.css';
 
 export type DisplayItem =
@@ -62,9 +63,20 @@ export function BlockList({
   sessionRemote,
 }: BlockListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  // Warp-style auto-follow: only track new output while the user is pinned to
+  // the bottom. Scrolling up into history releases the pin; returning to the
+  // bottom re-arms it. Defaults pinned so fresh sessions follow output.
+  const pinnedRef = useRef(true);
   const [manualCollapsed, setManualCollapsed] = useState<Set<string>>(new Set());
 
+  const handleScroll = useCallback(() => {
+    const el = listRef.current;
+    if (el) pinnedRef.current = isPinnedToBottom(el);
+  }, []);
+
   useEffect(() => {
+    if (!pinnedRef.current) return;
     bottomRef.current?.scrollIntoView({ behavior: 'instant' });
   }, [items]);
 
@@ -75,24 +87,37 @@ export function BlockList({
   // grown card ends up half off-screen without this deferred pass.
   const hasActiveCommand = items.some(item => item.type === 'command' && item.active);
   useEffect(() => {
+    if (!pinnedRef.current) return;
     if (activeBodyMode === 'interactive' || (hasActiveCommand && activeBodyMode === 'output')) {
       bottomRef.current?.scrollIntoView({ behavior: 'instant' });
-      const t = setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'instant' }), 200);
+      const t = setTimeout(() => {
+        if (pinnedRef.current) bottomRef.current?.scrollIntoView({ behavior: 'instant' });
+      }, 200);
       return () => clearTimeout(t);
     }
   }, [activeBodyMode, hasActiveCommand]);
 
-  const handleToggleCollapse = useCallback((id: string, currentlyCollapsed: boolean) => {
-    if (currentlyCollapsed) {
-      setManualCollapsed(prev => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    } else {
-      setManualCollapsed(prev => new Set([...prev, id]));
-    }
+  const handleToggleCollapse = useCallback((id: string) => {
+    setManualCollapsed(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }, []);
+
+  // Per-card stable toggle closures so memo(CommandBlock) isn't defeated by a
+  // fresh function identity on every list render. handleToggleCollapse is
+  // stable, so cached entries stay valid for the life of the session.
+  const toggleFnsRef = useRef(new Map<string, () => void>());
+  const toggleFor = useCallback((id: string) => {
+    let fn = toggleFnsRef.current.get(id);
+    if (!fn) {
+      fn = () => handleToggleCollapse(id);
+      toggleFnsRef.current.set(id, fn);
+    }
+    return fn;
+  }, [handleToggleCollapse]);
 
   function isCollapsed(item: DisplayItem & { type: 'command' }): boolean {
     const id = item.block.id;
@@ -111,7 +136,7 @@ export function BlockList({
           <CommandBlock
             block={item.block}
             collapsed={collapsed}
-            onToggleCollapse={() => handleToggleCollapse(id, collapsed)}
+            onToggleCollapse={toggleFor(id)}
             active={isActive}
             awaitingInput={isActive ? awaitingInput : false}
             aiSuggested={item.aiSuggested}
@@ -184,7 +209,7 @@ export function BlockList({
   }
 
   return (
-    <div className={styles.blockList}>
+    <div className={styles.blockList} ref={listRef} onScroll={handleScroll}>
       <div className={styles.spacer} />
 
       {items.length === 0 && (
@@ -206,7 +231,9 @@ export function BlockList({
         if (group.kind === 'passthrough') {
           return renderItem(group.item);
         }
-        const key = group.items.map(i => i.id).join('|');
+        // Key by the first item only: appending a follow-up must not change
+        // the key, or the whole conversation remounts (flicker, lost state).
+        const key = group.items[0].id;
         return (
           <AIConversation key={key}>
             {group.items.map((aiItem, i) => renderItem(aiItem, { isFollowup: i > 0 }))}
