@@ -512,3 +512,18 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Bottom-pinned live card: output scrolls inside the card so the stdin
+   line and session header are always reachable. */
+.liveOutputArea {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.liveOutput {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}

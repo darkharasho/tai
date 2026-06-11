@@ -6,6 +6,7 @@ import { headLines, tailLines } from '@/utils/outputWindow';
 import { classifyExit } from '@/utils/exitStatus';
 import { clampMenuPos } from '@/utils/menuPosition';
 import type { SessionKind } from '@/utils/sessionKind';
+import { isPinnedToBottom } from '@/utils/scrollPolicy';
 import type { SegmentedBlock, BlockBodyMode } from '@/types';
 import { PasswordPrompt } from './PasswordPrompt';
 import styles from './CommandBlock.module.css';
@@ -101,6 +102,14 @@ const SEPARATOR_STYLE_REMOTE = {
 
 const REPL_ACTIVE_STYLE = {
   minHeight: '60vh',
+  display: 'flex',
+  flexDirection: 'column',
+} as const;
+
+// The bottom-pinned live card sits outside the scrolling history, so it must
+// bound itself: card capped, output scrolls internally, stdin stays visible.
+const PINNED_LIVE_STYLE = {
+  maxHeight: '76vh',
   display: 'flex',
   flexDirection: 'column',
 } as const;
@@ -210,6 +219,23 @@ export const CommandBlock = memo(function CommandBlock({
     return ansiToHtml(windowed);
   }, [block.rawOutput, block.output, active, isClamped]);
 
+  // Pinned to the bottom region (outside the scrolling history): the card
+  // must cap its own height and scroll output internally, or large output
+  // pushes the stdin line off-screen with no way to reach it. Hooks live
+  // above the collapsed early-return.
+  const pinnedLive = !!docked && !!active && bodyMode === 'output' && !collapsed;
+  const liveOutRef = useRef<HTMLDivElement>(null);
+  const livePinnedRef = useRef(true);
+  useEffect(() => {
+    if (!pinnedLive) return;
+    const el = liveOutRef.current;
+    if (el && livePinnedRef.current) el.scrollTop = el.scrollHeight;
+  }, [coloredOutput, pinnedLive]);
+  const handleLiveScroll = useCallback(() => {
+    const el = liveOutRef.current;
+    if (el) livePinnedRef.current = isPinnedToBottom(el);
+  }, []);
+
   const handleOutputClick = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
     if (target.tagName === 'A' && target.dataset.url) {
@@ -299,6 +325,7 @@ export const CommandBlock = memo(function CommandBlock({
       style={{
         '--accent-color': modeColor,
         ...(replActive ? REPL_ACTIVE_STYLE : {}),
+        ...(pinnedLive ? PINNED_LIVE_STYLE : {}),
       } as React.CSSProperties}
       onClick={() => { if (active && awaitingInput && onSendInput) interactiveRef.current?.focus(); }}
       onContextMenu={openMenu}
@@ -420,9 +447,11 @@ export const CommandBlock = memo(function CommandBlock({
       {bodyMode === 'output' && block.output && (
         <>
           <div className={styles.separator} style={isRemote ? SEPARATOR_STYLE_REMOTE : SEPARATOR_STYLE_LOCAL} />
-          <div className={styles.outputArea}>
+          <div className={`${styles.outputArea}${pinnedLive ? ` ${styles.liveOutputArea}` : ''}`}>
             <div
-              className={styles.output}
+              ref={pinnedLive ? liveOutRef : undefined}
+              onScroll={pinnedLive ? handleLiveScroll : undefined}
+              className={`${styles.output}${pinnedLive ? ` ${styles.liveOutput}` : ''}`}
               style={isClamped ? { maxHeight: '300px', overflowY: 'hidden' } : undefined}
               dangerouslySetInnerHTML={{ __html: coloredOutput }}
               onClick={handleOutputClick}
