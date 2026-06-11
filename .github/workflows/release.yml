@@ -137,6 +137,10 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+      - name: Ensure release exists
+        run: gh release view ${{ github.ref_name }} >/dev/null 2>&1 || gh release create ${{ github.ref_name }} --draft --title ${{ github.ref_name }} --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload to GitHub Release
         run: find artifacts -type f -print0 | xargs -0 gh release upload ${{ github.ref_name }} --clobber
         env:
