@@ -299,19 +299,39 @@
   color: var(--text-primary);
 }
 
+.cardInputBox {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #181c22, #161a1f);
+  border: 1px solid color-mix(in srgb, var(--accent-color, var(--color-shell)) 30%, transparent);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition: border-color 0.2s ease;
+}
+
+.cardInputBox:focus-within {
+  border-color: color-mix(in srgb, var(--accent-color, var(--color-shell)) 65%, transparent);
+}
+
+.cardInputCaret {
+  color: var(--accent-color, var(--color-shell));
+  font-family: var(--font-mono);
+  font-size: 14px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
 .cardInput {
-  display: block;
-  width: calc(100% + 32px);
-  box-sizing: border-box;
-  margin: 8px -16px -14px;
-  padding: 8px 16px;
+  flex: 1;
+  min-width: 0;
   background: transparent;
   border: none;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 0 0 10px 10px;
   font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--text-muted);
+  font-size: 13px;
+  color: var(--text-primary);
   outline: none;
   caret-color: var(--text-primary);
   transition: background 0.15s;

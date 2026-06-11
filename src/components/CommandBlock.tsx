@@ -504,7 +504,9 @@ export const CommandBlock = memo(function CommandBlock({
 function CardInput({ ptyId, autoFocus }: { ptyId: number; autoFocus?: boolean }) {
   const [value, setValue] = useState('');
   return (
-    <input
+    <div className={styles.cardInputBox}>
+      <span className={styles.cardInputCaret} aria-hidden="true">›</span>
+      <input
       autoFocus={autoFocus}
       className={styles.cardInput}
       value={value}
@@ -522,6 +524,7 @@ function CardInput({ ptyId, autoFocus }: { ptyId: number; autoFocus?: boolean })
           window.tai?.pty?.write?.(ptyId, '\x03');
         }
       }}
-    />
+      />
+    </div>
   );
 }
