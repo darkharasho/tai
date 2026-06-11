@@ -23,6 +23,7 @@ import { patchBlock } from '@/utils/blockMeta';
 import { BlockFinder } from './BlockFinder';
 import { SessionSideChat } from './SessionSideChat';
 import { buildSessionAiPrompt } from '@/utils/sessionAiPrompt';
+import { assembleInputHistory } from '@/utils/inputHistory';
 import { persistBlocks, loadBlocks } from '@/utils/sessionRestore';
 import { classifySessionCommand, shouldRootSession, detectPort, LONG_RUN_PROMOTE_MS, type SessionKind } from '@/utils/sessionKind';
 import { summarizeSession } from '@/utils/sessionSummary';
@@ -664,7 +665,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     window.tai?.pty?.write(ptyId, command + '\n');
   }, [ptyId]);
 
-  const handleAIRequest = useCallback((prompt: string) => {
+  // displayQuestion: what the AI card shows as the user's question (and what
+  // history picks up) when the actual prompt carries framing/context.
+  const handleAIRequest = useCallback((prompt: string, displayQuestion?: string) => {
     handleInputModeChange('ai');
     const aiId = nextBlockId();
     const aiStartTime = Date.now();
@@ -690,7 +693,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     };
 
     setDisplayItems(prev => [...prev,
-      { type: 'ai' as const, id: aiId, question: prompt, content: '', suggestedCommands: [], streaming: true },
+      { type: 'ai' as const, id: aiId, question: displayQuestion ?? prompt, content: '', suggestedCommands: [], streaming: true },
     ]);
 
     const finalize = () => {
@@ -1274,7 +1277,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     })
     .map(item => item.type === 'command' ? item.block.command : (item as DisplayItem & { type: 'ai' }).question);
   const baseHistory = isRemote ? remoteHistory : shellHistory;
-  const inputHistory = [...baseHistory, ...sessionHistory];
+  const inputHistory = assembleInputHistory(baseHistory, sessionHistory);
 
   const handleSendInput = useCallback((data: string) => {
     if (ptyId === null) return;
@@ -1375,6 +1378,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     setSideChatOpen(true);
     handleAIRequestRef.current(
       pendingItem ? buildSessionAiPrompt(text, pendingItem.block, sess?.port ?? null) : text,
+      text,
     );
   }, []);
 

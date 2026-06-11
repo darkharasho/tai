@@ -61,6 +61,14 @@ describe('session stdin AI detection', () => {
     expect(container.querySelector('[class*="cardInputAiBadge"]')).toBeNull();
   });
 
+  it('turns the whole input purple while AI is detected', () => {
+    const { input, container } = setup();
+    fireEvent.change(input, { target: { value: 'why is this request so slow?' } });
+    expect(container.querySelector('[class*="cardInputBoxAi"]')).toBeTruthy();
+    fireEvent.change(input, { target: { value: 'rs' } });
+    expect(container.querySelector('[class*="cardInputBoxAi"]')).toBeNull();
+  });
+
   it('sends everything to the pty when no AI handler is provided', () => {
     const onAIPrompt = vi.fn();
     const utils = render(

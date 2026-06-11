@@ -341,6 +341,9 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
           path.join(home, '.zsh_history'),
           path.join(home, '.bash_history'),
         ];
+    // Merge every history file that exists (a stale .zsh_history must not
+    // shadow the user's live .bash_history), preserving per-file order.
+    const merged: string[] = [];
     for (const histFile of candidates) {
       try {
         const content = fs.readFileSync(histFile, 'utf8');
@@ -349,10 +352,10 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
           const m = l.match(/^: \d+:\d+;(.*)$/);
           return m ? m[1] : l;
         });
-        return parsed.slice(-count);
+        merged.push(...parsed.slice(-count));
       } catch { continue; }
     }
-    return [];
+    return merged.slice(-count);
   });
 
   // Shell integration check/install for a remote host. Used by the renderer

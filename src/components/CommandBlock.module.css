@@ -306,14 +306,33 @@
   margin-top: 10px;
   padding: 10px 14px;
   border-radius: 10px;
-  background: linear-gradient(180deg, #181c22, #161a1f);
+  /* Sits on the card surface — a lighter gradient here reads as a gray
+     block and appears to shift on focus. Border is the only affordance. */
+  background: rgba(0, 0, 0, 0.18);
   border: 1px solid color-mix(in srgb, var(--accent-color, var(--color-shell)) 30%, transparent);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   transition: border-color 0.2s ease;
 }
 
 .cardInputBox:focus-within {
   border-color: color-mix(in srgb, var(--accent-color, var(--color-shell)) 65%, transparent);
+}
+
+/* Natural language detected: the whole input flips to the AI role color,
+   matching the composer's AI mode. */
+.cardInputBoxAi {
+  border-color: color-mix(in srgb, var(--color-ai, #a85ff1) 45%, transparent);
+}
+
+.cardInputBoxAi:focus-within {
+  border-color: color-mix(in srgb, var(--color-ai, #a85ff1) 75%, transparent);
+}
+
+.cardInputBoxAi .cardInputCaret {
+  color: var(--color-ai, #a85ff1);
+}
+
+.cardInputBoxAi .cardInput {
+  caret-color: var(--color-ai, #a85ff1);
 }
 
 .cardInputCaret {

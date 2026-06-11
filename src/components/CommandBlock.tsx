@@ -514,7 +514,7 @@ function CardInput({ ptyId, autoFocus, onAIPrompt }: { ptyId: number; autoFocus?
     return r.type === 'ai' && r.confidence >= FLIP_THRESHOLD;
   })();
   return (
-    <div className={styles.cardInputBox}>
+    <div className={`${styles.cardInputBox}${aiDetected ? ` ${styles.cardInputBoxAi}` : ''}`}>
       <span className={styles.cardInputCaret} aria-hidden="true">›</span>
       <input
       autoFocus={autoFocus}
