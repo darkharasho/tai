@@ -99,6 +99,17 @@ Went with `content-visibility: auto` + `contain-intrinsic-size` on finished
 history-card wrappers instead of JS virtualization — offscreen cards skip
 layout/paint natively, no mount/unmount churn, scroll anchoring intact.
 
+### S — session-card morph — IMPLEMENTED 2026-06-11 (a1eb82a)
+Long-running processes root the input into their card (mock-approved design):
+`sessionKind.ts` classifier (server/watch/agent/oneshot + 10s promotion,
+wrapper-stripping, `detectPort`), new `rooted` input surface (composer hides,
+block pins with stdin inside, HTML path, termios outranks), live session
+header (dot, kind chip, port chip, ticking elapsed, STOP/END + queued
+RESTART via `pendingRestartRef` → re-run on finalize), agent accent for
+claude/codex/gemini, un-morph to a collapsed summary card (`sessionSummary`),
+crash path (failure exit) stays expanded. Future: agent turn condensation
+(parsing TUI output into turns), error-affordance row with suggested fixes.
+
 ### Dropped / not transferable
 - Cell-grid output model + Alacritty reflow: xterm.js already owns grid/reflow
   for interactive surfaces; cards are read-mostly HTML. Cost ≫ benefit.
