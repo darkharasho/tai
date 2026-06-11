@@ -21,6 +21,7 @@ import type { AIProvider, ContextMode, TrustLevel, AIEntry } from '@/types';
 import { hasActiveAi } from '@/utils/hasActiveAi';
 import { patchBlock } from '@/utils/blockMeta';
 import { BlockFinder } from './BlockFinder';
+import { persistBlocks, loadBlocks } from '@/utils/sessionRestore';
 import { isMultilineCommand } from '@/utils/isMultilineCommand';
 import { buildRecentContext } from '@/utils/aiContext';
 import { redactHistoryEntries, redactSecrets } from '@/utils/redactSecrets';
@@ -70,7 +71,10 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const { config } = useSettings();
   const claudeModel = config['claude.model'] || 'sonnet';
   const claudeEffort = config['claude.effort'] || 'auto';
-  const [displayItems, setDisplayItems] = useState<DisplayItem[]>([]);
+  // Seed with the previous session's finished blocks (rendered collapsed);
+  // best-effort, so a corrupt payload just yields an empty session.
+  const [displayItems, setDisplayItems] = useState<DisplayItem[]>(() =>
+    loadBlocks(tabId).map(block => ({ type: 'command' as const, block, restored: true })));
   const [findOpen, setFindOpen] = useState(false);
   const [altScreenVisible, setAltScreenVisible] = useState(false);
   const [interactiveMode, setInteractiveMode] = useState(false);
@@ -1203,6 +1207,12 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     findFlashTimerRef.current = window.setTimeout(() => el.classList.remove('tai-find-flash'), 1200);
   }, []);
   const handleFindClose = useCallback(() => setFindOpen(false), []);
+
+  // Debounced persistence of finished blocks for next-launch restore.
+  useEffect(() => {
+    const t = window.setTimeout(() => persistBlocks(tabId, displayItems), 500);
+    return () => window.clearTimeout(t);
+  }, [displayItems, tabId]);
 
   const showFullscreenInteractive = surface === 'fullscreen' && !altScreenVisible;
   // Surface-driven: the xterm renders only for `docked` (portaled into the
