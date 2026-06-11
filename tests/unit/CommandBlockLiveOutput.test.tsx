@@ -34,6 +34,21 @@ describe('pinned live card output containment', () => {
     expect(container.querySelector('[class*="cardInput"]')).toBeTruthy();
   });
 
+  it('omits the flex spacer on pinned live cards so output fills the card', () => {
+    const { container } = render(
+      <CommandBlock block={makeBlock()} active isActive ptyId={1} docked sessionKind="server" onStop={noop} {...base} />,
+    );
+    expect(container.querySelector('[class*="activeOutputSpacer"]')).toBeNull();
+    expect(container.querySelector('[class*="cardInput"]')).toBeTruthy();
+  });
+
+  it('keeps the spacer for in-list active cards', () => {
+    const { container } = render(
+      <CommandBlock block={makeBlock()} active isActive ptyId={1} {...base} />,
+    );
+    expect(container.querySelector('[class*="activeOutputSpacer"]')).toBeTruthy();
+  });
+
   it('keeps in-list active cards on the normal output path', () => {
     const { container } = render(
       <CommandBlock block={makeBlock()} active isActive ptyId={1} {...base} />,

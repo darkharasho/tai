@@ -467,10 +467,11 @@ export const CommandBlock = memo(function CommandBlock({
 
       {bodyMode === 'output' && isActive && ptyId !== undefined && !awaitingInput && (
         <>
-          {/* Spacer pushes the input to the bottom of a tall card so REPL
-              sessions (python, node, psql) feel like a dedicated workspace
-              instead of a thin strip glued to the prompt. */}
-          <div className={styles.activeOutputSpacer} />
+          {/* Spacer pushes the input to the bottom of a tall in-list card so
+              REPL sessions feel like a dedicated workspace. Pinned live cards
+              must NOT have it: the output area is flex:1 there, and a second
+              flex:1 sibling would steal half the card's height. */}
+          {!pinnedLive && <div className={styles.activeOutputSpacer} />}
           <CardInput ptyId={ptyId} autoFocus={sessionLive} />
         </>
       )}

@@ -1410,7 +1410,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       )}
       {/* Password prompt is now rendered inside the active CommandBlock via bodyMode='password'. */}
       {isPinned && pinnedBlock && (
-        <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        /* Horizontal padding matches the block list (10px 14px) so the pinned
+           live card aligns with history cards instead of running full-bleed. */
+        <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '0 14px' }}>
           <CommandBlock
             block={pinnedBlock.block}
             active
