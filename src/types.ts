@@ -21,6 +21,8 @@ export interface SegmentedBlock {
   commandFromShell?: string;    // command as shell saw it (post-alias)
   hooksAvailable?: boolean;     // true iff this block had an OSC 6973 precmd
   gitBranch?: string;           // branch at completion time, resolved from cwd
+  sessionKind?: 'oneshot' | 'server' | 'watch' | 'agent'; // long-running session classification
+  summaryLine?: string;         // one-line session summary for the collapsed card
 }
 
 export interface AIEntry {

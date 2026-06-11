@@ -7,9 +7,13 @@
  *                pinned active block.
  *  - docked:     Personality 2 — the live terminal edge (Tier 2: REPLs/ssh),
  *                raw passthrough, block grows upward, pinned to the bottom.
+ *  - rooted:     a long-running session (dev server, watcher, promoted
+ *                long-runner) — the composer morphs into the session card:
+ *                block pinned to the bottom, stdin line inside it, no xterm
+ *                (cooked-mode output stays on the HTML path).
  *  - fullscreen: Tier 3 — a full TUI takes over its own surface (alt-screen).
  */
-export type InputSurface = 'composer' | 'tier1' | 'docked' | 'fullscreen';
+export type InputSurface = 'composer' | 'tier1' | 'docked' | 'rooted' | 'fullscreen';
 
 export interface InteractiveSignals {
   altScreenVisible: boolean;
@@ -20,6 +24,8 @@ export interface InteractiveSignals {
   /** A cooked, line-at-a-time read() is blocking. */
   awaitingInput: boolean;
   passwordPrompt: boolean;
+  /** The active block is a long-running session (see sessionKind.shouldRootSession). */
+  rootedSession?: boolean;
 }
 
 export function deriveInputSurface(s: InteractiveSignals): InputSurface {
@@ -28,12 +34,15 @@ export function deriveInputSurface(s: InteractiveSignals): InputSurface {
   if (s.passwordPrompt || s.awaitingInput) return 'tier1';
   if (s.altScreenVisible || (s.interactiveMode && s.interactiveFullscreen)) return 'fullscreen';
   if (s.interactiveMode) return 'docked';
+  // Termios signals outrank rooting: a server that drops to raw mode or asks
+  // a cooked question gets the richer surface for that moment.
+  if (s.rootedSession) return 'rooted';
   return 'composer';
 }
 
 export function focusTargetFor(surface: InputSurface): 'composer' | 'cardInput' | 'xterm' {
   if (surface === 'composer') return 'composer';
-  if (surface === 'tier1') return 'cardInput';
+  if (surface === 'tier1' || surface === 'rooted') return 'cardInput';
   return 'xterm';
 }
 
@@ -44,14 +53,16 @@ export function composerVisible(surface: InputSurface): boolean {
 
 /** The active interactive block is pinned to the bottom region (not in scroll). */
 export function pinnedActiveBlock(surface: InputSurface): boolean {
-  return surface === 'docked' || surface === 'tier1';
+  return surface === 'docked' || surface === 'tier1' || surface === 'rooted';
 }
 
 /**
  * The real terminal (xterm) renders only for `docked` (portaled into the pinned
  * block) and `fullscreen` (takeover). It must NOT render for `tier1`: password
  * and line prompts use light widgets, and a live xterm would steal their focus
- * and keystrokes (the masked dots never update). `composer` never shows it.
+ * and keystrokes (the masked dots never update). `rooted` keeps the cheap HTML
+ * streaming path — its stdin line writes to the PTY directly. `composer`
+ * never shows it.
  */
 export function shouldShowXterm(surface: InputSurface): boolean {
   return surface === 'docked' || surface === 'fullscreen';

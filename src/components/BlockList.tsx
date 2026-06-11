@@ -10,7 +10,7 @@ import { isPinnedToBottom } from '@/utils/scrollPolicy';
 import styles from './BlockList.module.css';
 
 export type DisplayItem =
-  | { type: 'command'; block: SegmentedBlock; aiSuggested?: boolean; active?: boolean; awaitingInput?: boolean; restored?: boolean }
+  | { type: 'command'; block: SegmentedBlock; aiSuggested?: boolean; active?: boolean; awaitingInput?: boolean; restored?: boolean; defaultCollapsed?: boolean }
   | { type: 'ai'; id: string; question: string; content: string; suggestedCommands: string[]; streaming: boolean; duration?: number; entries?: AIEntry[] }
   | { type: 'approval'; id: string; command: string; toolUseId: string; toolName: string; status: 'pending' | 'approved' | 'rejected' };
 
@@ -124,9 +124,10 @@ export function BlockList({
     const isActive = item.active || id === activeBlockId;
     if (isActive) return false;
     // manualCollapsed records "the user toggled this card". Fresh cards
-    // default expanded; restored (previous-session) cards default collapsed.
+    // default expanded; restored (previous-session) and finished session
+    // cards (server/watch/agent) default collapsed.
     const toggled = manualCollapsed.has(id);
-    return item.restored ? !toggled : toggled;
+    return (item.restored || item.defaultCollapsed) ? !toggled : toggled;
   }
 
   function renderItem(item: DisplayItem, opts: { isFollowup?: boolean } = {}) {

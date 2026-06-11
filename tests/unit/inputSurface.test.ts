@@ -44,6 +44,25 @@ describe('deriveInputSurface', () => {
   it('ignores interactiveFullscreen without interactiveMode (invariant: it implies interactiveMode)', () => {
     expect(deriveInputSurface({ ...base, interactiveFullscreen: true })).toBe('composer');
   });
+
+  it('is rooted for a long-running session (server/watch) with the shell otherwise quiet', () => {
+    expect(deriveInputSurface({ ...base, rootedSession: true })).toBe('rooted');
+  });
+
+  it('lets raw-mode and prompts outrank rooted', () => {
+    expect(deriveInputSurface({ ...base, rootedSession: true, interactiveMode: true })).toBe('docked');
+    expect(deriveInputSurface({ ...base, rootedSession: true, passwordPrompt: true })).toBe('tier1');
+    expect(deriveInputSurface({ ...base, rootedSession: true, altScreenVisible: true })).toBe('fullscreen');
+  });
+});
+
+describe('rooted surface helpers', () => {
+  it('hides the composer, pins the block, focuses the card input, no xterm', () => {
+    expect(composerVisible('rooted')).toBe(false);
+    expect(pinnedActiveBlock('rooted')).toBe(true);
+    expect(focusTargetFor('rooted')).toBe('cardInput');
+    expect(shouldShowXterm('rooted')).toBe(false);
+  });
 });
 
 describe('focusTargetFor', () => {

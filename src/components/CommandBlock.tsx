@@ -5,6 +5,7 @@ import { ansiToHtml } from '@/utils/ansiToHtml';
 import { headLines, tailLines } from '@/utils/outputWindow';
 import { classifyExit } from '@/utils/exitStatus';
 import { clampMenuPos } from '@/utils/menuPosition';
+import type { SessionKind } from '@/utils/sessionKind';
 import type { SegmentedBlock, BlockBodyMode } from '@/types';
 import { PasswordPrompt } from './PasswordPrompt';
 import styles from './CommandBlock.module.css';
@@ -69,6 +70,24 @@ interface CommandBlockProps {
   docked?: boolean;
   /** Optional node rendered in the prompt-right header area (e.g. the remote-AI pill). */
   headerExtra?: ReactNode;
+  /** Long-running session classification — switches the header to session chrome while active. */
+  sessionKind?: SessionKind;
+  /** Detected local port for the click-to-open chip. */
+  port?: number | null;
+  /** Session STOP/END (SIGINT). */
+  onStop?: () => void;
+  /** Session RESTART (SIGINT, then re-run once the block finalizes). */
+  onRestart?: () => void;
+}
+
+/** Ticking elapsed-time chip for a live session card. */
+function ElapsedChip({ startTime }: { startTime: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return <span className={styles.meta}>{formatDuration(Math.max(0, now - startTime))}</span>;
 }
 
 // Separator gradients depend only on the remote accent; hoisted so finished
@@ -119,6 +138,10 @@ export const CommandBlock = memo(function CommandBlock({
   sessionRemote,
   docked,
   headerExtra,
+  sessionKind,
+  port,
+  onStop,
+  onRestart,
 }: CommandBlockProps) {
   const [showAll, setShowAll] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -203,7 +226,12 @@ export const CommandBlock = memo(function CommandBlock({
     path = shortCwd;
   }
   const isRemote = block.isRemote || !!sessionRemote;
-  const modeColor = isRemote ? 'var(--color-agent)' : 'var(--color-shell)';
+  // The session header replaces the prompt line only while the session lives;
+  // once finished the card reverts to normal prompt chrome in history.
+  const sessionLive = !!(active && sessionKind);
+  const modeColor = (sessionLive && sessionKind === 'agent') || isRemote
+    ? 'var(--color-agent)'
+    : 'var(--color-shell)';
 
   // Warp-style exit affordance: failures get a red tag, interrupts/signals a
   // neutral one, success stays clean. Never shown while still running.
@@ -251,6 +279,7 @@ export const CommandBlock = memo(function CommandBlock({
         <span className={styles.cmdDim}>{block.command}</span>
         {exitTag}
         <span className={styles.meta}>{formatDuration(block.duration)}</span>
+        {block.summaryLine && <span className={styles.summaryLine}>{block.summaryLine}</span>}
         {contextMenu}
       </div>
     );
@@ -274,6 +303,38 @@ export const CommandBlock = memo(function CommandBlock({
       onClick={() => { if (active && awaitingInput && onSendInput) interactiveRef.current?.focus(); }}
       onContextMenu={openMenu}
     >
+      {sessionLive ? (
+        <div className={styles.sessionHead}>
+          <span className={styles.sessionDot} style={{ background: modeColor, boxShadow: `0 0 7px ${modeColor}` }} />
+          <span className={styles.sessionName}>{block.command}</span>
+          <span className={styles.kindChip}>
+            {sessionKind === 'agent' ? 'agent session' : sessionKind === 'oneshot' ? 'session' : sessionKind}
+          </span>
+          {port != null && (
+            <span
+              className={styles.portChip}
+              title={`Open http://localhost:${port}`}
+              onClick={() => window.tai?.shell?.openExternal(`http://localhost:${port}`)}
+            >
+              localhost:{port} ↗
+            </span>
+          )}
+          {block.gitBranch && (
+            <span className={styles.branchChip}><GitBranch size={10} />{block.gitBranch}</span>
+          )}
+          <ElapsedChip startTime={block.startTime} />
+          <span className={styles.sessionGrow} />
+          {headerExtra}
+          {sessionKind !== 'agent' && onRestart && (
+            <button type="button" className={styles.sessionBtn} onClick={onRestart}>RESTART</button>
+          )}
+          {onStop && (
+            <button type="button" className={`${styles.sessionBtn} ${styles.sessionBtnStop}`} onClick={onStop}>
+              {sessionKind === 'agent' ? 'END' : 'STOP'}
+            </button>
+          )}
+        </div>
+      ) : (
       <div className={styles.promptLine} onClick={() => onToggleCollapse?.()}>
         <div className={styles.promptLeft}>
           <span className={styles.promptUser} style={{ color: modeColor }}>{user}</span>
@@ -331,6 +392,7 @@ export const CommandBlock = memo(function CommandBlock({
           )}
         </div>
       </div>
+      )}
 
       {bodyMode === 'password' && ptyId !== undefined && (
         <>
@@ -380,7 +442,7 @@ export const CommandBlock = memo(function CommandBlock({
               sessions (python, node, psql) feel like a dedicated workspace
               instead of a thin strip glued to the prompt. */}
           <div className={styles.activeOutputSpacer} />
-          <CardInput ptyId={ptyId} />
+          <CardInput ptyId={ptyId} autoFocus={sessionLive} />
         </>
       )}
 
@@ -409,10 +471,11 @@ export const CommandBlock = memo(function CommandBlock({
   );
 });
 
-function CardInput({ ptyId }: { ptyId: number }) {
+function CardInput({ ptyId, autoFocus }: { ptyId: number; autoFocus?: boolean }) {
   const [value, setValue] = useState('');
   return (
     <input
+      autoFocus={autoFocus}
       className={styles.cardInput}
       value={value}
       onChange={(e) => setValue(e.target.value)}

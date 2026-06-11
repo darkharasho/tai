@@ -9,10 +9,11 @@ vi.mock('../../src/components/InlineAIBlock', () => ({
   InlineAIBlock: () => <div />,
 }));
 
-function cmd(id: string, restored?: boolean): DisplayItem {
+function cmd(id: string, restored?: boolean, defaultCollapsed?: boolean): DisplayItem {
   return {
     type: 'command',
     restored,
+    defaultCollapsed,
     block: { id, command: `c-${id}`, output: 'out', rawOutput: 'out', promptText: 'p $', startTime: 0, duration: 1, exitCode: 0, isRemote: false } as SegmentedBlock,
   } as DisplayItem;
 }
@@ -44,5 +45,14 @@ describe('BlockList restored cards', () => {
     const { container } = render(<BlockList {...baseProps} items={[cmd('a', true)]} />);
     fireEvent.click(container.querySelector('[class*="collapsed"]')!);
     expect(container.querySelector('[data-card-surface]')).toBeTruthy();
+  });
+
+  it('collapses finished session cards by default (defaultCollapsed)', () => {
+    const { container } = render(
+      <BlockList {...baseProps} items={[cmd('s', false, true), cmd('n')]} />,
+    );
+    const collapsed = container.querySelectorAll('[class*="collapsed"]');
+    expect(collapsed).toHaveLength(1);
+    expect(collapsed[0].textContent).toContain('c-s');
   });
 });

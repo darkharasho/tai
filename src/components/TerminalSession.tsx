@@ -22,6 +22,9 @@ import { hasActiveAi } from '@/utils/hasActiveAi';
 import { patchBlock } from '@/utils/blockMeta';
 import { BlockFinder } from './BlockFinder';
 import { persistBlocks, loadBlocks } from '@/utils/sessionRestore';
+import { classifySessionCommand, shouldRootSession, detectPort, LONG_RUN_PROMOTE_MS, type SessionKind } from '@/utils/sessionKind';
+import { summarizeSession } from '@/utils/sessionSummary';
+import { classifyExit } from '@/utils/exitStatus';
 import { isMultilineCommand } from '@/utils/isMultilineCommand';
 import { buildRecentContext } from '@/utils/aiContext';
 import { redactHistoryEntries, redactSecrets } from '@/utils/redactSecrets';
@@ -77,6 +80,32 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     loadBlocks(tabId).map(block => ({ type: 'command' as const, block, restored: true })));
   const [findOpen, setFindOpen] = useState(false);
   const [altScreenVisible, setAltScreenVisible] = useState(false);
+  // Long-running session state: drives the rooted surface and the morphed
+  // card header. Mirrored into a ref for the segmenter callbacks (registered
+  // once on mount, so they can't see fresh state).
+  const [activeSession, setActiveSession] = useState<{ kind: SessionKind; command: string; rooted: boolean; port: number | null } | null>(null);
+  const activeSessionRef = useRef(activeSession);
+  useEffect(() => { activeSessionRef.current = activeSession; }, [activeSession]);
+  const sessionPromoteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingRestartRef = useRef<string | null>(null);
+  const rerunRef = useRef<((command: string, displayCommand?: string) => void) | null>(null);
+  useEffect(() => () => {
+    if (sessionPromoteTimerRef.current) clearTimeout(sessionPromoteTimerRef.current);
+  }, []);
+
+  const beginSession = useCallback((command: string) => {
+    const kind = classifySessionCommand(command);
+    if (sessionPromoteTimerRef.current) clearTimeout(sessionPromoteTimerRef.current);
+    sessionPromoteTimerRef.current = null;
+    setActiveSession({ kind, command, rooted: shouldRootSession(kind, 0), port: null });
+    if (kind === 'oneshot') {
+      // Unknown commands morph once they've clearly become long-running.
+      sessionPromoteTimerRef.current = setTimeout(() => {
+        sessionPromoteTimerRef.current = null;
+        setActiveSession(s => s && !s.rooted && s.kind === 'oneshot' ? { ...s, rooted: true } : s);
+      }, LONG_RUN_PROMOTE_MS);
+    }
+  }, []);
   const [interactiveMode, setInteractiveMode] = useState(false);
   const [interactivePortalTarget, setInteractivePortalTarget] = useState<HTMLDivElement | null>(null);
   const [xtermFallbackEl, setXtermFallbackEl] = useState<HTMLDivElement | null>(null);
@@ -362,17 +391,44 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       }
       const isSuggested = aiSuggestedCommands.current.has(fixedBlock.command);
       if (isSuggested) aiSuggestedCommands.current.delete(fixedBlock.command);
+      // Session un-morph: tag the finished block, summarize it, and drop it
+      // into history collapsed — unless it crashed (a failure exit keeps the
+      // card expanded so the error and its affordances stay visible).
+      const sess = activeSessionRef.current;
+      const sessionEnded = !!(pending && sess && (sess.rooted || sess.kind === 'agent'));
+      let sessionCollapse = false;
+      if (sessionEnded && sess) {
+        fixedBlock = {
+          ...fixedBlock,
+          sessionKind: sess.kind,
+          summaryLine: summarizeSession(sess.kind, fixedBlock.output, sess.port),
+        };
+        sessionCollapse = classifyExit(fixedBlock.exitCode, fixedBlock.signal) !== 'failure';
+      }
+      if (pending) {
+        if (sessionPromoteTimerRef.current) {
+          clearTimeout(sessionPromoteTimerRef.current);
+          sessionPromoteTimerRef.current = null;
+        }
+        setActiveSession(null);
+      }
       setDisplayItems(prev => {
         if (pending) {
           const idx = prev.findIndex(item => item.type === 'command' && item.block.id === 'pending');
           if (idx !== -1) {
             const next = [...prev];
-            next[idx] = { type: 'command', block: fixedBlock, aiSuggested: isSuggested };
+            next[idx] = { type: 'command', block: fixedBlock, aiSuggested: isSuggested, defaultCollapsed: sessionCollapse };
             return next;
           }
         }
-        return [...prev, { type: 'command', block: fixedBlock, aiSuggested: isSuggested }];
+        return [...prev, { type: 'command', block: fixedBlock, aiSuggested: isSuggested, defaultCollapsed: sessionCollapse }];
       });
+      // Queued RESTART: re-run once the stopped session's block has finalized.
+      if (pending && pendingRestartRef.current) {
+        const cmd = pendingRestartRef.current;
+        pendingRestartRef.current = null;
+        setTimeout(() => rerunRef.current?.(cmd), 150);
+      }
       if (pending) {
         window.tai?.notify?.completion({
           kind: 'command',
@@ -409,6 +465,12 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         const current = latestOutput;
         if (current === null) return;
         latestOutput = null;
+        // Session port chip: first local port mentioned in output wins.
+        const liveSess = activeSessionRef.current;
+        if (liveSess && liveSess.port == null && (liveSess.rooted || liveSess.kind === 'agent')) {
+          const p = detectPort(current.clean);
+          if (p != null) setActiveSession(s => (s && s.port == null ? { ...s, port: p } : s));
+        }
         setDisplayItems(prev => {
           const idx = prev.findIndex(item => item.type === 'command' && item.block.id === 'pending');
           if (idx === -1) return prev;
@@ -947,6 +1009,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       // would otherwise show one big pending card while N real blocks arrive.
       if (!isMultiline) {
         pendingCommandRef.current = { command: display, startTime: Date.now() };
+        beginSession(display);
       }
       setDisplayItems(prev => {
         const cleaned = prev.map(item =>
@@ -965,7 +1028,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     } else {
       handleAIRequest(value);
     }
-  }, [inputMode, hasActiveBlock, executeCommand, promptInfo, aiWorking, handleAIRequest]);
+  }, [inputMode, hasActiveBlock, executeCommand, promptInfo, aiWorking, handleAIRequest, beginSession]);
 
   const handleAskAI = useCallback((block: import('@/types').SegmentedBlock) => {
     const prompt = `The following command ran:\n\n\`\`\`\n$ ${block.command}\n${block.output}\n\`\`\`\n\nAnalyze this and suggest a fix if needed. If you suggest a command, put it in a \`\`\`bash code block.`;
@@ -990,9 +1053,11 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       isRemote: promptInfo?.isRemote ?? false,
     };
     pendingCommandRef.current = { command: display, startTime: Date.now() };
+    beginSession(display);
     setDisplayItems(prev => [...prev, { type: 'command' as const, block: pendingBlock, active: true }]);
     executeCommand(command);
-  }, [executeCommand, promptInfo]);
+  }, [executeCommand, promptInfo, beginSession]);
+  useEffect(() => { rerunRef.current = handleRerun; }, [handleRerun]);
 
   const handleStopAI = useCallback(() => {
     if (aiCleanupRef.current) {
@@ -1148,7 +1213,23 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
 
   const surface = deriveInputSurface({
     altScreenVisible, interactiveMode, interactiveFullscreen, awaitingInput, passwordPrompt,
+    rootedSession: !!(activeSession?.rooted && hasActiveBlock),
   });
+
+  // Session chrome only for genuinely rooted/agent sessions — a quick oneshot
+  // that briefly pins (tier1 prompt etc.) keeps its normal prompt header.
+  const sessionForCard = activeSession && (activeSession.rooted || activeSession.kind === 'agent')
+    ? activeSession
+    : null;
+  const handleSessionStop = useCallback(() => {
+    if (ptyId !== null) window.tai?.pty?.write(ptyId, '\x03');
+  }, [ptyId]);
+  const handleSessionRestart = useCallback(() => {
+    const sess = activeSessionRef.current;
+    if (!sess || ptyId === null) return;
+    pendingRestartRef.current = sess.command;
+    window.tai?.pty?.write(ptyId, '\x03');
+  }, [ptyId]);
 
   useEffect(() => {
     const target = focusTargetFor(surface);
@@ -1346,6 +1427,10 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
             onSendInput={handleSendInput}
             onPasswordDone={handlePasswordDone}
             onInteractiveContainerRef={setInteractivePortalTarget}
+            sessionKind={sessionForCard?.kind}
+            port={sessionForCard?.port}
+            onStop={sessionForCard ? handleSessionStop : undefined}
+            onRestart={sessionForCard && sessionForCard.kind !== 'agent' ? handleSessionRestart : undefined}
             headerExtra={
               eff.isRemote && remoteAi.target ? (
                 <RemoteAiPill
