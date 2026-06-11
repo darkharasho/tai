@@ -21,6 +21,8 @@ import type { AIProvider, ContextMode, TrustLevel, AIEntry } from '@/types';
 import { hasActiveAi } from '@/utils/hasActiveAi';
 import { patchBlock } from '@/utils/blockMeta';
 import { BlockFinder } from './BlockFinder';
+import { SessionSideChat } from './SessionSideChat';
+import { buildSessionAiPrompt } from '@/utils/sessionAiPrompt';
 import { persistBlocks, loadBlocks } from '@/utils/sessionRestore';
 import { classifySessionCommand, shouldRootSession, detectPort, LONG_RUN_PROMOTE_MS, type SessionKind } from '@/utils/sessionKind';
 import { summarizeSession } from '@/utils/sessionSummary';
@@ -81,6 +83,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const [displayItems, setDisplayItems] = useState<DisplayItem[]>(() =>
     loadBlocks(tabId).map(block => ({ type: 'command' as const, block, restored: true })));
   const [findOpen, setFindOpen] = useState(false);
+  const [sideChatOpen, setSideChatOpen] = useState(false);
+  const displayItemsRef = useRef<DisplayItem[]>([]);
+  useEffect(() => { displayItemsRef.current = displayItems; }, [displayItems]);
   const [altScreenVisible, setAltScreenVisible] = useState(false);
   // Long-running session state: drives the rooted surface and the morphed
   // card header. Mirrored into a ref for the segmenter callbacks (registered
@@ -1332,12 +1337,46 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     : (altScreenVisible || interactiveMode) ? 'interactive'
     : 'output';
 
-  // While docked/tier1, the trailing active command block is rendered in the
-  // bottom-pinned region (Personality 2), not inside the scrolling history.
-  const lastItem = displayItems[displayItems.length - 1];
-  const lastCommand = lastItem?.type === 'command' ? lastItem : null;
-  const pinnedBlock = isPinned && lastCommand?.active ? lastCommand : null;
-  const historyItems = pinnedBlock ? displayItems.slice(0, -1) : displayItems;
+  // While docked/tier1/rooted, the trailing active command block is rendered
+  // in the bottom-pinned region (Personality 2), not inside the scrolling
+  // history. Found by scanning back past trailing AI items: a session side
+  // conversation appends 'ai' items after the active command, which must not
+  // un-pin the live card.
+  let lastActiveCommand: (DisplayItem & { type: 'command' }) | null = null;
+  for (let i = displayItems.length - 1; i >= 0; i--) {
+    const it = displayItems[i];
+    if (it.type === 'command') {
+      if (it.active) lastActiveCommand = it;
+      break;
+    }
+    if (it.type !== 'ai') break;
+  }
+  // Trailing AI items form the session side conversation while a card is
+  // pinned: shown in the side panel, hidden from history for the duration
+  // (they drop back into the normal stream when the session ends).
+  const pinnedBlock = isPinned && lastActiveCommand ? lastActiveCommand : null;
+  const sideChatItems: Array<DisplayItem & { type: 'ai' }> = [];
+  if (pinnedBlock) {
+    for (let i = displayItems.length - 1; i >= 0; i--) {
+      const it = displayItems[i];
+      if (it.type !== 'ai') break;
+      sideChatItems.unshift(it);
+    }
+  }
+  const historyItems = pinnedBlock
+    ? displayItems.filter(i => i !== pinnedBlock && !(sideChatItems as DisplayItem[]).includes(i))
+    : displayItems;
+
+  const handleSessionAIPrompt = useCallback((text: string) => {
+    const sess = activeSessionRef.current;
+    const pendingItem = displayItemsRef.current.find(
+      (i): i is DisplayItem & { type: 'command' } => i.type === 'command' && i.block.id === 'pending',
+    );
+    setSideChatOpen(true);
+    handleAIRequestRef.current(
+      pendingItem ? buildSessionAiPrompt(text, pendingItem.block, sess?.port ?? null) : text,
+    );
+  }, []);
 
   return (
     <div ref={sessionRootRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0, position: 'relative' }}>
@@ -1428,8 +1467,10 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       {isPinned && pinnedBlock && (
         /* Match the block list's geometry: 14px padding plus the 14px
            scrollbar gutter the list always reserves on the right, so the
-           pinned live card's edges line up exactly with history cards. */
-        <div style={{ flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0, padding: '0 28px 0 14px' }}>
+           pinned live card's edges line up exactly with history cards.
+           Row layout: live card + optional AI side conversation. */
+        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'stretch', gap: 10, minHeight: 0, maxHeight: '76vh', padding: '0 28px 0 14px' }}>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <CommandBlock
             block={pinnedBlock.block}
             active
@@ -1450,6 +1491,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
             port={sessionForCard?.port}
             onStop={sessionForCard ? handleSessionStop : undefined}
             onRestart={sessionForCard && sessionForCard.kind !== 'agent' ? handleSessionRestart : undefined}
+            onAIPrompt={sessionForCard ? handleSessionAIPrompt : undefined}
             headerExtra={
               eff.isRemote && remoteAi.target ? (
                 <RemoteAiPill
@@ -1461,6 +1503,18 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
               ) : undefined
             }
           />
+          </div>
+          {sideChatOpen && sideChatItems.length > 0 && (
+            <SessionSideChat
+              items={sideChatItems}
+              onAsk={handleSessionAIPrompt}
+              onClose={() => setSideChatOpen(false)}
+              onCopy={handleCopy}
+              onRunCommand={(cmd) => { aiSuggestedCommands.current.add(cmd); handleRerun(cmd); }}
+              onStopAI={handleStopAI}
+              aiProvider={aiProvider}
+            />
+          )}
         </div>
       )}
       {showComposer && (

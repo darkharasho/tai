@@ -550,3 +550,14 @@
   min-height: 0;
   overflow-y: auto;
 }
+
+.cardInputAiBadge {
+  font-family: var(--font-sans);
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: var(--color-ai, #a85ff1);
+  border: 1px solid color-mix(in srgb, var(--color-ai, #a85ff1) 45%, transparent);
+  border-radius: 8px;
+  padding: 1px 7px;
+  flex-shrink: 0;
+}

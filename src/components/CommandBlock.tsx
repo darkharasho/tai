@@ -7,6 +7,7 @@ import { classifyExit } from '@/utils/exitStatus';
 import { clampMenuPos } from '@/utils/menuPosition';
 import type { SessionKind } from '@/utils/sessionKind';
 import { isPinnedToBottom } from '@/utils/scrollPolicy';
+import { classifyInput, FLIP_THRESHOLD } from '@/utils/commandDetector';
 import type { SegmentedBlock, BlockBodyMode } from '@/types';
 import { PasswordPrompt } from './PasswordPrompt';
 import styles from './CommandBlock.module.css';
@@ -79,6 +80,8 @@ interface CommandBlockProps {
   onStop?: () => void;
   /** Session RESTART (SIGINT, then re-run once the block finalizes). */
   onRestart?: () => void;
+  /** Natural-language input in the session stdin routes here (side chat). */
+  onAIPrompt?: (text: string) => void;
 }
 
 /** Ticking elapsed-time chip for a live session card. */
@@ -151,6 +154,7 @@ export const CommandBlock = memo(function CommandBlock({
   port,
   onStop,
   onRestart,
+  onAIPrompt,
 }: CommandBlockProps) {
   const [showAll, setShowAll] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -472,7 +476,7 @@ export const CommandBlock = memo(function CommandBlock({
               must NOT have it: the output area is flex:1 there, and a second
               flex:1 sibling would steal half the card's height. */}
           {!pinnedLive && <div className={styles.activeOutputSpacer} />}
-          <CardInput ptyId={ptyId} autoFocus={sessionLive} />
+          <CardInput ptyId={ptyId} autoFocus={sessionLive} onAIPrompt={onAIPrompt} />
         </>
       )}
 
@@ -501,8 +505,14 @@ export const CommandBlock = memo(function CommandBlock({
   );
 });
 
-function CardInput({ ptyId, autoFocus }: { ptyId: number; autoFocus?: boolean }) {
+function CardInput({ ptyId, autoFocus, onAIPrompt }: { ptyId: number; autoFocus?: boolean; onAIPrompt?: (text: string) => void }) {
   const [value, setValue] = useState('');
+  // Same smarts as the composer: natural language routes to the AI side
+  // conversation instead of the process stdin.
+  const aiDetected = !!onAIPrompt && value.trim().length > 0 && (() => {
+    const r = classifyInput(value);
+    return r.type === 'ai' && r.confidence >= FLIP_THRESHOLD;
+  })();
   return (
     <div className={styles.cardInputBox}>
       <span className={styles.cardInputCaret} aria-hidden="true">›</span>
@@ -511,13 +521,17 @@ function CardInput({ ptyId, autoFocus }: { ptyId: number; autoFocus?: boolean })
       className={styles.cardInput}
       value={value}
       onChange={(e) => setValue(e.target.value)}
-      placeholder="…input to running command"
+      placeholder={onAIPrompt ? '…input to running command, or ask AI' : '…input to running command'}
       spellCheck={false}
       autoComplete="off"
       onKeyDown={(e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
-          window.tai?.pty?.write?.(ptyId, value + '\n');
+          if (aiDetected && onAIPrompt) {
+            onAIPrompt(value);
+          } else {
+            window.tai?.pty?.write?.(ptyId, value + '\n');
+          }
           setValue('');
         } else if (e.key === 'c' && e.ctrlKey) {
           e.preventDefault();
@@ -525,6 +539,7 @@ function CardInput({ ptyId, autoFocus }: { ptyId: number; autoFocus?: boolean })
         }
       }}
       />
+      {aiDetected && <span className={styles.cardInputAiBadge}>AI</span>}
     </div>
   );
 }
