@@ -1,12 +1,20 @@
 /* Finished commands are flat blocks in a continuous stream — terminal first.
    Card chrome (.blockCard) is reserved for surfaces hosting live UI:
    sessions, interactive/xterm bodies, password prompts, REPL workspaces. */
+/* Soft entrance for every block — also masks the pending→final remount
+   when a command finishes (the card used to hard-swap). */
+@keyframes blockIn {
+  from { opacity: 0.3; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .block {
   position: relative;
   font-size: 13px;
   padding: 4px 12px 6px;
   border-radius: 6px;
-  transition: background 0.15s;
+  transition: background 0.25s ease, box-shadow 0.25s ease;
+  animation: blockIn 0.16s ease-out;
   /* Quiet identity rail: every block carries its role color, barely. */
   box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent-color, var(--color-shell)) 16%, transparent);
 }
@@ -18,10 +26,57 @@
 /* Louder rails: failures red, a running flat block its full accent. */
 .blockFailed {
   box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-error) 55%, transparent);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--color-error) 4%, transparent), transparent 35%);
+}
+
+/* AI-suggested commands wear the blend: ai purple flowing into the role
+   color along the rail. */
+.blockAi::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--color-ai), var(--accent-color, var(--color-shell)));
+  opacity: 0.75;
+  pointer-events: none;
 }
 
 .blockActive {
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent-color, var(--color-shell)) 55%, transparent);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent-color, var(--color-shell)) 35%, transparent);
+}
+
+/* Living rail: a soft pulse travels down the accent edge while the
+   command runs — the block breathes instead of sitting there. */
+.blockActive::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  border-radius: 2px;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    color-mix(in srgb, var(--accent-color, var(--color-shell)) 95%, white) 50%,
+    transparent 100%
+  );
+  background-size: 100% 220%;
+  animation: railFlow 1.8s linear infinite;
+}
+
+@keyframes railFlow {
+  from { background-position: 0 220%; }
+  to { background-position: 0 -120%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .block { animation: none; }
+  .blockActive::after { animation: none; opacity: 0.6; }
 }
 
 /* Live sessions (npm run dev, pm2 logs, agents): distinguished but not a
@@ -32,6 +87,13 @@
   padding: 8px 14px 10px;
   margin-bottom: 4px;
   box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent-color, var(--color-shell)) 45%, transparent);
+  /* The 10s oneshot→session promotion used to pop; ease the tint in.
+     (Inherits the .block background/box-shadow transition.) */
+}
+
+.blockSession .sessionHead,
+.blockCard .sessionHead {
+  animation: blockIn 0.2s ease-out;
 }
 
 .blockSession:hover {

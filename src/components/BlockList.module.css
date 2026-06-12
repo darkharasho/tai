@@ -152,7 +152,10 @@
    once a card has rendered, the browser remembers its real size. */
 .cardWindow {
   content-visibility: auto;
-  contain-intrinsic-size: auto 120px;
+  /* Flat blocks are much shorter than the old cards — a closer initial
+     guess keeps the scrollbar from jumping as offscreen items materialize.
+     `auto` remembers each card's real size after first paint. */
+  contain-intrinsic-size: auto 64px;
   /* Spacing lives on the wrapper: while contents are in the skipped state,
      inner margins don't contribute to layout, so cards would visually touch
      until the visibility pass materializes them. Flat terminal stream —

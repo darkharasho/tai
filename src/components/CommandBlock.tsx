@@ -228,7 +228,9 @@ export const CommandBlock = memo(function CommandBlock({
       : isClamped
         ? (block.sessionKind ? tailLines(raw, LONG_OUTPUT_LINES) : headLines(raw, LONG_OUTPUT_LINES)).text
         : raw;
-    return ansiToHtml(windowed);
+    const html = ansiToHtml(windowed);
+    // Live output gets a blinking block cursor at the stream's edge.
+    return active ? html + '<span class="cb-stream-cursor"></span>' : html;
   }, [block.rawOutput, block.output, active, isClamped, block.sessionKind]);
 
   // Pinned to the bottom region (outside the scrolling history): the card
@@ -352,7 +354,8 @@ export const CommandBlock = memo(function CommandBlock({
     (cardChrome ? ` ${styles.blockCard}` : '') +
     (sessionChrome ? ` ${styles.blockSession}` : '') +
     (!cardChrome && !sessionChrome && exitClass === 'failure' ? ` ${styles.blockFailed}` : '') +
-    (!cardChrome && !sessionChrome && active ? ` ${styles.blockActive}` : '');
+    (!cardChrome && !sessionChrome && active ? ` ${styles.blockActive}` : '') +
+    (!cardChrome && !sessionChrome && !active && aiSuggested ? ` ${styles.blockAi}` : '');
 
   // Multi-line commands (loops, heredocs): first line lives on the prompt
   // row, the rest renders verbatim underneath.
