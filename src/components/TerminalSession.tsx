@@ -269,6 +269,16 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     exec: remoteAi.mode === 'run' ? ('auto' as const) : ('local' as const),
   }), [remoteAi]);
 
+  // Stamp WHEN the session went remote so only blocks born after that moment
+  // wear the agent-orange accent — flipping the pill must not retro-color
+  // local history. Ref mutation during render is safe here (idempotent).
+  const remoteSinceRef = useRef<number | null>(null);
+  if (eff.isRemote && remoteSinceRef.current == null) {
+    remoteSinceRef.current = Date.now();
+  } else if (!eff.isRemote && remoteSinceRef.current != null) {
+    remoteSinceRef.current = null;
+  }
+
   useEffect(() => {
     if (eff.isRemote && eff.sshTarget) {
       window.tai?.pty?.getRemoteShellHistory(eff.sshTarget, 500)
@@ -716,7 +726,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     };
 
     setDisplayItems(prev => [...prev,
-      { type: 'ai' as const, id: aiId, question: displayQuestion ?? prompt, content: '', suggestedCommands: [], streaming: true },
+      { type: 'ai' as const, id: aiId, question: displayQuestion ?? prompt, content: '', suggestedCommands: [], streaming: true, remote: eff.isRemote },
     ]);
 
     const finalize = () => {
@@ -854,6 +864,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
             content: '',
             suggestedCommands: [],
             streaming: true,
+            remote: eff.isRemote,
           }]);
           aiBlockIdRef.current = currentAiId;
         }
@@ -1488,7 +1499,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           ptyId={ptyId ?? undefined}
           onPasswordDone={handlePasswordDone}
           onInteractiveContainerRef={setInteractivePortalTarget}
-          sessionRemote={eff.isRemote}
+          sessionRemoteSince={remoteSinceRef.current}
           sessionKind={sessionInList ? sessionForCard?.kind : undefined}
           port={sessionInList ? sessionForCard?.port : undefined}
           onSessionStop={sessionInList ? handleSessionStop : undefined}

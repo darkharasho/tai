@@ -13,7 +13,7 @@ import styles from './BlockList.module.css';
 
 export type DisplayItem =
   | { type: 'command'; block: SegmentedBlock; aiSuggested?: boolean; active?: boolean; awaitingInput?: boolean; restored?: boolean; defaultCollapsed?: boolean }
-  | { type: 'ai'; id: string; question: string; content: string; suggestedCommands: string[]; streaming: boolean; duration?: number; entries?: AIEntry[] }
+  | { type: 'ai'; id: string; question: string; content: string; suggestedCommands: string[]; streaming: boolean; duration?: number; entries?: AIEntry[]; remote?: boolean }
   | { type: 'approval'; id: string; command: string; toolUseId: string; toolName: string; status: 'pending' | 'approved' | 'rejected' };
 
 interface BlockListProps {
@@ -37,8 +37,10 @@ interface BlockListProps {
   ptyId?: number;
   onPasswordDone?: () => void;
   onInteractiveContainerRef?: (el: HTMLDivElement | null) => void;
-  /** True when this tab's AI session is operating on a remote host (pill on). */
-  sessionRemote?: boolean;
+  /** Epoch ms when this tab's AI session went remote (pill on), or null when
+      local. Only blocks started after this moment wear the remote (orange)
+      accent — history keeps the accent it was born with. */
+  sessionRemoteSince?: number | null;
   /** Live session chrome for the ACTIVE in-list card (rooted sessions live in
       the scrollback, not a detached pinned region). */
   sessionKind?: SessionKind;
@@ -70,7 +72,7 @@ export function BlockList({
   ptyId,
   onPasswordDone,
   onInteractiveContainerRef,
-  sessionRemote,
+  sessionRemoteSince,
   sessionKind,
   port,
   onSessionStop,
@@ -170,7 +172,7 @@ export function BlockList({
             onPasswordDone={onPasswordDone}
             isActive={isActive}
             onInteractiveContainerRef={isActive ? onInteractiveContainerRef : undefined}
-            sessionRemote={sessionRemote}
+            sessionRemote={sessionRemoteSince != null && item.block.startTime >= sessionRemoteSince}
             sessionKind={isActive ? sessionKind : item.block.sessionKind}
             port={isActive ? port : undefined}
             onStop={isActive ? onSessionStop : undefined}
@@ -200,7 +202,7 @@ export function BlockList({
           onEditQueued={item.streaming ? onEditQueued : undefined}
           onRemoveQueued={item.streaming ? onRemoveQueued : undefined}
           isFollowup={opts.isFollowup}
-          isRemote={sessionRemote}
+          isRemote={item.remote ?? false}
         />
       );
     }

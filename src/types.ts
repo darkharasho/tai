@@ -41,7 +41,7 @@ export interface AIToolCall {
 
 export type DisplayItem =
   | { type: 'command'; block: SegmentedBlock; collapsed: boolean; active: boolean; aiSuggested: boolean }
-  | { type: 'ai'; id: string; question: string; entries: AIEntry[]; content: string; streaming: boolean }
+  | { type: 'ai'; id: string; question: string; entries: AIEntry[]; content: string; streaming: boolean; remote?: boolean }
   | { type: 'agent'; id: string; question: string; steps: AgentStep[]; streaming: boolean }
   | { type: 'approval'; id: string; command: string; status: 'pending' | 'approved' | 'rejected' | 'edited' }
   | { type: 'error-affordance'; id: string; block: SegmentedBlock };
