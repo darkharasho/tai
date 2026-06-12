@@ -11,6 +11,7 @@ const DEFAULTS = {
   'claude.effort': 'auto',
   'trust.default': 'ask',
   'ai.expandToolCalls': false,
+  'appearance.theme': 'default',
   'appearance.gradientBorder': true,
   'appearance.animationSpeed': 20,
   'appearance.colorMode': 'high',

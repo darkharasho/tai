@@ -1,16 +1,13 @@
-const ANSI_COLORS: Record<number, string> = {
-  30: '#0c0f11', 31: '#E35535', 32: '#00a884', 33: '#c7910c',
-  34: '#11B7D4', 35: '#d46ec0', 36: '#38c7bd', 37: '#bec6d0',
-  90: '#5a6a7a', 91: '#E35535', 92: '#00a884', 93: '#f5b832',
-  94: '#11B7D4', 95: '#a85ff1', 96: '#38c7bd', 97: '#ffffff',
-};
+/* The 16-color palette is theme-owned: globals.css defines --ansi-N /
+   --ansi-bg-N per theme, so emitting var() references here means already-
+   rendered scrollback recolors instantly on theme switch. */
+const ANSI_COLORS: Record<number, string> = {};
+for (let c = 30; c <= 37; c++) ANSI_COLORS[c] = `var(--ansi-${c})`;
+for (let c = 90; c <= 97; c++) ANSI_COLORS[c] = `var(--ansi-${c})`;
 
-const ANSI_BG_COLORS: Record<number, string> = {
-  40: '#0c0f11', 41: '#3a1510', 42: '#0a3028', 43: '#3a2e0a',
-  44: '#0a2a35', 45: '#35203a', 46: '#0a3530', 47: '#3a4048',
-  100: '#3a4048', 101: '#4a2018', 102: '#143a30', 103: '#4a3a15',
-  104: '#153545', 105: '#3a2845', 106: '#154540', 107: '#5a6a7a',
-};
+const ANSI_BG_COLORS: Record<number, string> = {};
+for (let c = 40; c <= 47; c++) ANSI_BG_COLORS[c] = `var(--ansi-bg-${c})`;
+for (let c = 100; c <= 107; c++) ANSI_BG_COLORS[c] = `var(--ansi-bg-${c})`;
 
 const SGR_RE = /\x1b\[([0-9;]*)m/g;
 const OTHER_ESC_RE = /\x1b\[[?>=!]?[0-9;]*[A-LN-Za-ln-z~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[P^_X][^\x1b]*\x1b\\|\x1b\([A-Z]|\x1b[A-Za-z=>]|\r/g;
@@ -23,11 +20,8 @@ function parse256Color(codes: number[], i: number): { color: string | null; cons
   if (codes[i + 1] === 5 && codes[i + 2] != null) {
     const n = codes[i + 2];
     if (n < 16) {
-      const basic = [
-        '#0c0f11','#E35535','#00a884','#c7910c','#11B7D4','#d46ec0','#38c7bd','#bec6d0',
-        '#5a6a7a','#E35535','#00a884','#f5b832','#11B7D4','#a85ff1','#38c7bd','#ffffff',
-      ];
-      return { color: basic[n], consumed: 3 };
+      // Basic 16 map onto the themed SGR palette: 0-7 → codes 30-37, 8-15 → 90-97.
+      return { color: `var(--ansi-${n < 8 ? 30 + n : 90 + (n - 8)})`, consumed: 3 };
     }
     if (n < 232) {
       const idx = n - 16;

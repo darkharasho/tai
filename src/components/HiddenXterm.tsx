@@ -2,6 +2,7 @@ import { useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
+import { getActiveTheme, subscribeTheme } from '@/theme/themes';
 
 export interface HiddenXtermHandle {
   write: (data: string) => void;
@@ -53,31 +54,9 @@ export const HiddenXterm = forwardRef<HiddenXtermHandle, HiddenXtermProps>(
       }
 
       const xterm = new Terminal({
-        theme: {
-          // Match --bg-card from src/styles/globals.css so the in-card xterm
-          // body visually merges with its surrounding CommandBlock.
-          background: '#141719',
-          foreground: '#bec6d0',
-          cursor: '#bec6d0',
-          cursorAccent: '#141719',
-          selectionBackground: 'rgba(168, 95, 241, 0.3)',
-          black: '#0c0f11',
-          red: '#E35535',
-          green: '#00a884',
-          yellow: '#c7910c',
-          blue: '#11B7D4',
-          magenta: '#d46ec0',
-          cyan: '#38c7bd',
-          white: '#bec6d0',
-          brightBlack: '#5a6a7a',
-          brightRed: '#E35535',
-          brightGreen: '#00a884',
-          brightYellow: '#f5b832',
-          brightBlue: '#11B7D4',
-          brightMagenta: '#a85ff1',
-          brightCyan: '#38c7bd',
-          brightWhite: '#ffffff',
-        },
+        // Per-theme palette; `background` matches the theme's --bg-card so
+        // the in-card xterm body visually merges with its CommandBlock.
+        theme: { ...getActiveTheme().xterm },
         fontFamily: "'Fira Code', 'Cascadia Code', 'JetBrains Mono', 'Source Code Pro', 'Symbols Nerd Font Mono', monospace",
         fontSize: 13,
         lineHeight: 1.3,
@@ -156,6 +135,15 @@ export const HiddenXterm = forwardRef<HiddenXtermHandle, HiddenXtermProps>(
         if (timer) clearTimeout(timer);
       };
     }, [ptyId, visible]);
+
+    // Live theme switch: xterm can't read CSS variables, so swap its palette
+    // imperatively when the active theme changes.
+    useEffect(() => {
+      return subscribeTheme((theme) => {
+        const term = xtermRef.current;
+        if (term) term.options.theme = { ...theme.xterm };
+      });
+    }, []);
 
     useEffect(() => {
       const onWindowFocus = () => xtermRef.current?.focus();

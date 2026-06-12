@@ -1,4 +1,4 @@
-import { type Highlighter, createHighlighter } from 'shiki';
+import { type Highlighter, createHighlighter, createCssVariablesTheme } from 'shiki';
 
 const LANG_MAP: Record<string, string> = {
   ts: 'typescript', tsx: 'typescript',
@@ -15,7 +15,16 @@ const LANG_MAP: Record<string, string> = {
   toml: 'toml',
 };
 
-const THEME = 'github-dark';
+/* Tokens resolve through --shiki-* CSS variables, which each app theme
+   defines in globals.css — so highlighted blocks recolor live on theme
+   switch with no re-highlighting. */
+const THEME = 'tai-css-vars';
+
+const cssVarsTheme = createCssVariablesTheme({
+  name: THEME,
+  variablePrefix: '--shiki-',
+  fontStyle: true,
+});
 
 export function detectLangFromPath(filePath: string): string {
   const ext = filePath.split('.').pop()?.toLowerCase();
@@ -27,7 +36,7 @@ let highlighterPromise: Promise<Highlighter> | null = null;
 function getHighlighter(): Promise<Highlighter> {
   if (!highlighterPromise) {
     highlighterPromise = createHighlighter({
-      themes: [THEME],
+      themes: [cssVarsTheme],
       langs: Object.values(LANG_MAP).filter((v, i, a) => a.indexOf(v) === i),
     });
   }

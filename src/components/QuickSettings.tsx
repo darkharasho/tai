@@ -2,11 +2,14 @@ import { useState, useRef, useEffect } from 'react';
 import { Settings, X, ChevronDown, Check, RefreshCw } from 'lucide-react';
 import type { TrustLevel, AIProvider } from '@/types';
 import { Toggle } from './Toggle';
+import { THEME_OPTIONS } from '@/theme/themes';
 import styles from './QuickSettings.module.css';
 
 interface QuickSettingsProps {
   visible: boolean;
   onClose: () => void;
+  theme: string;
+  onThemeChange: (theme: string) => void;
   colorMode: string;
   onColorModeChange: (mode: string) => void;
   cardAccent: string;
@@ -123,7 +126,7 @@ function CustomDropdown({ value, options, onChange }: {
   );
 }
 
-export function QuickSettings({ visible, onClose, colorMode, onColorModeChange, cardAccent, onCardAccentChange, noise, onNoiseChange, trustLevel, onTrustLevelChange, aiProvider, onAIProviderChange, claudeModel, onClaudeModelChange, availableModels, claudeEffort, onClaudeEffortChange, expandToolCalls, onExpandToolCallsChange, systemNotifications, onSystemNotificationsChange }: QuickSettingsProps) {
+export function QuickSettings({ visible, onClose, theme, onThemeChange, colorMode, onColorModeChange, cardAccent, onCardAccentChange, noise, onNoiseChange, trustLevel, onTrustLevelChange, aiProvider, onAIProviderChange, claudeModel, onClaudeModelChange, availableModels, claudeEffort, onClaudeEffortChange, expandToolCalls, onExpandToolCallsChange, systemNotifications, onSystemNotificationsChange }: QuickSettingsProps) {
   const [category, setCategory] = useState<Category>('general');
   const [version, setVersion] = useState('');
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'up-to-date' | 'available' | 'error'>('idle');
@@ -198,6 +201,14 @@ export function QuickSettings({ visible, onClose, colorMode, onColorModeChange, 
                     value={trustLevel}
                     options={TRUST_LEVEL_OPTIONS}
                     onChange={(v) => onTrustLevelChange(v as TrustLevel)}
+                  />
+                </div>
+                <div className={styles.settingRow}>
+                  <span className={styles.settingLabel}>Theme</span>
+                  <CustomDropdown
+                    value={theme}
+                    options={THEME_OPTIONS}
+                    onChange={onThemeChange}
                   />
                 </div>
                 <div className={styles.settingRow}>

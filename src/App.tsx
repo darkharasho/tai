@@ -10,6 +10,7 @@ import { useSettings } from './hooks/useSettings';
 import { initScrollbarHover } from './utils/scrollbarHover';
 import { initExternalLinks } from './utils/externalLinks';
 import { useWhatsNew } from './hooks/useWhatsNew';
+import { setActiveTheme } from './theme/themes';
 import { useUpdateNotifier } from './hooks/useUpdateNotifier';
 import type { AIProvider, ContextMode, TabState, TrustLevel, ClaudeModelOption } from './types';
 
@@ -185,16 +186,29 @@ export default function App() {
   const colorMode = config['appearance.colorMode'] || 'high';
   const cardAccent = config['appearance.cardAccent'] || 'brackets';
   const noise = config['appearance.noise'] !== false;
+  const theme = config['appearance.theme'] || 'default';
+
+  // Push the theme into the registry so xterm instances (which can't read
+  // CSS variables) swap their ANSI palettes live.
+  useEffect(() => { setActiveTheme(theme); }, [theme]);
 
   return (
-    <div data-color-mode={colorMode} data-card-accent={cardAccent} data-noise={noise ? 'on' : 'off'} className={maximized ? undefined : 'window-frame'} style={{
+    <div data-theme={theme} data-color-mode={colorMode} data-card-accent={cardAccent} data-noise={noise ? 'on' : 'off'} className={maximized ? 'app-root' : 'app-root window-frame'} style={{
       height: '100vh',
       display: 'flex',
       flexDirection: 'column',
-      background: 'var(--bg-base)',
       overflow: 'hidden',
       borderRadius: maximized ? 0 : 'var(--window-radius)',
     }}>
+      {theme === 'cosmos' && (
+        <div className="cosmos-atmosphere" aria-hidden>
+          <div className="cosmos-nebula" />
+          <div className="cosmos-aurora" />
+          <div className="cosmos-stars-far" />
+          <div className="cosmos-stars-near" />
+          <div className="cosmos-shooting" />
+        </div>
+      )}
       <TabBar
         tabs={tabs}
         activeTabId={activeTabId}
@@ -242,6 +256,8 @@ export default function App() {
       <QuickSettings
         visible={quickSettingsOpen}
         onClose={() => setQuickSettingsOpen(false)}
+        theme={theme}
+        onThemeChange={(value) => setSetting('appearance.theme', value)}
         colorMode={colorMode}
         onColorModeChange={(mode) => setSetting('appearance.colorMode', mode)}
         cardAccent={cardAccent}

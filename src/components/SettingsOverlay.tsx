@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, Settings } from 'lucide-react';
 import { Toggle } from './Toggle';
+import { THEME_OPTIONS } from '@/theme/themes';
 import styles from './SettingsOverlay.module.css';
 
 interface SettingsOverlayProps {
@@ -101,6 +102,15 @@ export function SettingsOverlay({ visible, onClose, config, onSet }: SettingsOve
             )}
             {category === 'appearance' && (
               <SettingsGroup>
+                <SettingRow label="Theme" value={
+                  <select value={config['appearance.theme'] || 'default'}
+                    onChange={e => onSet('appearance.theme', e.target.value)}
+                    className={styles.input}>
+                    {THEME_OPTIONS.map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                } />
                 <SettingRow label="Expand tool calls by default" value={
                   <Toggle checked={!!config['ai.expandToolCalls']}
                     onChange={v => onSet('ai.expandToolCalls', v)} />

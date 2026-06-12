@@ -66,7 +66,7 @@
 .input {
   width: 100%;
   box-sizing: border-box;
-  background: linear-gradient(180deg, #181c22, #161a1f);
+  background: var(--input-surface);
   border: 1px solid color-mix(in srgb, var(--color-ai, #a85ff1) 30%, transparent);
   border-radius: 8px;
   padding: 7px 10px;

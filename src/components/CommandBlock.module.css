@@ -12,21 +12,38 @@
   position: relative;
   font-size: 13px;
   padding: 4px 12px 6px;
-  border-radius: 6px;
+  border-radius: 8px;
   transition: background 0.25s ease, box-shadow 0.25s ease;
   animation: blockIn 0.16s ease-out;
-  /* Quiet identity rail: every block carries its role color, barely. */
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent-color, var(--color-shell)) 16%, transparent);
+  /* Accent-led identity: a present rail plus the role color washing
+     faintly across the block from the left — no card surface or border. */
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent-color, var(--color-shell)) 50%, transparent);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent-color, var(--color-shell)) 7%, transparent),
+    color-mix(in srgb, var(--accent-color, var(--color-shell)) 2%, transparent) 30%,
+    transparent 60%
+  );
 }
 
 .block:hover {
-  background: rgba(255, 255, 255, 0.025);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent-color, var(--color-shell)) 9%, transparent),
+    color-mix(in srgb, var(--accent-color, var(--color-shell)) 3%, transparent) 30%,
+    rgba(255, 255, 255, 0.015) 60%
+  );
 }
 
 /* Louder rails: failures red, a running flat block its full accent. */
 .blockFailed {
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-error) 55%, transparent);
-  background: linear-gradient(90deg, color-mix(in srgb, var(--color-error) 4%, transparent), transparent 35%);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-error) 65%, transparent);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--color-error) 8%, transparent),
+    color-mix(in srgb, var(--color-error) 2%, transparent) 30%,
+    transparent 60%
+  );
 }
 
 /* AI-suggested commands wear the blend: ai purple flowing into the role
@@ -45,7 +62,7 @@
 }
 
 .blockActive {
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent-color, var(--color-shell)) 35%, transparent);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent-color, var(--color-shell)) 75%, transparent);
 }
 
 /* Living rail: a soft pulse travels down the accent edge while the

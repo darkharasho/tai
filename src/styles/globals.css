@@ -46,6 +46,182 @@
   --accent-card-shadow: var(--shadow-card);
   --shimmer-duration: 8s;
   --window-radius: 10px;
+
+  /* Theme system (default theme = "Tai Dark"). Each [data-theme] block below
+     overrides this full set. xterm.js mirrors the ANSI palette in
+     src/theme/themes.ts — keep them in sync. */
+  --selection-bg: rgba(139, 92, 246, 0.3);
+  --frame-gradient: linear-gradient(90deg, var(--color-shell), var(--color-ai), var(--color-agent), var(--color-shell));
+  --scrollbar-thumb: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.25);
+  --scrollbar-thumb-active: rgba(255, 255, 255, 0.45);
+  /* Composer (TerminalInput) surface — a subtle vertical lift over --bg-input. */
+  --input-surface: linear-gradient(180deg, #181c22, #161a1f);
+
+  /* Terminal ANSI palette — consumed by ansiToHtml via var(--ansi-N), so
+     existing scrollback re-themes live on switch. */
+  --ansi-30: #0c0f11; --ansi-31: #E35535; --ansi-32: #00a884; --ansi-33: #c7910c;
+  --ansi-34: #11B7D4; --ansi-35: #d46ec0; --ansi-36: #38c7bd; --ansi-37: #bec6d0;
+  --ansi-90: #5a6a7a; --ansi-91: #E35535; --ansi-92: #00a884; --ansi-93: #f5b832;
+  --ansi-94: #11B7D4; --ansi-95: #a85ff1; --ansi-96: #38c7bd; --ansi-97: #ffffff;
+  --ansi-bg-40: #0c0f11; --ansi-bg-41: #3a1510; --ansi-bg-42: #0a3028; --ansi-bg-43: #3a2e0a;
+  --ansi-bg-44: #0a2a35; --ansi-bg-45: #35203a; --ansi-bg-46: #0a3530; --ansi-bg-47: #3a4048;
+  --ansi-bg-100: #3a4048; --ansi-bg-101: #4a2018; --ansi-bg-102: #143a30; --ansi-bg-103: #4a3a15;
+  --ansi-bg-104: #153545; --ansi-bg-105: #3a2845; --ansi-bg-106: #154540; --ansi-bg-107: #5a6a7a;
+
+  /* Shiki syntax palette — consumed by the css-variables theme in
+     shikiHighlighter.ts. Default approximates github-dark. */
+  --shiki-foreground: #c9d1d9;
+  --shiki-background: transparent;
+  --shiki-token-comment: #8b949e;
+  --shiki-token-keyword: #ff7b72;
+  --shiki-token-string: #a5d6ff;
+  --shiki-token-string-expression: #a5d6ff;
+  --shiki-token-constant: #79c0ff;
+  --shiki-token-function: #d2a8ff;
+  --shiki-token-parameter: #ffa657;
+  --shiki-token-punctuation: #c9d1d9;
+  --shiki-token-link: #a5d6ff;
+}
+
+/* === Themes ===
+   Graphite: darker, pure-neutral gray. Ash: lighter gray, lifted contrast.
+   Cosmos: deep-space indigo with nebula + starfield (on .app-root below). */
+
+[data-theme="graphite"] {
+  --bg-base: #0a0a0c;
+  --bg-surface: #0f0f12;
+  --bg-mid: #0d0d0f;
+  --bg-input: #141417;
+  --bg-elevated: #1a1a1e;
+  --bg-hover: #202025;
+  --bg-card: #121215;
+  --border-subtle: #232329;
+  --border-card: #232329;
+  --text-primary: #c9cdd4;
+  --text-secondary: #a4a9b3;
+  --text-muted: #62676f;
+  --color-shell: #2ec98e;
+  --color-ai: #9d8cff;
+  --color-agent: #ef6c2a;
+  --color-error: #e06054;
+  --color-warning: #d4a432;
+  --color-info: #4db8d8;
+  --selection-bg: rgba(157, 140, 255, 0.28);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.28);
+  --input-surface: linear-gradient(180deg, #17171b, #141417);
+
+  --ansi-30: #0a0a0c; --ansi-31: #e06054; --ansi-32: #2ec98e; --ansi-33: #d4a432;
+  --ansi-34: #6ca4e0; --ansi-35: #c47fd6; --ansi-36: #46c2b8; --ansi-37: #c9cdd4;
+  --ansi-90: #62676f; --ansi-91: #ea7565; --ansi-92: #3ddc9c; --ansi-93: #e8bc4a;
+  --ansi-94: #82b5ec; --ansi-95: #d494e6; --ansi-96: #5cd6cc; --ansi-97: #f2f3f5;
+  --ansi-bg-40: #0a0a0c; --ansi-bg-41: #38130e; --ansi-bg-42: #0c2e22; --ansi-bg-43: #332708;
+  --ansi-bg-44: #11283a; --ansi-bg-45: #2e1c38; --ansi-bg-46: #0c302c; --ansi-bg-47: #3a3d44;
+  --ansi-bg-100: #3a3d44; --ansi-bg-101: #4a1f15; --ansi-bg-102: #123a2c; --ansi-bg-103: #443411;
+  --ansi-bg-104: #173550; --ansi-bg-105: #3c264a; --ansi-bg-106: #14403a; --ansi-bg-107: #62676f;
+
+  --shiki-foreground: #c9cdd4;
+  --shiki-token-comment: #5c616b;
+  --shiki-token-keyword: #b3a4ff;
+  --shiki-token-string: #8fd0ae;
+  --shiki-token-string-expression: #8fd0ae;
+  --shiki-token-constant: #82b5ec;
+  --shiki-token-function: #e0a4ec;
+  --shiki-token-parameter: #d4a432;
+  --shiki-token-punctuation: #8c919b;
+  --shiki-token-link: #82b5ec;
+}
+
+[data-theme="ash"] {
+  --bg-base: #1b1d20;
+  --bg-surface: #212428;
+  --bg-mid: #1e2024;
+  --bg-input: #282b30;
+  --bg-elevated: #2e3238;
+  --bg-hover: #353a41;
+  --bg-card: #24272c;
+  --border-subtle: #383d45;
+  --border-card: #383d45;
+  --text-primary: #e2e5ea;
+  --text-secondary: #b3bac4;
+  --text-muted: #7d848f;
+  --color-shell: #29b88a;
+  --color-ai: #8f7ff2;
+  --color-agent: #e9692f;
+  --color-error: #e25b48;
+  --color-warning: #c79a2d;
+  --color-info: #3eaed2;
+  --selection-bg: rgba(143, 127, 242, 0.3);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --input-surface: linear-gradient(180deg, #2b2e34, #282b30);
+
+  --ansi-30: #1b1d20; --ansi-31: #e25b48; --ansi-32: #29b88a; --ansi-33: #c79a2d;
+  --ansi-34: #58a8d6; --ansi-35: #c272d4; --ansi-36: #3fbcb2; --ansi-37: #e2e5ea;
+  --ansi-90: #7d848f; --ansi-91: #ef7361; --ansi-92: #36d4a2; --ansi-93: #e0b13e;
+  --ansi-94: #74bce4; --ansi-95: #d58ce4; --ansi-96: #54d2c8; --ansi-97: #ffffff;
+  --ansi-bg-40: #1b1d20; --ansi-bg-41: #45211a; --ansi-bg-42: #173c2f; --ansi-bg-43: #403312;
+  --ansi-bg-44: #1c3a4c; --ansi-bg-45: #3c2547; --ansi-bg-46: #16443e; --ansi-bg-47: #474c55;
+  --ansi-bg-100: #474c55; --ansi-bg-101: #542a1f; --ansi-bg-102: #1d4a39; --ansi-bg-103: #4e3f17;
+  --ansi-bg-104: #234a5e; --ansi-bg-105: #492f56; --ansi-bg-106: #1c544c; --ansi-bg-107: #7d848f;
+
+  --shiki-foreground: #e2e5ea;
+  --shiki-token-comment: #79808c;
+  --shiki-token-keyword: #ab9df2;
+  --shiki-token-string: #9ad8b8;
+  --shiki-token-string-expression: #9ad8b8;
+  --shiki-token-constant: #74bce4;
+  --shiki-token-function: #e2a4ee;
+  --shiki-token-parameter: #e0b13e;
+  --shiki-token-punctuation: #aab1bb;
+  --shiki-token-link: #74bce4;
+}
+
+[data-theme="cosmos"] {
+  --bg-base: #0a0a16;
+  --bg-surface: #0e0e1e;
+  --bg-mid: #0c0c1a;
+  --bg-input: #16162c;
+  --bg-elevated: #1b1b36;
+  --bg-hover: #222244;
+  --bg-card: #121226;
+  --border-subtle: #26264a;
+  --border-card: #28284e;
+  --text-primary: #d2d5f0;
+  --text-secondary: #9da0cc;
+  --text-muted: #5f6294;
+  --color-shell: #5eead4;
+  --color-ai: #a78bfa;
+  --color-agent: #fb923c;
+  --color-error: #f87171;
+  --color-warning: #fbbf24;
+  --color-info: #7dd3fc;
+  --selection-bg: rgba(167, 139, 250, 0.32);
+  --frame-gradient: linear-gradient(90deg, #5eead4, #a78bfa, #f0abfc, #5eead4);
+  --scrollbar-thumb: rgba(167, 139, 250, 0.28);
+  --scrollbar-thumb-hover: rgba(167, 139, 250, 0.38);
+  --scrollbar-thumb-active: rgba(167, 139, 250, 0.55);
+  --input-surface: linear-gradient(180deg, #1a1a32, #16162c);
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.35), 0 0 18px rgba(122, 90, 248, 0.08);
+
+  --ansi-30: #0a0a16; --ansi-31: #f87171; --ansi-32: #34d399; --ansi-33: #fbbf24;
+  --ansi-34: #818cf8; --ansi-35: #e879f9; --ansi-36: #67e8f9; --ansi-37: #d2d5f0;
+  --ansi-90: #5f6294; --ansi-91: #fca5a5; --ansi-92: #6ee7b7; --ansi-93: #fcd34d;
+  --ansi-94: #a5b4fc; --ansi-95: #f0abfc; --ansi-96: #a5f3fc; --ansi-97: #ffffff;
+  --ansi-bg-40: #0a0a16; --ansi-bg-41: #421b26; --ansi-bg-42: #103a32; --ansi-bg-43: #41320f;
+  --ansi-bg-44: #1d2150; --ansi-bg-45: #3b1d4e; --ansi-bg-46: #123c46; --ansi-bg-47: #34375c;
+  --ansi-bg-100: #34375c; --ansi-bg-101: #542430; --ansi-bg-102: #16493e; --ansi-bg-103: #514015;
+  --ansi-bg-104: #272c68; --ansi-bg-105: #4a2762; --ansi-bg-106: #184c58; --ansi-bg-107: #5f6294;
+
+  --shiki-foreground: #d2d5f0;
+  --shiki-token-comment: #565a8c;
+  --shiki-token-keyword: #a78bfa;
+  --shiki-token-string: #7dd3fc;
+  --shiki-token-string-expression: #7dd3fc;
+  --shiki-token-constant: #f0abfc;
+  --shiki-token-function: #5eead4;
+  --shiki-token-parameter: #fbbf24;
+  --shiki-token-punctuation: #9da0cc;
+  --shiki-token-link: #7dd3fc;
 }
 
 [data-color-mode="low"] {
@@ -157,8 +333,149 @@ html, body {
   background-image: none !important;
 }
 
+/* App root background lives here (not inline) so themes can restyle it.
+   isolation creates a stacking context so the Cosmos atmosphere can sit at
+   z-index -1: above this background, below ALL content unconditionally. */
+.app-root {
+  background: var(--bg-base);
+  position: relative;
+  isolation: isolate;
+}
+
+/* === Cosmos atmosphere ===
+   Rendered by App.tsx only when the cosmos theme is active. Every animation
+   is transform/opacity-only (composited — no per-frame repaints). Star
+   layers are repeating-gradient tiles; mismatched tile sizes pseudo-
+   randomize positions, and each layer is oversized by exactly the LCM of
+   its tile sizes so the drift loop is seamless. */
+.cosmos-atmosphere {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.cosmos-atmosphere > div {
+  position: absolute;
+  inset: 0;
+}
+
+.cosmos-nebula {
+  background:
+    radial-gradient(900px 540px at 85% -10%, rgba(110, 70, 230, 0.38), transparent 62%),
+    radial-gradient(720px 480px at -10% 110%, rgba(40, 180, 200, 0.22), transparent 60%),
+    radial-gradient(560px 340px at 42% 55%, rgba(232, 121, 249, 0.09), transparent 70%),
+    radial-gradient(420px 300px at 15% 20%, rgba(94, 234, 212, 0.05), transparent 70%);
+}
+
+.cosmos-aurora {
+  width: 300%;
+  background: linear-gradient(115deg,
+    transparent 30%,
+    rgba(94, 234, 212, 0.07) 45%,
+    rgba(167, 139, 250, 0.11) 55%,
+    rgba(232, 121, 249, 0.06) 62%,
+    transparent 72%);
+  animation: cosmosAurora 16s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@keyframes cosmosAurora {
+  from { transform: translateX(0); }
+  to { transform: translateX(-66%); }
+}
+
+.cosmos-stars-far,
+.cosmos-stars-near {
+  top: 0;
+  left: 0;
+  will-change: transform, opacity;
+}
+
+/* Tile sizes 280/560/420/336 → LCM 1680px. */
+.cosmos-stars-far {
+  width: calc(100% + 1680px);
+  height: calc(100% + 1680px);
+  background-image:
+    radial-gradient(1px 1px at 20px 30px, rgba(255, 255, 255, 0.45) 50%, transparent 51%),
+    radial-gradient(1px 1px at 170px 90px, rgba(214, 222, 255, 0.35) 50%, transparent 51%),
+    radial-gradient(1px 1px at 90px 200px, rgba(255, 255, 255, 0.3) 50%, transparent 51%),
+    radial-gradient(1px 1px at 240px 150px, rgba(214, 234, 255, 0.28) 50%, transparent 51%);
+  background-size: 280px 280px, 560px 560px, 420px 420px, 336px 336px;
+  animation:
+    cosmosDriftFar 300s linear infinite,
+    cosmosTwinkle 4.6s ease-in-out infinite alternate;
+}
+
+@keyframes cosmosDriftFar {
+  to { transform: translate(-1680px, -1680px); }
+}
+
+/* Tile sizes 240/480/360 → LCM 1440px. */
+.cosmos-stars-near {
+  width: calc(100% + 1440px);
+  height: calc(100% + 1440px);
+  background-image:
+    radial-gradient(1.4px 1.4px at 60px 110px, rgba(255, 255, 255, 0.65) 50%, transparent 51%),
+    radial-gradient(1.2px 1.2px at 200px 40px, rgba(222, 230, 255, 0.5) 50%, transparent 51%),
+    radial-gradient(1.6px 1.6px at 130px 260px, rgba(240, 171, 252, 0.4) 50%, transparent 51%),
+    radial-gradient(1.2px 1.2px at 310px 180px, rgba(165, 243, 252, 0.42) 50%, transparent 51%);
+  background-size: 240px 240px, 480px 480px, 360px 360px, 480px 480px;
+  animation:
+    cosmosDriftNear 180s linear infinite,
+    cosmosTwinkle 3.4s ease-in-out infinite alternate-reverse;
+}
+
+@keyframes cosmosDriftNear {
+  to { transform: translate(-1440px, -1440px); }
+}
+
+@keyframes cosmosTwinkle {
+  from { opacity: 0.55; }
+  to { opacity: 1; }
+}
+
+/* Occasional shooting star: one streak every ~18s, alternating corners. */
+.cosmos-shooting {
+  inset: auto;
+  top: 12%;
+  left: 78%;
+  width: 110px;
+  height: 1.5px;
+  border-radius: 99px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.85));
+  transform: rotate(135deg);
+  opacity: 0;
+  animation: cosmosShooting 18s linear infinite;
+  will-change: transform, opacity;
+}
+
+@keyframes cosmosShooting {
+  0% { transform: rotate(135deg) translateX(0); opacity: 0; }
+  1% { opacity: 0.9; }
+  6% { transform: rotate(135deg) translateX(55vw); opacity: 0; }
+  100% { transform: rotate(135deg) translateX(55vw); opacity: 0; }
+}
+
+/* Theatrical accents: soft bloom on the stream cursor and a faint violet
+   lift in every card shadow (via --shadow-card in the theme block). */
+[data-theme="cosmos"] .cb-stream-cursor {
+  box-shadow: 0 0 8px rgba(94, 234, 212, 0.7);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cosmos-aurora,
+  .cosmos-stars-far,
+  .cosmos-stars-near {
+    animation: none;
+  }
+  .cosmos-shooting { display: none; }
+}
+
 ::selection {
-  background: rgba(139, 92, 246, 0.3);
+  background: var(--selection-bg);
 }
 
 ::-webkit-scrollbar {
@@ -171,7 +488,7 @@ html, body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.18);
+  background: var(--scrollbar-thumb);
   border-radius: 10px;
   border: 6px solid transparent;
   background-clip: content-box;
@@ -182,11 +499,11 @@ html, body {
 
 [data-scrollhover]::-webkit-scrollbar-thumb {
   border-width: 2px;
-  background-color: rgba(255, 255, 255, 0.25);
+  background-color: var(--scrollbar-thumb-hover);
 }
 
 [data-scrollhover]::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(255, 255, 255, 0.45);
+  background-color: var(--scrollbar-thumb-active);
 }
 
 .window-frame::before {
@@ -195,7 +512,7 @@ html, body {
   inset: 0;
   border-radius: inherit;
   padding: 2px 0 0 0;
-  background: linear-gradient(90deg, #00a884, #8b5cf6, #ea580c, #00a884);
+  background: var(--frame-gradient);
   background-size: 200% 100%;
   animation: shimmer var(--shimmer-duration) linear infinite;
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
