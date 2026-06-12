@@ -176,6 +176,94 @@
   --shiki-token-link: #74bce4;
 }
 
+[data-theme="fjord"] {
+  --bg-base: #151922;
+  --bg-surface: #1a1f2a;
+  --bg-mid: #171c26;
+  --bg-input: #202736;
+  --bg-elevated: #232b3a;
+  --bg-hover: #2a3344;
+  --bg-card: #1c222e;
+  --border-subtle: #2a3448;
+  --border-card: #2e3850;
+  --text-primary: #d8dee9;
+  --text-secondary: #aeb6c8;
+  --text-muted: #697489;
+  --color-shell: #74b5a8;
+  --color-ai: #b48ead;
+  --color-agent: #d08770;
+  --color-error: #bf616a;
+  --color-warning: #ebcb8b;
+  --color-info: #81a1c1;
+  --selection-bg: rgba(180, 142, 173, 0.3);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.25);
+  --input-surface: linear-gradient(180deg, #232a39, #202736);
+
+  --ansi-30: #151922; --ansi-31: #bf616a; --ansi-32: #a3be8c; --ansi-33: #ebcb8b;
+  --ansi-34: #81a1c1; --ansi-35: #b48ead; --ansi-36: #88c0d0; --ansi-37: #d8dee9;
+  --ansi-90: #697489; --ansi-91: #d0707a; --ansi-92: #b4cf9d; --ansi-93: #f0d8a0;
+  --ansi-94: #93b1d4; --ansi-95: #c49ec4; --ansi-96: #9cd2e0; --ansi-97: #eceff4;
+  --ansi-bg-40: #151922; --ansi-bg-41: #3c2228; --ansi-bg-42: #2c3624; --ansi-bg-43: #3e3722;
+  --ansi-bg-44: #25334a; --ansi-bg-45: #36283c; --ansi-bg-46: #24404a; --ansi-bg-47: #3b4252;
+  --ansi-bg-100: #3b4252; --ansi-bg-101: #4a2a31; --ansi-bg-102: #36422c; --ansi-bg-103: #4c4429;
+  --ansi-bg-104: #2d3f5c; --ansi-bg-105: #42314a; --ansi-bg-106: #2c4e5a; --ansi-bg-107: #697489;
+
+  --shiki-foreground: #d8dee9;
+  --shiki-token-comment: #616e88;
+  --shiki-token-keyword: #81a1c1;
+  --shiki-token-string: #a3be8c;
+  --shiki-token-string-expression: #a3be8c;
+  --shiki-token-constant: #b48ead;
+  --shiki-token-function: #88c0d0;
+  --shiki-token-parameter: #d08770;
+  --shiki-token-punctuation: #aeb6c8;
+  --shiki-token-link: #88c0d0;
+}
+
+[data-theme="ember"] {
+  --bg-base: #171210;
+  --bg-surface: #1d1714;
+  --bg-mid: #1a1411;
+  --bg-input: #261f1a;
+  --bg-elevated: #2d251f;
+  --bg-hover: #352c25;
+  --bg-card: #211a16;
+  --border-subtle: #362d25;
+  --border-card: #3a3028;
+  --text-primary: #d8cfc4;
+  --text-secondary: #b3a89a;
+  --text-muted: #7a6f63;
+  --color-shell: #9fb554;
+  --color-ai: #c490e4;
+  --color-agent: #e07840;
+  --color-error: #e25d45;
+  --color-warning: #ddae4a;
+  --color-info: #58b5c4;
+  --selection-bg: rgba(224, 120, 64, 0.25);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --input-surface: linear-gradient(180deg, #292119, #261f1a);
+
+  --ansi-30: #171210; --ansi-31: #e25d45; --ansi-32: #9fb554; --ansi-33: #ddae4a;
+  --ansi-34: #7d9dc4; --ansi-35: #c490e4; --ansi-36: #58b5c4; --ansi-37: #d8cfc4;
+  --ansi-90: #7a6f63; --ansi-91: #ef7259; --ansi-92: #b2c968; --ansi-93: #efc25e;
+  --ansi-94: #93b2d8; --ansi-95: #d4a8f0; --ansi-96: #6fc9d8; --ansi-97: #f5efe6;
+  --ansi-bg-40: #171210; --ansi-bg-41: #44201a; --ansi-bg-42: #333a18; --ansi-bg-43: #44380f;
+  --ansi-bg-44: #1f3040; --ansi-bg-45: #3a2a4a; --ansi-bg-46: #1b4048; --ansi-bg-47: #45403a;
+  --ansi-bg-100: #45403a; --ansi-bg-101: #54281f; --ansi-bg-102: #40481f; --ansi-bg-103: #524415;
+  --ansi-bg-104: #283c50; --ansi-bg-105: #463358; --ansi-bg-106: #224c54; --ansi-bg-107: #7a6f63;
+
+  --shiki-foreground: #d8cfc4;
+  --shiki-token-comment: #6e6358;
+  --shiki-token-keyword: #e07840;
+  --shiki-token-string: #9fb554;
+  --shiki-token-string-expression: #9fb554;
+  --shiki-token-constant: #ddae4a;
+  --shiki-token-function: #c490e4;
+  --shiki-token-parameter: #58b5c4;
+  --shiki-token-punctuation: #a39888;
+  --shiki-token-link: #58b5c4;
+}
+
 [data-theme="cosmos"] {
   --bg-base: #0a0a16;
   --bg-surface: #0e0e1e;
@@ -333,6 +421,102 @@ html, body {
   background-image: none !important;
 }
 
+[data-theme="abyss"] {
+  --bg-base: #06121a;
+  --bg-surface: #0a1822;
+  --bg-mid: #081520;
+  --bg-input: #122533;
+  --bg-elevated: #172e3f;
+  --bg-hover: #1d394e;
+  --bg-card: #0d1d29;
+  --border-subtle: #1b3344;
+  --border-card: #1f3a4d;
+  --text-primary: #c6dbe5;
+  --text-secondary: #93b2c2;
+  --text-muted: #54748a;
+  --color-shell: #35d0a0;
+  --color-ai: #8f9ff5;
+  --color-agent: #f59e5b;
+  --color-error: #ef6e64;
+  --color-warning: #e8c252;
+  --color-info: #54c8e8;
+  --selection-bg: rgba(84, 200, 232, 0.28);
+  --frame-gradient: linear-gradient(90deg, #35d0a0, #54c8e8, #8f9ff5, #35d0a0);
+  --scrollbar-thumb: rgba(84, 200, 232, 0.25);
+  --scrollbar-thumb-hover: rgba(84, 200, 232, 0.35);
+  --scrollbar-thumb-active: rgba(84, 200, 232, 0.5);
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 18px rgba(53, 160, 200, 0.07);
+  --input-surface: linear-gradient(180deg, #152a3a, #122533);
+
+  --ansi-30: #06121a; --ansi-31: #ef6e64; --ansi-32: #35d0a0; --ansi-33: #e8c252;
+  --ansi-34: #6ea3ee; --ansi-35: #c585e0; --ansi-36: #54c8e8; --ansi-37: #c6dbe5;
+  --ansi-90: #54748a; --ansi-91: #f58a80; --ansi-92: #5fe0b8; --ansi-93: #f2d478;
+  --ansi-94: #8ab8f2; --ansi-95: #d6a2ec; --ansi-96: #7cd8f0; --ansi-97: #f0f8fc;
+  --ansi-bg-40: #06121a; --ansi-bg-41: #3c1f20; --ansi-bg-42: #0e3a2e; --ansi-bg-43: #3c3314;
+  --ansi-bg-44: #14304a; --ansi-bg-45: #321f44; --ansi-bg-46: #103c4a; --ansi-bg-47: #2e4250;
+  --ansi-bg-100: #2e4250; --ansi-bg-101: #4a2828; --ansi-bg-102: #14483a; --ansi-bg-103: #4a4018;
+  --ansi-bg-104: #1a3e5e; --ansi-bg-105: #402a54; --ansi-bg-106: #144c5c; --ansi-bg-107: #54748a;
+
+  --shiki-foreground: #c6dbe5;
+  --shiki-token-comment: #4a6478;
+  --shiki-token-keyword: #54c8e8;
+  --shiki-token-string: #5fe0b8;
+  --shiki-token-string-expression: #5fe0b8;
+  --shiki-token-constant: #8f9ff5;
+  --shiki-token-function: #c585e0;
+  --shiki-token-parameter: #e8c252;
+  --shiki-token-punctuation: #93b2c2;
+  --shiki-token-link: #54c8e8;
+}
+
+[data-theme="magma"] {
+  --bg-base: #150d09;
+  --bg-surface: #1b110c;
+  --bg-mid: #180f0a;
+  --bg-input: #241710;
+  --bg-elevated: #2c1c13;
+  --bg-hover: #362218;
+  --bg-card: #1f140d;
+  --border-subtle: #38241a;
+  --border-card: #3e2a1e;
+  --text-primary: #e0d2c8;
+  --text-secondary: #bca99c;
+  --text-muted: #826f62;
+  --color-shell: #f5a83c;
+  --color-ai: #c06ee8;
+  --color-agent: #ff5a2a;
+  --color-error: #ff4d4d;
+  --color-warning: #ffd23f;
+  --color-info: #56b8d8;
+  --selection-bg: rgba(255, 90, 42, 0.28);
+  --frame-gradient: linear-gradient(90deg, #ff5a2a, #ffb43a, #e23b2e, #ff5a2a);
+  --scrollbar-thumb: rgba(255, 122, 66, 0.28);
+  --scrollbar-thumb-hover: rgba(255, 122, 66, 0.38);
+  --scrollbar-thumb-active: rgba(255, 122, 66, 0.55);
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 18px rgba(255, 90, 42, 0.07);
+  --input-surface: linear-gradient(180deg, #281a12, #241710);
+
+  --ansi-30: #150d09; --ansi-31: #ff4d4d; --ansi-32: #a8b860; --ansi-33: #ffd23f;
+  --ansi-34: #6f9ed8; --ansi-35: #c06ee8; --ansi-36: #56b8d8; --ansi-37: #e0d2c8;
+  --ansi-90: #826f62; --ansi-91: #ff6d6d; --ansi-92: #bcd072; --ansi-93: #ffe06a;
+  --ansi-94: #8ab4e8; --ansi-95: #d490f5; --ansi-96: #74ccea; --ansi-97: #fdf3ea;
+  --ansi-bg-40: #150d09; --ansi-bg-41: #4c1c14; --ansi-bg-42: #34401c; --ansi-bg-43: #4c3c10;
+  --ansi-bg-44: #1c3046; --ansi-bg-45: #3c2450; --ansi-bg-46: #1a4450; --ansi-bg-47: #483b32;
+  --ansi-bg-100: #483b32; --ansi-bg-101: #5c241a; --ansi-bg-102: #404c22; --ansi-bg-103: #5a4814;
+  --ansi-bg-104: #243c56; --ansi-bg-105: #4a2e60; --ansi-bg-106: #205058; --ansi-bg-107: #826f62;
+
+  --shiki-foreground: #e0d2c8;
+  --shiki-token-comment: #75645a;
+  --shiki-token-keyword: #ff5a2a;
+  --shiki-token-string: #a8b860;
+  --shiki-token-string-expression: #a8b860;
+  --shiki-token-constant: #ffd23f;
+  --shiki-token-function: #c06ee8;
+  --shiki-token-parameter: #56b8d8;
+  --shiki-token-punctuation: #b3a496;
+  --shiki-token-link: #f5a83c;
+}
+
 /* App root background lives here (not inline) so themes can restyle it.
    isolation creates a stacking context so the Cosmos atmosphere can sit at
    z-index -1: above this background, below ALL content unconditionally. */
@@ -342,13 +526,15 @@ html, body {
   isolation: isolate;
 }
 
-/* === Cosmos atmosphere ===
-   Rendered by App.tsx only when the cosmos theme is active. Every animation
-   is transform/opacity-only (composited — no per-frame repaints). Star
+/* === Theme atmospheres ===
+   Rendered by App.tsx for the active stylized theme. Every animation is
+   transform/opacity-only (composited — no per-frame repaints). Particle
    layers are repeating-gradient tiles; mismatched tile sizes pseudo-
    randomize positions, and each layer is oversized by exactly the LCM of
-   its tile sizes so the drift loop is seamless. */
-.cosmos-atmosphere {
+   its tile sizes so the motion loop is seamless. Each theme speaks its own
+   motion language: Cosmos drifts diagonally, Abyss rises slowly from the
+   deep, Magma flickers upward from the heat below. */
+.theme-atmosphere {
   position: absolute;
   inset: 0;
   z-index: -1;
@@ -357,7 +543,7 @@ html, body {
   border-radius: inherit;
 }
 
-.cosmos-atmosphere > div {
+.theme-atmosphere > div {
   position: absolute;
   inset: 0;
 }
@@ -459,16 +645,155 @@ html, body {
   100% { transform: rotate(135deg) translateX(55vw); opacity: 0; }
 }
 
-/* Theatrical accents: soft bloom on the stream cursor and a faint violet
-   lift in every card shadow (via --shadow-card in the theme block). */
+/* === Abyss atmosphere — deep ocean ===
+   Light rays breathe from the surface above; two bubble layers rise at
+   different depths/speeds. Rise loops are seamless: layer height extends by
+   the LCM of its tile heights and translates up by exactly that. */
+.abyss-rays {
+  background:
+    linear-gradient(195deg, rgba(84, 200, 232, 0.13) 0%, transparent 32%),
+    linear-gradient(170deg, rgba(84, 200, 232, 0.08) 4%, transparent 36%),
+    linear-gradient(185deg, rgba(53, 208, 160, 0.06) 2%, transparent 30%);
+  animation: abyssRays 9s ease-in-out infinite alternate;
+  will-change: opacity;
+}
+
+@keyframes abyssRays {
+  from { opacity: 0.55; }
+  to { opacity: 1; }
+}
+
+.abyss-depth {
+  background: linear-gradient(180deg, transparent 35%, rgba(1, 6, 11, 0.5) 100%);
+}
+
+.abyss-bubbles-far,
+.abyss-bubbles-near {
+  top: 0;
+  left: 0;
+  width: 100%;
+  will-change: transform, opacity;
+}
+
+/* Tile heights 320/480/240 → LCM 960px. */
+.abyss-bubbles-far {
+  height: calc(100% + 960px);
+  background-image:
+    radial-gradient(1.4px 1.4px at 40px 70px, rgba(180, 230, 255, 0.22) 50%, transparent 51%),
+    radial-gradient(1px 1px at 180px 220px, rgba(180, 230, 255, 0.18) 50%, transparent 51%),
+    radial-gradient(1.2px 1.2px at 120px 150px, rgba(140, 220, 240, 0.15) 50%, transparent 51%);
+  background-size: 320px 320px, 480px 480px, 240px 240px;
+  opacity: 0.6;
+  animation: abyssRiseFar 90s linear infinite;
+}
+
+@keyframes abyssRiseFar {
+  to { transform: translateY(-960px); }
+}
+
+/* Tile heights 280/420 → LCM 840px. */
+.abyss-bubbles-near {
+  height: calc(100% + 840px);
+  background-image:
+    radial-gradient(2.2px 2.2px at 70px 110px, rgba(190, 235, 255, 0.3) 50%, transparent 51%),
+    radial-gradient(1.8px 1.8px at 210px 260px, rgba(160, 230, 250, 0.24) 50%, transparent 51%),
+    radial-gradient(2.6px 2.6px at 150px 30px, rgba(190, 235, 255, 0.18) 50%, transparent 51%);
+  background-size: 280px 280px, 420px 420px, 280px 280px;
+  animation: abyssRiseNear 50s linear infinite;
+}
+
+@keyframes abyssRiseNear {
+  to { transform: translateY(-840px); }
+}
+
+/* === Magma atmosphere — molten heat from below ===
+   A breathing lava glow along the bottom edge; two ember layers float up
+   with a fast flicker (vs the slow twinkle of Cosmos stars). */
+.magma-glow {
+  background:
+    radial-gradient(120% 70% at 50% 115%, rgba(255, 90, 42, 0.26), rgba(255, 140, 60, 0.1) 45%, transparent 70%),
+    radial-gradient(60% 40% at 18% 112%, rgba(255, 180, 58, 0.13), transparent 70%),
+    radial-gradient(55% 38% at 82% 114%, rgba(226, 59, 46, 0.15), transparent 70%);
+  animation: magmaBreathe 7s ease-in-out infinite alternate;
+  will-change: opacity;
+}
+
+@keyframes magmaBreathe {
+  from { opacity: 0.6; }
+  to { opacity: 1; }
+}
+
+.magma-embers-far,
+.magma-embers-near {
+  top: 0;
+  left: 0;
+  width: 100%;
+  will-change: transform, opacity;
+}
+
+/* Tile heights 320/480/240 → LCM 960px. */
+.magma-embers-far {
+  height: calc(100% + 960px);
+  background-image:
+    radial-gradient(1.4px 1.4px at 50px 90px, rgba(255, 150, 60, 0.4) 50%, transparent 51%),
+    radial-gradient(1px 1px at 200px 240px, rgba(255, 200, 90, 0.3) 50%, transparent 51%),
+    radial-gradient(1.2px 1.2px at 130px 170px, rgba(255, 90, 42, 0.32) 50%, transparent 51%);
+  background-size: 320px 320px, 480px 480px, 240px 240px;
+  animation:
+    magmaRiseFar 80s linear infinite,
+    magmaFlicker 2.8s ease-in-out infinite alternate;
+}
+
+@keyframes magmaRiseFar {
+  to { transform: translateY(-960px); }
+}
+
+/* Tile heights 280/420 → LCM 840px. */
+.magma-embers-near {
+  height: calc(100% + 840px);
+  background-image:
+    radial-gradient(2.2px 2.2px at 80px 120px, rgba(255, 170, 70, 0.5) 50%, transparent 51%),
+    radial-gradient(1.8px 1.8px at 220px 280px, rgba(255, 210, 100, 0.36) 50%, transparent 51%),
+    radial-gradient(2.4px 2.4px at 160px 40px, rgba(255, 110, 50, 0.42) 50%, transparent 51%);
+  background-size: 280px 280px, 420px 420px, 280px 280px;
+  animation:
+    magmaRiseNear 44s linear infinite,
+    magmaFlicker 2.1s ease-in-out infinite alternate-reverse;
+}
+
+@keyframes magmaRiseNear {
+  to { transform: translateY(-840px); }
+}
+
+@keyframes magmaFlicker {
+  from { opacity: 0.35; }
+  to { opacity: 0.95; }
+}
+
+/* Theatrical accents: soft bloom on the stream cursor, per stylized theme.
+   Card shadows get their tint via --shadow-card in each theme block. */
 [data-theme="cosmos"] .cb-stream-cursor {
   box-shadow: 0 0 8px rgba(94, 234, 212, 0.7);
+}
+
+[data-theme="abyss"] .cb-stream-cursor {
+  box-shadow: 0 0 8px rgba(53, 208, 160, 0.7);
+}
+
+[data-theme="magma"] .cb-stream-cursor {
+  box-shadow: 0 0 8px rgba(255, 122, 66, 0.75);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .cosmos-aurora,
   .cosmos-stars-far,
-  .cosmos-stars-near {
+  .cosmos-stars-near,
+  .abyss-rays,
+  .abyss-bubbles-far,
+  .abyss-bubbles-near,
+  .magma-glow,
+  .magma-embers-far,
+  .magma-embers-near {
     animation: none;
   }
   .cosmos-shooting { display: none; }

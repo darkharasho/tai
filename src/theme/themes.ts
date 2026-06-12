@@ -9,7 +9,7 @@ import type { ITheme } from '@xterm/xterm';
  * must match black…white / brightBlack…brightWhite below.
  */
 
-export type ThemeId = 'default' | 'graphite' | 'ash' | 'cosmos';
+export type ThemeId = 'default' | 'graphite' | 'ash' | 'fjord' | 'ember' | 'cosmos' | 'abyss' | 'magma';
 
 export interface ThemeDef {
   id: ThemeId;
@@ -64,6 +64,36 @@ export const THEMES: ThemeDef[] = [
     },
   },
   {
+    id: 'fjord',
+    label: 'Fjord',
+    xterm: {
+      background: '#1c222e',
+      foreground: '#d8dee9',
+      cursor: '#d8dee9',
+      cursorAccent: '#1c222e',
+      selectionBackground: 'rgba(180, 142, 173, 0.3)',
+      black: '#151922', red: '#bf616a', green: '#a3be8c', yellow: '#ebcb8b',
+      blue: '#81a1c1', magenta: '#b48ead', cyan: '#88c0d0', white: '#d8dee9',
+      brightBlack: '#697489', brightRed: '#d0707a', brightGreen: '#b4cf9d', brightYellow: '#f0d8a0',
+      brightBlue: '#93b1d4', brightMagenta: '#c49ec4', brightCyan: '#9cd2e0', brightWhite: '#eceff4',
+    },
+  },
+  {
+    id: 'ember',
+    label: 'Ember',
+    xterm: {
+      background: '#211a16',
+      foreground: '#d8cfc4',
+      cursor: '#d8cfc4',
+      cursorAccent: '#211a16',
+      selectionBackground: 'rgba(224, 120, 64, 0.25)',
+      black: '#171210', red: '#e25d45', green: '#9fb554', yellow: '#ddae4a',
+      blue: '#7d9dc4', magenta: '#c490e4', cyan: '#58b5c4', white: '#d8cfc4',
+      brightBlack: '#7a6f63', brightRed: '#ef7259', brightGreen: '#b2c968', brightYellow: '#efc25e',
+      brightBlue: '#93b2d8', brightMagenta: '#d4a8f0', brightCyan: '#6fc9d8', brightWhite: '#f5efe6',
+    },
+  },
+  {
     id: 'cosmos',
     label: 'Cosmos',
     xterm: {
@@ -76,6 +106,36 @@ export const THEMES: ThemeDef[] = [
       blue: '#818cf8', magenta: '#e879f9', cyan: '#67e8f9', white: '#d2d5f0',
       brightBlack: '#5f6294', brightRed: '#fca5a5', brightGreen: '#6ee7b7', brightYellow: '#fcd34d',
       brightBlue: '#a5b4fc', brightMagenta: '#f0abfc', brightCyan: '#a5f3fc', brightWhite: '#ffffff',
+    },
+  },
+  {
+    id: 'abyss',
+    label: 'Abyss',
+    xterm: {
+      background: '#0d1d29',
+      foreground: '#c6dbe5',
+      cursor: '#c6dbe5',
+      cursorAccent: '#0d1d29',
+      selectionBackground: 'rgba(84, 200, 232, 0.28)',
+      black: '#06121a', red: '#ef6e64', green: '#35d0a0', yellow: '#e8c252',
+      blue: '#6ea3ee', magenta: '#c585e0', cyan: '#54c8e8', white: '#c6dbe5',
+      brightBlack: '#54748a', brightRed: '#f58a80', brightGreen: '#5fe0b8', brightYellow: '#f2d478',
+      brightBlue: '#8ab8f2', brightMagenta: '#d6a2ec', brightCyan: '#7cd8f0', brightWhite: '#f0f8fc',
+    },
+  },
+  {
+    id: 'magma',
+    label: 'Magma',
+    xterm: {
+      background: '#1f140d',
+      foreground: '#e0d2c8',
+      cursor: '#f5a83c',
+      cursorAccent: '#1f140d',
+      selectionBackground: 'rgba(255, 90, 42, 0.28)',
+      black: '#150d09', red: '#ff4d4d', green: '#a8b860', yellow: '#ffd23f',
+      blue: '#6f9ed8', magenta: '#c06ee8', cyan: '#56b8d8', white: '#e0d2c8',
+      brightBlack: '#826f62', brightRed: '#ff6d6d', brightGreen: '#bcd072', brightYellow: '#ffe06a',
+      brightBlue: '#8ab4e8', brightMagenta: '#d490f5', brightCyan: '#74ccea', brightWhite: '#fdf3ea',
     },
   },
 ];

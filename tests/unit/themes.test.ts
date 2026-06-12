@@ -22,9 +22,10 @@ function themeBlock(id: string): string {
 }
 
 describe('theme registry', () => {
-  it('has all four themes with unique ids and labels', () => {
-    expect(THEMES.map(t => t.id)).toEqual(['default', 'graphite', 'ash', 'cosmos']);
-    expect(new Set(THEMES.map(t => t.label)).size).toBe(4);
+  it('has unique ids and labels, default first', () => {
+    expect(THEMES[0].id).toBe('default');
+    expect(new Set(THEMES.map(t => t.id)).size).toBe(THEMES.length);
+    expect(new Set(THEMES.map(t => t.label)).size).toBe(THEMES.length);
   });
 
   it('falls back to the default theme for unknown ids', () => {

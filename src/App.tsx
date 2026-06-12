@@ -201,12 +201,27 @@ export default function App() {
       borderRadius: maximized ? 0 : 'var(--window-radius)',
     }}>
       {theme === 'cosmos' && (
-        <div className="cosmos-atmosphere" aria-hidden>
+        <div className="theme-atmosphere" aria-hidden>
           <div className="cosmos-nebula" />
           <div className="cosmos-aurora" />
           <div className="cosmos-stars-far" />
           <div className="cosmos-stars-near" />
           <div className="cosmos-shooting" />
+        </div>
+      )}
+      {theme === 'abyss' && (
+        <div className="theme-atmosphere" aria-hidden>
+          <div className="abyss-rays" />
+          <div className="abyss-depth" />
+          <div className="abyss-bubbles-far" />
+          <div className="abyss-bubbles-near" />
+        </div>
+      )}
+      {theme === 'magma' && (
+        <div className="theme-atmosphere" aria-hidden>
+          <div className="magma-glow" />
+          <div className="magma-embers-far" />
+          <div className="magma-embers-near" />
         </div>
       )}
       <TabBar
