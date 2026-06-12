@@ -45,6 +45,8 @@ const OSC133_RE = /\x1b\]133;([ABCD])([^\x07\x1b]*)?(?:\x07|\x1b\\)/g;
 // ssh's own teardown messages — proof the remote side is gone even when the
 // remote shell died too fast to emit its OSC 133 D marker.
 const SSH_CLOSED_RE = /Connection to \S+ closed|Connection closed by |client_loop: send disconnect|Connection reset by peer/;
+// Streaming emits carry this many tail lines; the active card windows to 500.
+const STREAM_TAIL_LINES = 600;
 const OSC6973_RE = /\x1b\]6973;([^\x07\x1b]*)(?:\x07|\x1b\\)/g;
 
 export class BlockSegmenter {
@@ -100,8 +102,9 @@ export class BlockSegmenter {
   // observe a partial CSI sequence mid-chunk.
   private _osc133RawPrompt = '';
   private _osc133RawCommand = '';
-  // Output is modeled live by an emulator instance per block.
-  private _outEmu = new TermEmulator();
+  // Output is modeled live by an emulator instance per block. Compaction
+  // keeps per-chunk serialization O(live window) on hours-long sessions.
+  private _outEmu = new TermEmulator({ compact: true });
   private _osc133ExitCode: number | null = null;
   private _osc133BlockStart = 0;
 
@@ -621,11 +624,13 @@ export class BlockSegmenter {
         // The emulator models the line discipline (overwrite, backspace,
         // erase, cursor-up redraws), so readline/pyrepl per-keystroke prompt
         // redraws collapse into a single visible line while SGR colors are
-        // preserved for ansiToHtml downstream.
+        // preserved for ansiToHtml downstream. Streaming emits carry only the
+        // tail — the live card renders a bounded window anyway, and the full
+        // buffer lands on the block at finalize.
         this._outEmu.feed(chunk);
-        const clean = this._outEmu.text();
+        const clean = this._outEmu.tailText(STREAM_TAIL_LINES);
         if (clean.length > 0) {
-          this._outputCallbacks.forEach(cb => cb(clean, this._outEmu.ansi()));
+          this._outputCallbacks.forEach(cb => cb(clean, this._outEmu.tailAnsi(STREAM_TAIL_LINES)));
         }
         break;
       }
@@ -692,7 +697,8 @@ export class BlockSegmenter {
       .split('\n')
       .map((l, i) => (i === 0 ? l : stripPs2(l)))
       .join('\n');
-    const output = this._outEmu.text().trim() ? this._outEmu.text().replace(/^\n+/, '').trimEnd() : '';
+    const fullText = this._outEmu.text();
+    const output = fullText.trim() ? fullText.replace(/^\n+/, '').trimEnd() : '';
     const rawOutput = output ? this._outEmu.ansi().replace(/^\n+/, '').trimEnd() : '';
     const promptEmu = new TermEmulator();
     promptEmu.feed(this._osc133RawPrompt);
@@ -703,6 +709,11 @@ export class BlockSegmenter {
     if (!command && !output) {
       return;
     }
+
+    // A remote `exit`/`logout` rides out on ssh's teardown: the exit code we
+    // captured belongs to the dying connection, not the user's command.
+    // Don't paint a failure rail on a perfectly normal logout.
+    const sshTeardown = this._sshClosePending && /^(exit|logout)\b/.test(command);
 
     const block: SegmentedBlock = {
       id: this._nextId(),
@@ -715,7 +726,7 @@ export class BlockSegmenter {
         ? this._pendingPrecmd.duration_ms
         : Date.now() - (this._osc133BlockStart || Date.now()),
       isRemote: this._isRemotePrompt(promptText),
-      ...(this._osc133ExitCode !== null ? { exitCode: this._osc133ExitCode } : {}),
+      ...(this._osc133ExitCode !== null && !sshTeardown ? { exitCode: this._osc133ExitCode } : {}),
       hooksAvailable: !!this._pendingPrecmd,
       ...(this._pendingPrecmd ? {
         signal: this._pendingPrecmd.signal,

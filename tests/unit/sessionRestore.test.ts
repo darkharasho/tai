@@ -63,6 +63,24 @@ describe('session restore', () => {
     expect(loadBlocks('tab-2')).toEqual([]);
   });
 
+  it('scrubs garbage blocks recorded by older versions at load', () => {
+    persistBlocks('tab-1', [
+      cmd('echo1', { command: 'piclock@piclock ~/axitools ❯❯❯  ✘ 130', output: '' }),
+      cmd('empty', { command: '', output: '   ' }),
+      cmd('ctl', { command: 'ding\x07dong', output: 'ok\x08ok' }),
+      cmd('good'),
+    ]);
+    const blocks = loadBlocks('tab-1');
+    expect(blocks.map(b => b.id)).toEqual(['ctl', 'good']);
+    expect(blocks[0].command).toBe('dingdong');
+    expect(blocks[0].output).toBe('okok');
+  });
+
+  it('keeps color escapes in scrubbed rawOutput', () => {
+    persistBlocks('tab-1', [cmd('c', { rawOutput: '\x1b[31mred\x1b[0m\x07' })]);
+    expect(loadBlocks('tab-1')[0].rawOutput).toBe('\x1b[31mred\x1b[0m');
+  });
+
   it('returns [] for corrupt or missing payloads', () => {
     localStorage.setItem('tai:session:tab-9', '{not json');
     expect(loadBlocks('tab-9')).toEqual([]);

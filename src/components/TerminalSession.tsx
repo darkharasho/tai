@@ -1311,21 +1311,11 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   // for every card on every session render.
   const handlePasswordDone = useCallback(() => setPasswordPrompt(false), []);
 
-  // Find-in-blocks (Ctrl/Cmd+F), visible tab only.
+  // Find-in-blocks (Ctrl/Cmd+F) and block navigation (Ctrl/Cmd+Up/Down),
+  // visible tab only.
   const sessionRootRef = useRef<HTMLDivElement>(null);
   const findFlashTimerRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (!visible) return;
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f') {
-        e.preventDefault();
-        setFindOpen(true);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [visible]);
-
+  const navItemIdRef = useRef<string | null>(null);
   const handleFindNavigate = useCallback((itemId: string) => {
     const el = sessionRootRef.current?.querySelector(`[data-item-id="${itemId}"]`) as HTMLElement | null;
     if (!el) return;
@@ -1334,6 +1324,35 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     if (findFlashTimerRef.current) window.clearTimeout(findFlashTimerRef.current);
     findFlashTimerRef.current = window.setTimeout(() => el.classList.remove('tai-find-flash'), 1200);
   }, []);
+  useEffect(() => {
+    if (!visible) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        setFindOpen(true);
+        return;
+      }
+      // Warp-style block jumping: Ctrl/Cmd+Up walks back through command
+      // blocks, Ctrl/Cmd+Down walks forward. Reuses the finder's flash.
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        const els = Array.from(
+          sessionRootRef.current?.querySelectorAll('[data-item-id]') ?? [],
+        ) as HTMLElement[];
+        if (els.length === 0) return;
+        e.preventDefault();
+        let idx = els.findIndex(el => el.dataset.itemId === navItemIdRef.current);
+        if (idx === -1) idx = els.length; // first press starts at the newest block
+        idx = e.key === 'ArrowUp' ? Math.max(0, idx - 1) : Math.min(els.length - 1, idx + 1);
+        const id = els[idx].dataset.itemId;
+        if (!id) return;
+        navItemIdRef.current = id;
+        handleFindNavigate(id);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [visible, handleFindNavigate]);
+
   const handleFindClose = useCallback(() => setFindOpen(false), []);
 
   // Debounced persistence of finished blocks for next-launch restore.

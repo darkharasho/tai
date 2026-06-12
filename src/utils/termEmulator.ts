@@ -22,6 +22,27 @@ interface Line {
 
 const MAX_PENDING_ESC = 8192;
 
+// Compaction (opt-in): long-running sessions (pm2 logs, dev servers) stream
+// for hours — keeping every line as live cell arrays is heavy, and
+// re-serializing the whole buffer per chunk is O(N²) over the session.
+// Lines old enough that no realistic cursor movement can touch them again
+// freeze into plain strings; serialization cost per chunk becomes O(live
+// window). Index-based APIs (textLines/cursorRow/…) are NOT compaction-aware
+// — only enable compaction on instances consumed via text()/ansi()/tail*().
+const COMPACT_AT = 1024;
+const KEEP_LIVE = 700;
+const FROZEN_MAX_LINES = 30_000;
+const FROZEN_TRIM_TO = 20_000;
+
+function nthNewline(s: string, n: number): number {
+  let idx = -1;
+  for (let i = 0; i < n; i++) {
+    idx = s.indexOf('\n', idx + 1);
+    if (idx === -1) return -1;
+  }
+  return idx;
+}
+
 export class TermEmulator {
   private _lines: Line[] = [{ chars: [], sgrs: [] }];
   private _row = 0;
@@ -29,6 +50,15 @@ export class TermEmulator {
   private _sgr = '';
   // Carries an escape sequence split across feed() chunk boundaries.
   private _pending = '';
+  private readonly _compactEnabled: boolean;
+  // Compacted prefix: serialized once, each entry newline-terminated.
+  private _frozenText = '';
+  private _frozenAnsi = '';
+  private _frozenCount = 0;
+
+  constructor(opts?: { compact?: boolean }) {
+    this._compactEnabled = !!opts?.compact;
+  }
 
   reset(): void {
     this._lines = [{ chars: [], sgrs: [] }];
@@ -36,6 +66,9 @@ export class TermEmulator {
     this._col = 0;
     this._sgr = '';
     this._pending = '';
+    this._frozenText = '';
+    this._frozenAnsi = '';
+    this._frozenCount = 0;
   }
 
   /** Number of lines currently in the buffer (cursor line included). */
@@ -81,16 +114,62 @@ export class TermEmulator {
       this._write(ch);
       i++;
     }
+    if (this._compactEnabled) this._maybeCompact();
+  }
+
+  private _maybeCompact(): void {
+    if (this._lines.length <= COMPACT_AT) return;
+    // Never freeze the cursor line or anything below it.
+    const freezeEnd = Math.min(this._lines.length - KEEP_LIVE, this._row);
+    if (freezeEnd <= 0) return;
+    const frozen = this._lines.splice(0, freezeEnd);
+    for (const l of frozen) {
+      this._frozenText += l.chars.join('').replace(/\s+$/, '') + '\n';
+      this._frozenAnsi += this._serializeLine(l) + '\n';
+    }
+    this._frozenCount += freezeEnd;
+    this._row -= freezeEnd;
+    if (this._frozenCount > FROZEN_MAX_LINES) this._trimFrozen();
+  }
+
+  private _trimFrozen(): void {
+    const drop = this._frozenCount - FROZEN_TRIM_TO;
+    const tIdx = nthNewline(this._frozenText, drop);
+    const aIdx = nthNewline(this._frozenAnsi, drop);
+    if (tIdx === -1 || aIdx === -1) return;
+    const marker = `… (${drop} earlier lines trimmed)\n`;
+    this._frozenText = marker + this._frozenText.slice(tIdx + 1);
+    this._frozenAnsi = marker + this._frozenAnsi.slice(aIdx + 1);
+    this._frozenCount = FROZEN_TRIM_TO + 1;
   }
 
   /** Plain text of the whole buffer, line-trailing whitespace trimmed. */
   text(): string {
-    return this._lines.map(l => l.chars.join('').replace(/\s+$/, '')).join('\n');
+    return this._frozenText + this._lines.map(l => l.chars.join('').replace(/\s+$/, '')).join('\n');
   }
 
   /** Buffer with SGR color runs re-serialized for ansiToHtml. */
   ansi(): string {
-    return this._lines.map(l => this._serializeLine(l)).join('\n');
+    return this._frozenAnsi + this._lines.map(l => this._serializeLine(l)).join('\n');
+  }
+
+  /**
+   * Last `n` lines as plain text — O(n) regardless of buffer size as long as
+   * `n` fits inside the live window (callers keep n < KEEP_LIVE).
+   */
+  tailText(n: number): string {
+    if (this._frozenCount > 0 && this._lines.length < n) {
+      return this.text().split('\n').slice(-n).join('\n');
+    }
+    return this._lines.slice(-n).map(l => l.chars.join('').replace(/\s+$/, '')).join('\n');
+  }
+
+  /** Last `n` lines with SGR runs — same windowing contract as tailText. */
+  tailAnsi(n: number): string {
+    if (this._frozenCount > 0 && this._lines.length < n) {
+      return this.ansi().split('\n').slice(-n).join('\n');
+    }
+    return this._lines.slice(-n).map(l => this._serializeLine(l)).join('\n');
   }
 
   /** Plain lines; trailing whitespace trimmed unless trim=false. */
@@ -105,7 +184,7 @@ export class TermEmulator {
 
   /** True when nothing has been written since construction/reset. */
   isEmpty(): boolean {
-    return this._lines.length === 1 && this._lines[0].chars.length === 0;
+    return this._frozenCount === 0 && this._lines.length === 1 && this._lines[0].chars.length === 0;
   }
 
   ansiLines(): string[] {
@@ -249,8 +328,42 @@ export class TermEmulator {
         this._line();
         break;
       }
+      case '@': { // ICH — insert blank characters at the cursor
+        const line = this._line();
+        if (this._col < line.chars.length) {
+          const blanks = Array.from({ length: n || 1 }, () => ' ');
+          line.chars.splice(this._col, 0, ...blanks);
+          line.sgrs.splice(this._col, 0, ...blanks.map(() => ''));
+        }
+        break;
+      }
+      case 'P': { // DCH — delete characters at the cursor, pulling the rest left
+        const line = this._line();
+        line.chars.splice(this._col, n || 1);
+        line.sgrs.splice(this._col, n || 1);
+        break;
+      }
+      case 'X': { // ECH — erase characters (blank, no shift)
+        const line = this._line();
+        const end = Math.min(line.chars.length, this._col + (n || 1));
+        for (let c = this._col; c < end; c++) {
+          line.chars[c] = ' ';
+          line.sgrs[c] = '';
+        }
+        break;
+      }
+      case 'L': { // IL — insert blank lines at the cursor row
+        const blanks = Array.from({ length: n || 1 }, () => ({ chars: [] as string[], sgrs: [] as string[] }));
+        this._lines.splice(this._row, 0, ...blanks);
+        break;
+      }
+      case 'M': { // DL — delete lines at the cursor row
+        this._lines.splice(this._row, n || 1);
+        this._line();
+        break;
+      }
       default:
-        break; // ignore everything else (insert/delete/scroll)
+        break; // ignore everything else (scroll regions etc.)
     }
   }
 

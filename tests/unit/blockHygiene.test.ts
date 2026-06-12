@@ -144,6 +144,9 @@ describe('BlockSegmenter hygiene (screenshot regressions)', () => {
     const sshCb = vi.fn();
     seg.onSshSession(sshCb);
 
+    const blocks: any[] = [];
+    seg.onBlock(b => blocks.push(b));
+
     seg.feed(`${A}local@box:~$ ${B}ssh user@piclock.local\n${C}`);
     expect(seg.sshSessionActive).toBe(true);
 
@@ -151,10 +154,15 @@ describe('BlockSegmenter hygiene (screenshot regressions)', () => {
     seg.feed(`${A}user@piclock:~$ ${B}exit\n${C}logout\n`);
     // ssh teardown output + the local ssh command's own D, then local prompt.
     seg.feed('Connection to piclock.local closed.\r\n');
-    seg.feed(`${D(0)}${A}local@box:~$ ${B}`);
+    seg.feed(`${D(127)}${A}local@box:~$ ${B}`);
 
     expect(seg.sshSessionActive).toBe(false);
     expect(sshCb).toHaveBeenLastCalledWith(false, null);
+    // The 127 belongs to the dying connection, not the user's `exit` — the
+    // finalized block must not carry it as a failure.
+    const exitBlock = blocks.find(b => b.command === 'exit');
+    expect(exitBlock).toBeTruthy();
+    expect(exitBlock.exitCode).toBeUndefined();
   });
 
   it('folds PS2 echoes inside an OSC 133 integrated command', () => {

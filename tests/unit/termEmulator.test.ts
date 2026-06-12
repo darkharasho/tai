@@ -139,6 +139,42 @@ describe('TermEmulator', () => {
     expect(renderTermText('a\x08b\rc\x1b[K\n')).toBe('c\n');
   });
 
+  describe('compaction', () => {
+    it('keeps text()/ansi() identical with compaction on', () => {
+      const plain = new TermEmulator();
+      const compact = new TermEmulator({ compact: true });
+      let feedStr = '';
+      for (let i = 0; i < 3000; i++) feedStr += `\x1b[32mline${i}\x1b[0m with text\n`;
+      plain.feed(feedStr);
+      compact.feed(feedStr);
+      expect(compact.text()).toBe(plain.text());
+      expect(compact.ansi()).toBe(plain.ansi());
+    });
+
+    it('tailText returns the last n lines cheaply', () => {
+      const emu = new TermEmulator({ compact: true });
+      for (let i = 0; i < 2000; i++) emu.feed(`line${i}\n`);
+      const tail = emu.tailText(5).split('\n');
+      // Final feed ends with \n, so the last line is the empty cursor line.
+      expect(tail.at(-2)).toBe('line1999');
+      expect(tail).toHaveLength(5);
+    });
+
+    it('still honors carriage-return overwrite near the live window', () => {
+      const emu = new TermEmulator({ compact: true });
+      for (let i = 0; i < 1500; i++) emu.feed(`line${i}\n`);
+      emu.feed('progress 1%\rprogress 99%\n');
+      expect(emu.tailText(3)).toContain('progress 99%');
+      expect(emu.tailText(3)).not.toContain('progress 1%');
+    });
+
+    it('isEmpty stays false after compaction', () => {
+      const emu = new TermEmulator({ compact: true });
+      for (let i = 0; i < 2000; i++) emu.feed(`x${i}\n`);
+      expect(emu.isEmpty()).toBe(false);
+    });
+  });
+
   it('reset clears all state', () => {
     const emu = new TermEmulator();
     emu.feed('stuff\n');

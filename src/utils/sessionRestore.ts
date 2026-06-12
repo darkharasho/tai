@@ -39,6 +39,23 @@ export function persistBlocks(tabId: string, items: DisplayItem[]): void {
   }
 }
 
+// Blocks persisted by older builds can carry segmentation garbage: prompt
+// echoes recorded as commands, raw control bytes, empty noise blocks. Scrub
+// once at load so old localStorage doesn't keep haunting the scrollback.
+const CONTROL_RE = /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g;
+const PROMPT_ECHO_BLOCK_RE = /^(?:[^\n]*[❯➜✘»⟫]|\S+@\S+[:\s]\s*\S*\s*[$#%]\s*$)/;
+
+function scrubBlock(b: SegmentedBlock): SegmentedBlock | null {
+  const command = b.command.replace(CONTROL_RE, '');
+  const output = b.output.replace(CONTROL_RE, '');
+  // rawOutput must keep ESC (\x1b) for its SGR color runs.
+  const rawOutput = (b.rawOutput ?? '').replace(/[\x00-\x08\x0b\x0c\x0e-\x1a\x1c-\x1f\x7f]/g, '');
+  if (!command.trim() && !output.trim()) return null;
+  if (PROMPT_ECHO_BLOCK_RE.test(command.split('\n')[0] ?? '')) return null;
+  if (command === b.command && output === b.output && rawOutput === b.rawOutput) return b;
+  return { ...b, command, output, rawOutput };
+}
+
 export function loadBlocks(tabId: string): SegmentedBlock[] {
   let raw: string | null = null;
   try {
@@ -50,10 +67,13 @@ export function loadBlocks(tabId: string): SegmentedBlock[] {
   try {
     const payload = JSON.parse(raw) as Payload;
     if (payload?.v !== VERSION || !Array.isArray(payload.blocks)) return [];
-    return payload.blocks.filter(
-      (b): b is SegmentedBlock =>
-        !!b && typeof b.id === 'string' && typeof b.command === 'string' && typeof b.output === 'string',
-    );
+    return payload.blocks
+      .filter(
+        (b): b is SegmentedBlock =>
+          !!b && typeof b.id === 'string' && typeof b.command === 'string' && typeof b.output === 'string',
+      )
+      .map(scrubBlock)
+      .filter((b): b is SegmentedBlock => b !== null);
   } catch {
     return [];
   }

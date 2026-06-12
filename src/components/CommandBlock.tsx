@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect, memo, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Copy, Check, GitBranch } from 'lucide-react';
+import { Copy, Check, GitBranch, RotateCw, Sparkles } from 'lucide-react';
 import { ansiToHtml } from '@/utils/ansiToHtml';
 import { headLines, tailLines } from '@/utils/outputWindow';
 import { classifyExit } from '@/utils/exitStatus';
@@ -21,6 +21,14 @@ const MAX_ACTIVE_LINES = 500;
 function formatDuration(ms: number): string {
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
   return `${Math.floor(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s`;
+}
+
+// Sub-second durations are noise ("0.0s" chips on every ls) — only show
+// timing once it says something about the command.
+const DURATION_VISIBLE_MS = 1000;
+
+function shortenHome(p: string): string {
+  return p.replace(/^\/var\/home\/[^/]+/, '~').replace(/^\/home\/[^/]+/, '~').replace(/^\/Users\/[^/]+/, '~');
 }
 
 function stripPromptGlyphs(text: string): string {
@@ -255,11 +263,14 @@ export const CommandBlock = memo(function CommandBlock({
   }, []);
 
   let { user, path } = extractPromptParts(block.promptText);
-  if (!user && !path && cwd) {
-    const shortCwd = cwd.replace(/^\/var\/home\/[^/]+/, '~').replace(/^\/home\/[^/]+/, '~');
-    path = shortCwd;
-  }
   const isRemote = block.isRemote || !!sessionRemote;
+  // Prefer ground truth from the shell hooks (OSC 6973 precmd carries cwd)
+  // over regex-parsing the prompt text — the last echo-guessing in the UI.
+  if (!isRemote && block.cwd) {
+    path = shortenHome(block.cwd);
+  } else if (!user && !path && cwd) {
+    path = shortenHome(cwd);
+  }
   // The session header replaces the prompt line only while the session lives;
   // once finished the card reverts to normal prompt chrome in history.
   const sessionLive = !!(active && sessionKind);
@@ -300,6 +311,14 @@ export const CommandBlock = memo(function CommandBlock({
       <div className={styles.contextSep} />
       <button className={styles.contextItem} onClick={() => { onRerun(block.command); setMenuPos(null); }}>Re-run command</button>
       <button className={styles.contextItem} onClick={() => { onAskAI(block); setMenuPos(null); }}>Ask AI about this</button>
+      {onToggleCollapse && !active && (
+        <>
+          <div className={styles.contextSep} />
+          <button className={styles.contextItem} onClick={() => { onToggleCollapse(); setMenuPos(null); }}>
+            {collapsed ? 'Expand block' : 'Collapse block'}
+          </button>
+        </>
+      )}
     </div>,
     document.body,
   ) : null;
@@ -314,7 +333,9 @@ export const CommandBlock = memo(function CommandBlock({
         <span className={styles.promptSep} style={{ color: modeColor }}>❯</span>
         <span className={styles.cmdDim}>{block.command}</span>
         {exitTag}
-        <span className={styles.meta}>{formatDuration(block.duration)}</span>
+        {block.duration >= DURATION_VISIBLE_MS && (
+          <span className={styles.meta}>{formatDuration(block.duration)}</span>
+        )}
         {block.summaryLine && <span className={styles.summaryLine}>{block.summaryLine}</span>}
         {contextMenu}
       </div>
@@ -382,7 +403,10 @@ export const CommandBlock = memo(function CommandBlock({
           )}
         </div>
       ) : (
-      <div className={styles.promptLine} onClick={() => onToggleCollapse?.()}>
+      /* No click-to-collapse: selecting command text must never fold the
+         block. Collapse lives in the context menu; collapsed rows still
+         expand on click. */
+      <div className={styles.promptLine}>
         <div className={styles.promptLeft}>
           {(isRemote || !path) && user && (
             <span className={styles.promptUser} style={{ color: modeColor }}>{user}</span>
@@ -424,6 +448,20 @@ export const CommandBlock = memo(function CommandBlock({
           ) : (
             <>
               <span
+                className={styles.copyBtn}
+                title="Ask AI about this block"
+                onClick={(e) => { e.stopPropagation(); onAskAI(block); }}
+              >
+                <Sparkles size={11} />
+              </span>
+              <span
+                className={styles.copyBtn}
+                title="Re-run command"
+                onClick={(e) => { e.stopPropagation(); onRerun(block.command); }}
+              >
+                <RotateCw size={11} />
+              </span>
+              <span
                 className={`${styles.copyBtn}${copied ? ` ${styles.copyBtnCopied}` : ''}`}
                 title="Copy command"
                 onClick={(e) => {
@@ -436,7 +474,9 @@ export const CommandBlock = memo(function CommandBlock({
                 {copied ? <Check size={11} /> : <Copy size={11} />}
               </span>
               {exitTag}
-              <span className={styles.meta}>{formatDuration(block.duration)}</span>
+              {block.duration >= DURATION_VISIBLE_MS && (
+                <span className={styles.meta}>{formatDuration(block.duration)}</span>
+              )}
             </>
           )}
         </div>
