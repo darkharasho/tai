@@ -6,11 +6,13 @@
   align-items: center;
   gap: 4px;
   padding: 0 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--border-subtle);
+  /* Themed, slightly translucent: in Cosmos the starfield reads through
+     the blur; in the gray themes it's a quiet lift over --bg-surface. */
   background: linear-gradient(
     180deg,
-    rgba(19, 23, 32, 0.95) 0%,
-    rgba(17, 20, 24, 0.9) 100%
+    color-mix(in srgb, var(--bg-elevated) 80%, transparent) 0%,
+    color-mix(in srgb, var(--bg-surface) 88%, transparent) 100%
   );
   backdrop-filter: blur(8px);
   -webkit-app-region: drag;
@@ -53,12 +55,13 @@
 }
 
 .tab:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
 }
 
-/* Active tab — background and borderBottomColor applied inline (dynamic) */
+/* Active tab — role color arrives via --tab-accent (set inline in TabBar.tsx) */
 .tabActive {
-  /* static parts of active state */
+  background: color-mix(in srgb, var(--tab-accent, var(--color-shell)) 10%, transparent);
+  border-bottom-color: var(--tab-accent, var(--color-shell));
 }
 
 /* Radial glow div rendered inside an active tab */
@@ -70,6 +73,11 @@
   height: 20px;
   pointer-events: none;
   border-radius: 0 0 6px 6px;
+  background: radial-gradient(
+    ellipse at center bottom,
+    color-mix(in srgb, var(--tab-accent, var(--color-shell)) 22%, transparent) 0%,
+    transparent 70%
+  );
 }
 
 /* ── Tab index number ─────────────────────────────────────── */
@@ -81,14 +89,14 @@
 
 /* ── Tab label ───────────────────────────────────────────── */
 .tabLabel {
-  color: #6a7080;
+  color: var(--text-muted);
   font-size: 12px;
   font-family: var(--font-sans);
   font-weight: 400;
 }
 
 .tabLabelActive {
-  color: #e8ecf0;
+  color: color-mix(in srgb, var(--text-primary) 70%, white);
   font-weight: 600;
 }
 
@@ -149,7 +157,12 @@
 }
 
 .overflowBtn:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+}
+
+.overflowBtnActive {
+  background: color-mix(in srgb, var(--tab-accent, var(--color-shell)) 10%, transparent);
+  border-bottom-color: var(--tab-accent, var(--color-shell));
 }
 
 /* ── Overflow dropdown ───────────────────────────────────── */
@@ -159,7 +172,7 @@
   right: 0;
   margin-top: 4px;
   background: var(--bg-elevated);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-card);
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   z-index: 3000;
@@ -182,7 +195,17 @@
 }
 
 .overflowItem:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+}
+
+.overflowItemActive {
+  background: color-mix(in srgb, var(--tab-accent, var(--color-shell)) 9%, transparent);
+  border-left-color: var(--tab-accent, var(--color-shell));
+}
+
+.overflowItemLabelActive {
+  color: color-mix(in srgb, var(--text-primary) 70%, white);
+  font-weight: 600;
 }
 
 .overflowItemLabel {
@@ -240,7 +263,7 @@
   flex: none;
   width: 1px;
   height: 16px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--border-subtle);
   margin: 0 4px;
 }
 
@@ -262,13 +285,13 @@
   display: flex;
   align-items: center;
   border-radius: 4px;
-  color: #4a5060;
+  color: var(--text-muted);
   transition: background 0.15s ease, color 0.15s ease;
 }
 
 .windowBtn:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: #8a9090;
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  color: var(--text-secondary);
 }
 
 /* ── AI working indicator ────────────────────────────────── */
@@ -276,7 +299,8 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  /* background and box-shadow set inline based on local/remote context */
+  background: var(--tab-accent, var(--color-shell));
+  box-shadow: 0 0 6px var(--tab-accent, var(--color-shell));
   animation: tabDotPulse 1.4s ease-in-out infinite;
   flex-shrink: 0;
 }

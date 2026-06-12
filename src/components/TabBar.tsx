@@ -43,29 +43,12 @@ function TabItem({ tab, index, isActive, modeColor, tabCount, editingId, editVal
       onClick={onSelect}
       onDoubleClick={onDoubleClick}
       className={`${styles.tab} ${isActive ? styles.tabActive : ''}`}
-      style={isActive ? {
-        background: 'rgba(255,255,255,0.06)',
-        borderBottomColor: modeColor,
-      } : undefined}
+      style={{ '--tab-accent': modeColor } as React.CSSProperties}
     >
-      {isActive && (
-        <div
-          className={styles.tabGlow}
-          style={{
-            background: `radial-gradient(ellipse at center bottom, ${modeColor.startsWith('var(') ? modeColor : modeColor}33 0%, transparent 70%)`,
-          }}
-        />
-      )}
+      {isActive && <div className={styles.tabGlow} />}
       <span className={styles.tabIndex}>{index + 1}:</span>
       {tab.aiWorking && (
-        <span
-          className={styles.workingDot}
-          style={{
-            background: modeColor,
-            boxShadow: `0 0 6px ${modeColor}`,
-          }}
-          aria-label="AI working"
-        />
+        <span className={styles.workingDot} aria-label="AI working" />
       )}
       {editingId === tab.id ? (
         <input
@@ -243,11 +226,8 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTab, o
         <div ref={overflowRef} className={styles.overflowWrapper}>
           <div
             onClick={() => setOverflowOpen(v => !v)}
-            className={styles.overflowBtn}
-            style={activeOverflowColor ? {
-              background: 'rgba(255,255,255,0.06)',
-              borderBottomColor: activeOverflowColor,
-            } : undefined}
+            className={`${styles.overflowBtn} ${activeOverflowColor ? styles.overflowBtnActive : ''}`}
+            style={activeOverflowColor ? { '--tab-accent': activeOverflowColor } as React.CSSProperties : undefined}
           >
             <ChevronDown size={14} style={{ color: activeOverflowColor || 'var(--text-muted)' }} />
             <span style={{ color: activeOverflowColor || 'var(--text-muted)', fontSize: 11 }}>+{overflowTabs.length}</span>
@@ -262,16 +242,12 @@ export function TabBar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTab, o
                   <div
                     key={tab.id}
                     onClick={() => { onSelectTab(tab.id); setOverflowOpen(false); }}
-                    className={styles.overflowItem}
-                    style={isActive ? {
-                      background: 'rgba(255,255,255,0.06)',
-                      borderLeftColor: modeColor,
-                    } : undefined}
+                    className={`${styles.overflowItem} ${isActive ? styles.overflowItemActive : ''}`}
+                    style={{ '--tab-accent': modeColor } as React.CSSProperties}
                   >
                     <span className={styles.tabIndex}>{globalIndex + 1}:</span>
                     <span
-                      className={styles.overflowItemLabel}
-                      style={isActive ? { color: '#e8ecf0', fontWeight: 600 } : undefined}
+                      className={`${styles.overflowItemLabel} ${isActive ? styles.overflowItemLabelActive : ''}`}
                     >
                       {tab.isRemote && tab.sshTarget ? tab.sshTarget : tab.label}
                     </span>
