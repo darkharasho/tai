@@ -103,12 +103,6 @@ const SEPARATOR_STYLE_REMOTE = {
   background: 'linear-gradient(90deg, rgba(245,158,11,0.12), transparent 60%)',
 } as const;
 
-const REPL_ACTIVE_STYLE = {
-  minHeight: '60vh',
-  display: 'flex',
-  flexDirection: 'column',
-} as const;
-
 // The bottom-pinned live card sits outside the scrolling history, so it must
 // bound itself: card capped, output scrolls internally, stdin stays visible.
 const PINNED_LIVE_STYLE = {
@@ -156,7 +150,10 @@ export const CommandBlock = memo(function CommandBlock({
   onRestart,
   onAIPrompt,
 }: CommandBlockProps) {
-  const [showAll, setShowAll] = useState(false);
+  // Finished sessions (npm run dev, pm2 logs after ^C) open fully expanded —
+  // the block remounts when the pending card finalizes, so this initializer
+  // sees the final block with sessionKind set.
+  const [showAll, setShowAll] = useState(() => !!block.sessionKind);
   const [copied, setCopied] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -215,26 +212,33 @@ export const CommandBlock = memo(function CommandBlock({
   const coloredOutput = useMemo(() => {
     const raw = block.rawOutput || block.output;
     if (!raw) return '';
+    // Clamped finished sessions (npm run dev, pm2 logs after ^C) show the
+    // TAIL — the most recent output is what the user stopped to look at.
+    // Ordinary long outputs keep showing the head.
     const windowed = active
       ? tailLines(raw, MAX_ACTIVE_LINES).text
       : isClamped
-        ? headLines(raw, LONG_OUTPUT_LINES).text
+        ? (block.sessionKind ? tailLines(raw, LONG_OUTPUT_LINES) : headLines(raw, LONG_OUTPUT_LINES)).text
         : raw;
     return ansiToHtml(windowed);
-  }, [block.rawOutput, block.output, active, isClamped]);
+  }, [block.rawOutput, block.output, active, isClamped, block.sessionKind]);
 
   // Pinned to the bottom region (outside the scrolling history): the card
   // must cap its own height and scroll output internally, or large output
-  // pushes the stdin line off-screen with no way to reach it. Hooks live
+  // pushes the stdin line off-screen with no way to reach it. In-list live
+  // cards deliberately do NOT scroll internally — they grow with the
+  // scrollback and the list's pin-to-bottom policy follows the tail, so
+  // history and live output read as one continuous stream. Hooks live
   // above the collapsed early-return.
   const pinnedLive = !!docked && !!active && bodyMode === 'output' && !collapsed;
+  const liveScroll = pinnedLive;
   const liveOutRef = useRef<HTMLDivElement>(null);
   const livePinnedRef = useRef(true);
   useEffect(() => {
-    if (!pinnedLive) return;
+    if (!liveScroll) return;
     const el = liveOutRef.current;
     if (el && livePinnedRef.current) el.scrollTop = el.scrollHeight;
-  }, [coloredOutput, pinnedLive]);
+  }, [coloredOutput, liveScroll]);
   const handleLiveScroll = useCallback(() => {
     const el = liveOutRef.current;
     if (el) livePinnedRef.current = isPinnedToBottom(el);
@@ -303,9 +307,11 @@ export const CommandBlock = memo(function CommandBlock({
   if (collapsed) {
     return (
       <div className={styles.collapsed} onClick={() => onToggleCollapse?.()} onContextMenu={openMenu}>
-        <span className={styles.promptUser} style={{ color: modeColor }}>{user}</span>
+        {(isRemote || !path) && user && (
+          <span className={styles.promptUser} style={{ color: modeColor }}>{user}</span>
+        )}
         {path && <span className={styles.promptPath}>{path}</span>}
-        <span className={styles.promptSep}>$</span>
+        <span className={styles.promptSep} style={{ color: modeColor }}>❯</span>
         <span className={styles.cmdDim}>{block.command}</span>
         {exitTag}
         <span className={styles.meta}>{formatDuration(block.duration)}</span>
@@ -315,20 +321,30 @@ export const CommandBlock = memo(function CommandBlock({
     );
   }
 
-  // Active REPL-style cards (running command with stdin available) grow to
-  // a near-full-viewport so the user has a real workspace, not a sliver glued
-  // to the prompt. Interactive (alt-screen) cards have their own min-height
-  // from .interactiveBody; for those we don't need to grow the outer card.
-  const replActive =
-    isActive && ptyId !== undefined && bodyMode === 'output' && !awaitingInput;
+  // Full card chrome only for surfaces hosting live UI widgets (xterm,
+  // password, input field). Live sessions get the subtle tinted treatment;
+  // everything else renders flat, terminal-style.
+  const cardChrome = bodyMode !== 'output' || !!awaitingInput;
+  const sessionChrome = !cardChrome && (sessionLive || pinnedLive);
+  const blockClass =
+    styles.block +
+    (cardChrome ? ` ${styles.blockCard}` : '') +
+    (sessionChrome ? ` ${styles.blockSession}` : '') +
+    (!cardChrome && !sessionChrome && exitClass === 'failure' ? ` ${styles.blockFailed}` : '') +
+    (!cardChrome && !sessionChrome && active ? ` ${styles.blockActive}` : '');
+
+  // Multi-line commands (loops, heredocs): first line lives on the prompt
+  // row, the rest renders verbatim underneath.
+  const nl = block.command.indexOf('\n');
+  const cmdFirst = nl === -1 ? block.command : block.command.slice(0, nl);
+  const cmdRest = nl === -1 ? '' : block.command.slice(nl + 1);
 
   return (
     <div
-      className={styles.block}
+      className={blockClass}
       data-card-surface
       style={{
         '--accent-color': modeColor,
-        ...(replActive ? REPL_ACTIVE_STYLE : {}),
         ...(pinnedLive ? PINNED_LIVE_STYLE : {}),
       } as React.CSSProperties}
       onClick={() => { if (active && awaitingInput && onSendInput) interactiveRef.current?.focus(); }}
@@ -368,10 +384,12 @@ export const CommandBlock = memo(function CommandBlock({
       ) : (
       <div className={styles.promptLine} onClick={() => onToggleCollapse?.()}>
         <div className={styles.promptLeft}>
-          <span className={styles.promptUser} style={{ color: modeColor }}>{user}</span>
+          {(isRemote || !path) && user && (
+            <span className={styles.promptUser} style={{ color: modeColor }}>{user}</span>
+          )}
           {path && <span className={styles.promptPath} title={block.cwd}>{path}</span>}
-          <span className={styles.promptSep}>$</span>
-          <span className={styles.cmd}>{block.command}</span>
+          <span className={styles.promptSep}>❯</span>
+          <span className={styles.cmd}>{cmdFirst}</span>
           {aiSuggested && <span className={styles.viaAi}>ai</span>}
           {!active && block.gitBranch && (
             <span className={styles.branchChip} title={block.cwd}>
@@ -425,6 +443,10 @@ export const CommandBlock = memo(function CommandBlock({
       </div>
       )}
 
+      {!sessionLive && cmdRest && (
+        <pre className={styles.cmdContinuation}>{cmdRest}</pre>
+      )}
+
       {bodyMode === 'password' && ptyId !== undefined && (
         <>
           <div className={styles.separator} style={isRemote ? SEPARATOR_STYLE_REMOTE : SEPARATOR_STYLE_LOCAL} />
@@ -450,12 +472,14 @@ export const CommandBlock = memo(function CommandBlock({
 
       {bodyMode === 'output' && block.output && (
         <>
-          <div className={styles.separator} style={isRemote ? SEPARATOR_STYLE_REMOTE : SEPARATOR_STYLE_LOCAL} />
-          <div className={`${styles.outputArea}${pinnedLive ? ` ${styles.liveOutputArea}` : ''}`}>
+          {cardChrome && (
+            <div className={styles.separator} style={isRemote ? SEPARATOR_STYLE_REMOTE : SEPARATOR_STYLE_LOCAL} />
+          )}
+          <div className={`${styles.outputArea}${liveScroll ? ` ${styles.liveOutputArea}` : ''}`}>
             <div
-              ref={pinnedLive ? liveOutRef : undefined}
-              onScroll={pinnedLive ? handleLiveScroll : undefined}
-              className={`${styles.output}${pinnedLive ? ` ${styles.liveOutput}` : ''}`}
+              ref={liveScroll ? liveOutRef : undefined}
+              onScroll={liveScroll ? handleLiveScroll : undefined}
+              className={`${styles.output}${liveScroll ? ` ${styles.liveOutput}` : ''}`}
               style={isClamped ? { maxHeight: '300px', overflowY: 'hidden' } : undefined}
               dangerouslySetInnerHTML={{ __html: coloredOutput }}
               onClick={handleOutputClick}
@@ -469,13 +493,12 @@ export const CommandBlock = memo(function CommandBlock({
         </>
       )}
 
-      {bodyMode === 'output' && isActive && ptyId !== undefined && !awaitingInput && (
+      {bodyMode === 'output' && isActive && ptyId !== undefined && !awaitingInput && (sessionLive || pinnedLive) && (
         <>
-          {/* Spacer pushes the input to the bottom of a tall in-list card so
-              REPL sessions feel like a dedicated workspace. Pinned live cards
-              must NOT have it: the output area is flex:1 there, and a second
-              flex:1 sibling would steal half the card's height. */}
-          {!pinnedLive && <div className={styles.activeOutputSpacer} />}
+          {/* Spacer pushes the input to the bottom of a tall card while there
+              is no output yet. Once output streams, the live-scroll area is
+              flex:1 and a second flex:1 sibling would steal half the card. */}
+          {!block.output && <div className={styles.activeOutputSpacer} />}
           <CardInput ptyId={ptyId} autoFocus={sessionLive} onAIPrompt={onAIPrompt} />
         </>
       )}

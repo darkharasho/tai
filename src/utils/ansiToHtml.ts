@@ -46,7 +46,11 @@ function parse256Color(codes: number[], i: number): { color: string | null; cons
 }
 
 export function ansiToHtml(raw: string): string {
-  const cleaned = raw.replace(OTHER_ESC_RE, '');
+  // Residual C0 control bytes (BEL, backspace, …) render as tofu glyphs in
+  // HTML — they carry no visual meaning here, so drop them outright.
+  const cleaned = raw
+    .replace(OTHER_ESC_RE, '')
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1a\x1c-\x1f\x7f]/g, '');
 
   let fg: string | null = null;
   let bg: string | null = null;

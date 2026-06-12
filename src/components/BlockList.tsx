@@ -5,6 +5,8 @@ import { InlineAIBlock } from './InlineAIBlock';
 import { AIConversation } from './AIConversation';
 import { ApprovalPrompt } from './ApprovalPrompt';
 import type { SegmentedBlock, AIEntry, AIProvider, BlockBodyMode } from '@/types';
+import type { SessionKind } from '@/utils/sessionKind';
+import type { ReactNode } from 'react';
 import { groupConversations } from '@/utils/groupConversations';
 import { isPinnedToBottom } from '@/utils/scrollPolicy';
 import styles from './BlockList.module.css';
@@ -37,6 +39,14 @@ interface BlockListProps {
   onInteractiveContainerRef?: (el: HTMLDivElement | null) => void;
   /** True when this tab's AI session is operating on a remote host (pill on). */
   sessionRemote?: boolean;
+  /** Live session chrome for the ACTIVE in-list card (rooted sessions live in
+      the scrollback, not a detached pinned region). */
+  sessionKind?: SessionKind;
+  port?: number | null;
+  onSessionStop?: () => void;
+  onSessionRestart?: () => void;
+  onAIPrompt?: (text: string) => void;
+  activeHeaderExtra?: ReactNode;
 }
 
 export function BlockList({
@@ -61,6 +71,12 @@ export function BlockList({
   onPasswordDone,
   onInteractiveContainerRef,
   sessionRemote,
+  sessionKind,
+  port,
+  onSessionStop,
+  onSessionRestart,
+  onAIPrompt,
+  activeHeaderExtra,
 }: BlockListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -155,6 +171,12 @@ export function BlockList({
             isActive={isActive}
             onInteractiveContainerRef={isActive ? onInteractiveContainerRef : undefined}
             sessionRemote={sessionRemote}
+            sessionKind={isActive ? sessionKind : item.block.sessionKind}
+            port={isActive ? port : undefined}
+            onStop={isActive ? onSessionStop : undefined}
+            onRestart={isActive ? onSessionRestart : undefined}
+            onAIPrompt={isActive ? onAIPrompt : undefined}
+            headerExtra={isActive ? activeHeaderExtra : undefined}
           />
         </div>
       );

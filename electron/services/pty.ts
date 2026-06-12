@@ -9,6 +9,7 @@ import { createResizeQueue, type ResizeQueue } from './resizeQueue';
 import { createCoalescingBuffer, type CoalescingBuffer } from './coalescingBuffer';
 import { createBackpressureGate, type BackpressureGate } from './backpressureGate';
 import { TermiosPoller, defaultTermiosReader } from './termiosPoller';
+import { parseHistoryFile, unmetafyZsh } from './parseShellHistory';
 
 const BACKPRESSURE_HIGH = 512 * 1024;
 const BACKPRESSURE_LOW = 128 * 1024;
@@ -346,13 +347,8 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
     const merged: string[] = [];
     for (const histFile of candidates) {
       try {
-        const content = fs.readFileSync(histFile, 'utf8');
-        const lines = content.split('\n').filter(Boolean);
-        const parsed = lines.map(l => {
-          const m = l.match(/^: \d+:\d+;(.*)$/);
-          return m ? m[1] : l;
-        });
-        merged.push(...parsed.slice(-count));
+        const content = unmetafyZsh(fs.readFileSync(histFile));
+        merged.push(...parseHistoryFile(content).slice(-count));
       } catch { continue; }
     }
     return merged.slice(-count);
@@ -443,11 +439,7 @@ done`;
           resolve([]);
           return;
         }
-        const lines = stdout.split('\n').filter(Boolean);
-        const parsed = lines.map(l => {
-          const m = l.match(/^: \d+:\d+;(.*)$/);
-          return m ? m[1] : l;
-        });
+        const parsed = parseHistoryFile(stdout);
         // Deduplicate while preserving order (most recent last)
         const seen = new Set<string>();
         const unique = [];

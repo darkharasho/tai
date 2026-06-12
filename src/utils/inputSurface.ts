@@ -8,9 +8,10 @@
  *  - docked:     Personality 2 — the live terminal edge (Tier 2: REPLs/ssh),
  *                raw passthrough, block grows upward, pinned to the bottom.
  *  - rooted:     a long-running session (dev server, watcher, promoted
- *                long-runner) — the composer morphs into the session card:
- *                block pinned to the bottom, stdin line inside it, no xterm
- *                (cooked-mode output stays on the HTML path).
+ *                long-runner) — the composer morphs into the session card.
+ *                The card lives IN the scrollback (one continuous scroll
+ *                with history, auto-following), stdin line inside it, no
+ *                xterm (cooked-mode output stays on the HTML path).
  *  - fullscreen: Tier 3 — a full TUI takes over its own surface (alt-screen).
  */
 export type InputSurface = 'composer' | 'tier1' | 'docked' | 'rooted' | 'fullscreen';
@@ -51,9 +52,13 @@ export function composerVisible(surface: InputSurface): boolean {
   return surface === 'composer';
 }
 
-/** The active interactive block is pinned to the bottom region (not in scroll). */
+/**
+ * The active interactive block is pinned to the bottom region (not in scroll).
+ * `rooted` deliberately stays IN the scrollback: a detached pinned card with
+ * its own inner scrollbar made session output feel severed from history.
+ */
 export function pinnedActiveBlock(surface: InputSurface): boolean {
-  return surface === 'docked' || surface === 'tier1' || surface === 'rooted';
+  return surface === 'docked' || surface === 'tier1';
 }
 
 /**

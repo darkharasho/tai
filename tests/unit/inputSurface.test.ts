@@ -57,9 +57,11 @@ describe('deriveInputSurface', () => {
 });
 
 describe('rooted surface helpers', () => {
-  it('hides the composer, pins the block, focuses the card input, no xterm', () => {
+  it('hides the composer, keeps the block in the scrollback, focuses the card input, no xterm', () => {
     expect(composerVisible('rooted')).toBe(false);
-    expect(pinnedActiveBlock('rooted')).toBe(true);
+    // Rooted sessions live IN the scrolling history — one continuous scroll —
+    // rather than a detached bottom-pinned region.
+    expect(pinnedActiveBlock('rooted')).toBe(false);
     expect(focusTargetFor('rooted')).toBe('cardInput');
     expect(shouldShowXterm('rooted')).toBe(false);
   });

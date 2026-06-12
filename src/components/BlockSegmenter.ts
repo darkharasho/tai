@@ -1,4 +1,6 @@
-import { stripAnsi, normalizeCursorRedraws } from '@/utils/stripAnsi';
+import { stripAnsi } from '@/utils/stripAnsi';
+import { TermEmulator, renderTermText } from '@/utils/termEmulator';
+import { foldPs2Continuations, stripPs2 } from '@/utils/ps2Fold';
 import { parseOsc6973 } from '@/utils/osc6973';
 import { parseInteractiveSshCommand, checkSshLoginState } from '@/utils/sshDetect';
 import type { SegmentedBlock } from '@/types';
@@ -27,29 +29,6 @@ const CLEAR_SCREEN = '\x1b[2J';
 // echo and gets working history/arrow keys.
 const TUI_REPOSITION_RE = /\x1b\[(?:\d*[AF]|(?:[2-9]|\d{2,})D)/;
 
-/**
- * Apply carriage-return semantics: for each line, simulate \r by
- * keeping only text after the last bare \r (not \r\n which is just
- * a line ending).  If \r is the very last character (cursor parked
- * at column 0 waiting for the next overwrite), keep the previous
- * segment so the line isn't blank.
- */
-function applyCR(str: string): string {
-  if (!str.includes('\r')) return str;
-  // Strip \r\n → \n first so only bare \r remain
-  const normalized = str.replace(/\r\n/g, '\n');
-  if (!normalized.includes('\r')) return normalized;
-  return normalized.split('\n').map(line => {
-    if (!line.includes('\r')) return line;
-    // Split by \r and pick the last non-empty segment
-    const segments = line.split('\r');
-    for (let i = segments.length - 1; i >= 0; i--) {
-      if (segments[i].length > 0) return segments[i];
-    }
-    return '';
-  }).join('\n');
-}
-
 type BlockCallback = (block: SegmentedBlock) => void;
 type OutputCallback = (output: string, rawOutput: string) => void;
 type AltScreenCallback = (entered: boolean) => void;
@@ -63,6 +42,9 @@ type BlockActiveCallback = (active: boolean) => void;
 // OSC 133 markers: ESC ] 133 ; <X>[;...] (BEL | ESC \)
 // We only care about the trailing payload for the D marker (exit code).
 const OSC133_RE = /\x1b\]133;([ABCD])([^\x07\x1b]*)?(?:\x07|\x1b\\)/g;
+// ssh's own teardown messages — proof the remote side is gone even when the
+// remote shell died too fast to emit its OSC 133 D marker.
+const SSH_CLOSED_RE = /Connection to \S+ closed|Connection closed by |client_loop: send disconnect|Connection reset by peer/;
 const OSC6973_RE = /\x1b\]6973;([^\x07\x1b]*)(?:\x07|\x1b\\)/g;
 
 export class BlockSegmenter {
@@ -72,10 +54,10 @@ export class BlockSegmenter {
   private _localHostname = '';
   private _sshConnectionTarget: string | null = null;
   private _startTime = 0;
-  private _pendingLines: string[] = [];
-  private _pendingRawLines: string[] = [];
-  private _partialLine = '';
-  private _partialRawLine = '';
+  // Legacy-path line model: everything since the last block boundary, rendered
+  // through the terminal line discipline (overwrite/backspace/erase semantics).
+  // Lines above the cursor are "complete"; the cursor line is the partial.
+  private _emu = new TermEmulator();
   private _blockCallbacks: BlockCallback[] = [];
   private _outputCallbacks: OutputCallback[] = [];
   private _altScreenCallbacks: AltScreenCallback[] = [];
@@ -92,6 +74,11 @@ export class BlockSegmenter {
   // cleared once we pop back out of its frame.
   private _cmdDepth = 0;
   private _sshDepth = 0;
+  // Set when ssh itself reports the connection closed. A remote `exit` kills
+  // the remote shell before it can emit its D marker, leaving _cmdDepth
+  // inflated by the orphaned C — the depth test alone would then never clear
+  // the session. The sentinel breaks that tie at the next local prompt.
+  private _sshClosePending = false;
   private _seenFirstPrompt = false;
   private _inAltScreen = false;
   // Carry the trailing bytes of each chunk so alt-screen sequences split
@@ -108,15 +95,13 @@ export class BlockSegmenter {
   // by markers emitted by the shell.
   private _integrationActive = false;
   private _osc133Phase: 'idle' | 'prompt' | 'command' | 'output' = 'idle';
-  // Buffers store raw bytes; ANSI is stripped at finalization boundaries (B,
-  // block finalize) so we never observe a partial CSI sequence mid-chunk.
+  // Prompt/command buffers store raw bytes and are rendered through the line
+  // discipline at finalization boundaries (B, block finalize) so we never
+  // observe a partial CSI sequence mid-chunk.
   private _osc133RawPrompt = '';
   private _osc133RawCommand = '';
-  private _osc133RawOutput = '';
-  // Per-chunk-stripped clean output, accumulated alongside the raw buffer so
-  // streaming onOutput callbacks don't re-strip the whole buffer each tick
-  // (was O(N²) on chunky long-running commands like `find /`).
-  private _osc133CleanOutput = '';
+  // Output is modeled live by an emulator instance per block.
+  private _outEmu = new TermEmulator();
   private _osc133ExitCode: number | null = null;
   private _osc133BlockStart = 0;
 
@@ -210,10 +195,7 @@ export class BlockSegmenter {
     }
     if (altExitSeq) {
       this._inAltScreen = false;
-      this._partialLine = '';
-      this._partialRawLine = '';
-      this._pendingLines = [];
-      this._pendingRawLines = [];
+      this._emu.reset();
       this._altScreenCallbacks.forEach(cb => cb(false));
       const exitIdx = rawData.indexOf(altExitSeq) + altExitSeq.length;
       rawData = rawData.substring(exitIdx);
@@ -226,12 +208,7 @@ export class BlockSegmenter {
       if (this._inInteractiveMode) {
         this._inInteractiveMode = false;
         this._interactiveFullscreen = false;
-        if (this._pendingLines.length > 1) {
-          this._pendingLines = [this._pendingLines[0]];
-          this._pendingRawLines = [this._pendingRawLines[0]];
-        }
-        this._partialLine = '';
-        this._partialRawLine = '';
+        this._truncateToCommandEcho();
         this._interactiveCallbacks.forEach(cb => cb(false));
         const showIdx = rawData.indexOf(CURSOR_SHOW) + CURSOR_SHOW.length;
         rawData = rawData.substring(showIdx);
@@ -242,115 +219,88 @@ export class BlockSegmenter {
     if (!this._inInteractiveMode && rawData.includes(CURSOR_HIDE) && this._seenFirstPrompt) {
       this._inInteractiveMode = true;
       this._interactiveFullscreen = true;
-      if (this._pendingLines.length > 1) {
-        this._pendingLines = [this._pendingLines[0]];
-        this._pendingRawLines = [this._pendingRawLines[0]];
-      }
-      this._partialLine = '';
-      this._partialRawLine = '';
+      this._truncateToCommandEcho();
       this._interactiveCallbacks.forEach(cb => cb(true, true));
     }
 
-    const clean = stripAnsi(rawData);
-    const newlineIndex = clean.lastIndexOf('\n');
-    const rawNewlineIndex = rawData.lastIndexOf('\n');
-
-    if (newlineIndex === -1) {
-      this._partialLine += clean;
-      this._partialRawLine += rawData;
-    } else {
-      const completeChunk = clean.substring(0, newlineIndex);
-      const remainder = clean.substring(newlineIndex + 1);
-      const newCompleteLines = (this._partialLine + completeChunk).split('\n');
-      this._partialLine = remainder;
-
-      const rawCompleteChunk = rawData.substring(0, rawNewlineIndex);
-      const rawRemainder = rawData.substring(rawNewlineIndex + 1);
-      const newRawCompleteLines = (this._partialRawLine + rawCompleteChunk).split('\n');
-      this._partialRawLine = rawRemainder;
-
-      for (let i = 0; i < newCompleteLines.length; i++) {
-        let line = newCompleteLines[i];
-        let rawLine = newRawCompleteLines[i] ?? line;
-        // Handle \r (carriage return) in completed lines — keep only text after the last \r
-        const cr = line.lastIndexOf('\r');
-        if (cr !== -1) line = line.substring(cr + 1);
-        const rawCr = rawLine.lastIndexOf('\r');
-        if (rawCr !== -1) rawLine = rawLine.substring(rawCr + 1);
-        this._pendingLines.push(line);
-        this._pendingRawLines.push(rawLine);
-      }
-    }
-
-    // Handle \r (carriage return) — keep only text after the last \r
-    const crIdx = this._partialLine.lastIndexOf('\r');
-    if (crIdx !== -1) {
-      this._partialLine = this._partialLine.substring(crIdx + 1);
-    }
-    const rawCrIdx = this._partialRawLine.lastIndexOf('\r');
-    if (rawCrIdx !== -1) {
-      this._partialRawLine = this._partialRawLine.substring(rawCrIdx + 1);
-    }
+    this._emu.feed(rawData);
 
     if (!this._inInteractiveMode) this._checkForPrompt();
 
-    if (this._seenFirstPrompt && this._pendingLines.length >= 1) {
-      const outputLines = this._pendingLines.slice(1);
-      const rawOutputLines = this._pendingRawLines.slice(1);
-      const isPrompt = this._partialLine && PROMPT_RE.test(this._partialLine);
-      const partialSuffix = this._partialLine && !isPrompt ? '\n' + this._partialLine : '';
-      const rawPartialSuffix = this._partialRawLine && !isPrompt ? '\n' + this._partialRawLine : '';
-      const output = outputLines.map(l => l.trimEnd()).join('\n').trim() + partialSuffix;
-      const rawOutput = rawOutputLines.join('\n').trim() + rawPartialSuffix;
+    if (this._seenFirstPrompt && this._emu.cursorRow >= 1) {
+      const row = this._emu.cursorRow;
+      const lines = this._emu.textLines();
+      const partial = this._emu.currentLine();
+      const isPrompt = partial !== '' && PROMPT_RE.test(partial);
+      const partialSuffix = partial && !isPrompt ? '\n' + partial : '';
+      const output = lines.slice(1, row).join('\n').trim() + partialSuffix;
       if (output) {
+        const rawLines = this._emu.ansiLines();
+        const rawPartialSuffix = partial && !isPrompt ? '\n' + rawLines[row] : '';
+        const rawOutput = rawLines.slice(1, row).join('\n').trim() + rawPartialSuffix;
         this._outputCallbacks.forEach(cb => cb(output, rawOutput));
       }
     }
   }
 
+  /**
+   * A TUI took over mid-block: keep only the command-echo line, drop the
+   * redraw noise that accumulated after it.
+   */
+  private _truncateToCommandEcho(): void {
+    if (this._emu.cursorRow >= 1) this._emu.truncateAfterFirstLine();
+    else this._emu.reset();
+  }
+
   private _checkForPrompt(): void {
+    const partial = this._emu.currentLine();
+    const row = this._emu.cursorRow;
     const pwRe = /(?:password|passphrase).*:\s*$/i;
     if (!this._passwordPromptFired) {
-      if ((this._partialLine && pwRe.test(this._partialLine)) ||
-          (this._pendingLines.length > 0 && pwRe.test(this._pendingLines[this._pendingLines.length - 1]))) {
+      const lastDone = row > 0 ? this._emu.textLines()[row - 1] : '';
+      if ((partial && pwRe.test(partial)) || (lastDone && pwRe.test(lastDone))) {
         this._passwordPromptFired = true;
         this._passwordCallbacks.forEach(cb => cb());
       }
     }
 
-    if (this._partialLine && PROMPT_RE.test(this._partialLine)) {
-      this._handlePromptDetected(this._partialLine);
+    if (partial && PROMPT_RE.test(partial)) {
+      this._handlePromptDetected(
+        partial,
+        this._emu.textLines().slice(0, row),
+        this._emu.ansiLines().slice(0, row),
+      );
       return;
     }
-    if (this._pendingLines.length > 0 && this._partialLine === '') {
-      const lastLine = this._pendingLines[this._pendingLines.length - 1];
-      if (PROMPT_RE.test(lastLine) && (!this._seenFirstPrompt || this._pendingLines.length > 1)) {
-        this._pendingLines.pop();
-        this._pendingRawLines.pop();
-        this._handlePromptDetected(lastLine);
+    if (row > 0 && partial === '') {
+      const lastLine = this._emu.textLines(false)[row - 1];
+      if (PROMPT_RE.test(lastLine) && (!this._seenFirstPrompt || row > 1)) {
+        this._handlePromptDetected(
+          lastLine,
+          this._emu.textLines().slice(0, row - 1),
+          this._emu.ansiLines().slice(0, row - 1),
+        );
       }
     }
   }
 
-  private _handlePromptDetected(promptText: string): void {
-    if (this._pendingLines.length === 0 && !this._seenFirstPrompt) {
+  private _handlePromptDetected(promptText: string, lines: string[], rawLines: string[]): void {
+    if (lines.length === 0 && !this._seenFirstPrompt) {
       this._seenFirstPrompt = true;
       this._currentPrompt = promptText;
       this._initialPrompt = promptText;
       this._startTime = Date.now();
-      this._partialLine = '';
-      this._partialRawLine = '';
+      this._emu.reset();
       this._firePromptChange(promptText);
       return;
     }
 
-    if (this._pendingLines.length === 0 && this._seenFirstPrompt) {
+    if (lines.length === 0 && this._seenFirstPrompt) {
       this._exitInteractiveMode();
       const changed = promptText !== this._currentPrompt;
       this._currentPrompt = promptText;
       this._startTime = Date.now();
-      this._partialLine = '';
-      this._partialRawLine = '';
+      this._emu.reset();
       if (changed) this._firePromptChange(promptText);
       return;
     }
@@ -359,7 +309,7 @@ export class BlockSegmenter {
       this._initialPrompt = promptText;
     }
     this._seenFirstPrompt = true;
-    this._finalizeBlock(promptText);
+    this._finalizeBlock(promptText, lines, rawLines);
   }
 
   private _exitInteractiveMode(): void {
@@ -371,11 +321,9 @@ export class BlockSegmenter {
     }
   }
 
-  private _finalizeBlock(newPromptText: string): void {
+  private _finalizeBlock(newPromptText: string, lines: string[], rawLines: string[]): void {
     this._setCommandActive(false);
     this._exitInteractiveMode();
-    const lines = this._pendingLines;
-    const rawLines = this._pendingRawLines;
     let command = '';
     let outputLines: string[] = [];
     let rawOutputLines: string[] = [];
@@ -385,6 +333,11 @@ export class BlockSegmenter {
       const strippedPrompt = this._currentPrompt.trimEnd();
       if (strippedPrompt && firstLine.startsWith(strippedPrompt)) {
         command = firstLine.slice(strippedPrompt.length).trim();
+        // A redrawn prompt can echo itself more than once on the command
+        // line — drop any further repetitions before the real command text.
+        while (command.startsWith(strippedPrompt)) {
+          command = command.slice(strippedPrompt.length).trim();
+        }
       } else {
         const promptMatch = firstLine.match(/^(?:\S+[@:]\S+[\$#%>❯λ»⟫]|[\$#%❯λ»⟫])\s*/);
         if (promptMatch) {
@@ -397,8 +350,25 @@ export class BlockSegmenter {
       rawOutputLines = rawLines.slice(1);
     }
 
+    // Multi-line commands (loops, heredocs) echo their continuation lines
+    // behind PS2 prompts — fold those back into the command.
+    ({ command, outputLines, rawOutputLines } = foldPs2Continuations(command, outputLines, rawOutputLines));
+
     const output = outputLines.map(l => l.trimEnd()).join('\n').trim();
     const rawOutput = rawOutputLines.join('\n').trim();
+
+    // Nothing ran: a bare Enter, a redrawn prompt, or pure echo noise.
+    // Update prompt bookkeeping but don't emit a noise card.
+    if (!command && !output) {
+      if (this._inSshSession && newPromptText === this._initialPrompt) {
+        this._setSshSession(false, null);
+      }
+      this._currentPrompt = newPromptText;
+      this._startTime = Date.now();
+      this._emu.reset();
+      this._firePromptChange(newPromptText);
+      return;
+    }
 
     const block: SegmentedBlock = {
       id: this._nextId(),
@@ -436,10 +406,7 @@ export class BlockSegmenter {
 
     this._currentPrompt = newPromptText;
     this._startTime = Date.now();
-    this._pendingLines = [];
-    this._pendingRawLines = [];
-    this._partialLine = '';
-    this._partialRawLine = '';
+    this._emu.reset();
     this._firePromptChange(newPromptText);
   }
 
@@ -532,10 +499,7 @@ export class BlockSegmenter {
     if (!this._integrationActive) {
       this._integrationActive = true;
       // Discard any partial state accumulated by the legacy regex path.
-      this._pendingLines = [];
-      this._pendingRawLines = [];
-      this._partialLine = '';
-      this._partialRawLine = '';
+      this._emu.reset();
       this._integrationCallbacks.forEach(cb => cb(true));
     }
 
@@ -548,9 +512,13 @@ export class BlockSegmenter {
         // local shell, so clear any SSH-session flag that didn't get cleared
         // by a D (network drop, kill -9, user reload, etc).
         // A nested integrated-remote prompt also emits 'A'; only treat it as a
-        // return to the local shell once we've popped out of the ssh frame.
-        if (this._inSshSession && this._cmdDepth < this._sshDepth) {
+        // return to the local shell once we've popped out of the ssh frame —
+        // or once ssh itself reported the connection closed (remote `exit`
+        // dies before its D marker, leaving the depth permanently inflated).
+        if (this._inSshSession && (this._cmdDepth < this._sshDepth || this._sshClosePending)) {
           this._sshDepth = 0;
+          this._cmdDepth = 0;
+          this._sshClosePending = false;
           this._setSshSession(false, null);
         }
         // Same reasoning for alt-screen: a fresh prompt means the foreground
@@ -563,8 +531,7 @@ export class BlockSegmenter {
         this._osc133Phase = 'prompt';
         this._osc133RawPrompt = '';
         this._osc133RawCommand = '';
-        this._osc133RawOutput = '';
-        this._osc133CleanOutput = '';
+        this._outEmu.reset();
         this._osc133ExitCode = null;
         this._osc133BlockStart = Date.now();
         this._passwordPromptFired = false;
@@ -572,7 +539,9 @@ export class BlockSegmenter {
       }
       case 'B': {
         this._osc133Phase = 'command';
-        const promptText = stripAnsi(this._osc133RawPrompt);
+        const promptEmu = new TermEmulator();
+        promptEmu.feed(this._osc133RawPrompt);
+        const promptText = promptEmu.textUntrimmed();
         if (promptText && promptText !== this._currentPrompt) {
           this._currentPrompt = promptText;
           if (!this._seenFirstPrompt) {
@@ -597,7 +566,7 @@ export class BlockSegmenter {
         this._osc133Phase = 'output';
         this._cmdDepth++;
         this._setCommandActive(true);
-        const ssh = parseInteractiveSshCommand(stripAnsi(this._osc133RawCommand).trim());
+        const ssh = parseInteractiveSshCommand(renderTermText(this._osc133RawCommand).trim());
         if (ssh) {
           this._sshDepth = this._cmdDepth;
           this._setSshSession(true, ssh.host);
@@ -617,6 +586,7 @@ export class BlockSegmenter {
         // a deeper level and must not clear it.
         if (this._inSshSession && this._cmdDepth < this._sshDepth) {
           this._sshDepth = 0;
+          this._sshClosePending = false;
           this._setSshSession(false, null);
         }
         break;
@@ -645,17 +615,17 @@ export class BlockSegmenter {
         this._osc133RawCommand += chunk;
         break;
       case 'output': {
-        // Rewrite cursor-redraw escapes (ESC[<n>D / ESC[G) to \r in BOTH
-        // raw and clean buffers so applyCR can collapse readline / pyrepl
-        // per-keystroke prompt redraws into a single visible line. The raw
-        // buffer keeps all other ANSI intact for ansiToHtml downstream.
-        const normalized = normalizeCursorRedraws(chunk);
-        this._osc133RawOutput += normalized;
-        this._osc133CleanOutput += stripAnsi(chunk);
-        const cleanCR = applyCR(this._osc133CleanOutput);
-        const rawCR = applyCR(this._osc133RawOutput);
-        if (cleanCR.length > 0) {
-          this._outputCallbacks.forEach(cb => cb(cleanCR, rawCR));
+        if (this._inSshSession && SSH_CLOSED_RE.test(chunk)) {
+          this._sshClosePending = true;
+        }
+        // The emulator models the line discipline (overwrite, backspace,
+        // erase, cursor-up redraws), so readline/pyrepl per-keystroke prompt
+        // redraws collapse into a single visible line while SGR colors are
+        // preserved for ansiToHtml downstream.
+        this._outEmu.feed(chunk);
+        const clean = this._outEmu.text();
+        if (clean.length > 0) {
+          this._outputCallbacks.forEach(cb => cb(clean, this._outEmu.ansi()));
         }
         break;
       }
@@ -701,25 +671,32 @@ export class BlockSegmenter {
 
   private _finalizeIntegratedBlock(): void {
     let rawCommand = this._osc133RawCommand;
-    let rawOutputBytes = this._osc133RawOutput;
 
     // Fallback for shell integrations that don't emit a C marker between the
     // typed-input echo and the command output (Ptyxis/GNOME Terminal uses
     // OSC 3008 instead, which we don't currently parse). Split the command
     // buffer at the first newline: the line the user typed is the command,
     // anything after is output.
-    if (!rawOutputBytes && rawCommand) {
+    if (this._outEmu.isEmpty() && rawCommand) {
       const nl = rawCommand.match(/\r?\n/);
       if (nl && nl.index !== undefined) {
-        rawOutputBytes = rawCommand.slice(nl.index + nl[0].length);
+        this._outEmu.feed(rawCommand.slice(nl.index + nl[0].length));
         rawCommand = rawCommand.slice(0, nl.index);
       }
     }
 
-    const command = stripAnsi(rawCommand).trim();
-    const output = applyCR(stripAnsi(rawOutputBytes)).trimEnd();
-    const rawOutput = applyCR(normalizeCursorRedraws(rawOutputBytes)).trimEnd();
-    const promptText = stripAnsi(this._osc133RawPrompt) || this._currentPrompt;
+    // The C marker bounds the command, so everything here is command text —
+    // but continuation lines still carry their PS2 echo prefixes. Strip them.
+    const command = renderTermText(rawCommand)
+      .trim()
+      .split('\n')
+      .map((l, i) => (i === 0 ? l : stripPs2(l)))
+      .join('\n');
+    const output = this._outEmu.text().trim() ? this._outEmu.text().replace(/^\n+/, '').trimEnd() : '';
+    const rawOutput = output ? this._outEmu.ansi().replace(/^\n+/, '').trimEnd() : '';
+    const promptEmu = new TermEmulator();
+    promptEmu.feed(this._osc133RawPrompt);
+    const promptText = promptEmu.textUntrimmed() || this._currentPrompt;
 
     // Skip empty bootstrap "blocks" (e.g. the synthetic prompt that fires
     // right after we source the integration script with no command run).
@@ -763,10 +740,7 @@ export class BlockSegmenter {
     this._initialPrompt = '';
     this._localHostname = '';
     this._startTime = 0;
-    this._pendingLines = [];
-    this._pendingRawLines = [];
-    this._partialLine = '';
-    this._partialRawLine = '';
+    this._emu.reset();
     this._sshConnectionTarget = null;
     this._seenFirstPrompt = false;
     this._inAltScreen = false;
@@ -787,12 +761,12 @@ export class BlockSegmenter {
     this._inSshSession = false;
     this._cmdDepth = 0;
     this._sshDepth = 0;
+    this._sshClosePending = false;
     this._integrationActive = false;
     this._osc133Phase = 'idle';
     this._osc133RawPrompt = '';
     this._osc133RawCommand = '';
-    this._osc133RawOutput = '';
-    this._osc133CleanOutput = '';
+    this._outEmu.reset();
     this._osc133ExitCode = null;
     this._osc133BlockStart = 0;
     this._pendingPreexec = null;
@@ -805,11 +779,8 @@ export class BlockSegmenter {
    * against the new geometry) don't get glued to pre-resize state.
    */
   onResize(_cols: number, _rows: number): void {
-    if (this._partialLine.length > 0 || this._partialRawLine.length > 0) {
-      this._pendingLines.push(this._partialLine);
-      this._pendingRawLines.push(this._partialRawLine);
-      this._partialLine = '';
-      this._partialRawLine = '';
+    if (this._emu.currentLine().length > 0) {
+      this._emu.feed('\n');
     }
   }
 }

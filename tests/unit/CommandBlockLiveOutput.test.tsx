@@ -42,11 +42,43 @@ describe('pinned live card output containment', () => {
     expect(container.querySelector('[class*="cardInput"]')).toBeTruthy();
   });
 
-  it('keeps the spacer for in-list active cards', () => {
+  it('in-list active session cards grow with the scrollback (no inner scroll)', () => {
+    const { container } = render(
+      <CommandBlock block={makeBlock()} active isActive ptyId={1} sessionKind="server" onStop={noop} {...base} />,
+    );
+    expect(container.querySelector('[class*="liveOutput"]')).toBeNull();
+    expect(container.querySelector('[class*="activeOutputSpacer"]')).toBeNull();
+    expect(container.querySelector('[class*="cardInput"]')).toBeTruthy();
+  });
+
+  it('renders finished session blocks fully expanded (all lines)', () => {
+    const block = { ...makeBlock(100), id: 'done-1', sessionKind: 'watch' as const, exitCode: 130 };
+    const { container } = render(<CommandBlock block={block} {...base} />);
+    // 100 lines is beyond the 30-line clamp — a session block shows them all.
+    expect(container.textContent).toContain('line100');
+    expect(container.textContent).toContain('line1');
+  });
+
+  it('still clamps long non-session output to the head', () => {
+    const { container } = render(<CommandBlock block={makeBlock(100)} {...base} />);
+    expect(container.textContent).toContain('line1');
+    expect(container.textContent).not.toContain('line100');
+  });
+
+  it('keeps the spacer for a session card with no output yet', () => {
+    const { container } = render(
+      <CommandBlock block={{ ...makeBlock(), output: '', rawOutput: '' }} active isActive ptyId={1} sessionKind="server" onStop={noop} {...base} />,
+    );
+    expect(container.querySelector('[class*="activeOutputSpacer"]')).toBeTruthy();
+  });
+
+  it('renders plain running commands flat — no stdin box, no spacer', () => {
     const { container } = render(
       <CommandBlock block={makeBlock()} active isActive ptyId={1} {...base} />,
     );
-    expect(container.querySelector('[class*="activeOutputSpacer"]')).toBeTruthy();
+    expect(container.querySelector('[class*="cardInputBox"]')).toBeNull();
+    expect(container.querySelector('[class*="activeOutputSpacer"]')).toBeNull();
+    expect(container.querySelector('[class*="blockCard"]')).toBeNull();
   });
 
   it('keeps in-list active cards on the normal output path', () => {

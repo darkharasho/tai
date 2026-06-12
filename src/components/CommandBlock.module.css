@@ -1,6 +1,44 @@
+/* Finished commands are flat blocks in a continuous stream — terminal first.
+   Card chrome (.blockCard) is reserved for surfaces hosting live UI:
+   sessions, interactive/xterm bodies, password prompts, REPL workspaces. */
 .block {
   position: relative;
   font-size: 13px;
+  padding: 4px 12px 6px;
+  border-radius: 6px;
+  transition: background 0.15s;
+  /* Quiet identity rail: every block carries its role color, barely. */
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent-color, var(--color-shell)) 16%, transparent);
+}
+
+.block:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+/* Louder rails: failures red, a running flat block its full accent. */
+.blockFailed {
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-error) 55%, transparent);
+}
+
+.blockActive {
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent-color, var(--color-shell)) 55%, transparent);
+}
+
+/* Live sessions (npm run dev, pm2 logs, agents): distinguished but not a
+   bold card — a faint role-tinted surface with a solid accent rail. */
+.blockSession {
+  background: color-mix(in srgb, var(--accent-color, var(--color-shell)) 4%, transparent);
+  border-radius: 8px;
+  padding: 8px 14px 10px;
+  margin-bottom: 4px;
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent-color, var(--color-shell)) 45%, transparent);
+}
+
+.blockSession:hover {
+  background: color-mix(in srgb, var(--accent-color, var(--color-shell)) 5%, transparent);
+}
+
+.blockCard {
   margin-bottom: 8px;
   padding: 14px 16px;
   background: var(--bg-card);
@@ -13,7 +51,11 @@
   transition: border-color 0.2s;
 }
 
-.block::before {
+.blockCard:hover {
+  background: var(--bg-card);
+}
+
+.blockCard::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -28,7 +70,7 @@
   mask-composite: var(--accent-tl-composite);
 }
 
-.block::after {
+.blockCard::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -48,18 +90,18 @@
 
 .collapsed {
   font-size: 13px;
-  padding: 5px 12px;
-  margin-bottom: 6px;
-  opacity: 0.6;
+  padding: 3px 12px;
+  opacity: 0.55;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 6px;
-  background: var(--bg-card);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-left: 2px solid transparent;
-  border-radius: 8px;
-  transition: opacity 0.15s;
+  border-radius: 6px;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.collapsed:hover {
+  background: rgba(255, 255, 255, 0.025);
 }
 
 .collapsed:hover {
@@ -132,8 +174,22 @@
 
 .promptSep {
   font-family: var(--font-mono);
-  color: var(--text-muted);
+  color: var(--accent-color, var(--color-shell));
+  font-weight: 600;
   flex-shrink: 0;
+}
+
+/* Continuation lines of a multi-line command (loop / heredoc), rendered
+   verbatim under the prompt line like a real terminal would show them. */
+.cmdContinuation {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0 0 2px 4px;
+  padding-left: 12px;
+  border-left: 1px solid color-mix(in srgb, var(--accent-color, var(--color-shell)) 30%, transparent);
 }
 
 .cmd {
@@ -163,14 +219,11 @@
 }
 
 .meta {
-  font-family: var(--font-sans);
+  font-family: var(--font-mono);
   color: var(--text-muted);
   font-size: 11px;
   flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.04);
-  padding: 2px 8px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  opacity: 0.6;
 }
 
 .running {
@@ -400,20 +453,14 @@
 }
 
 .exitTag {
-  font-family: var(--font-sans);
+  font-family: var(--font-mono);
   font-size: 11px;
   flex-shrink: 0;
-  padding: 2px 8px;
-  border-radius: 10px;
   color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .exitFailure {
   color: #f08a7a;
-  background: rgba(227, 85, 53, 0.1);
-  border-color: rgba(227, 85, 53, 0.25);
 }
 
 .contextMenu {
@@ -455,15 +502,18 @@
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-family: var(--font-sans);
+  font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-muted);
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 10px;
-  padding: 1px 7px;
   margin-left: 8px;
   flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.block:hover .branchChip,
+.blockCard .branchChip {
+  opacity: 0.7;
 }
 
 .sessionHead {

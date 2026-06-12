@@ -18,4 +18,24 @@ describe('assembleInputHistory', () => {
     expect(assembleInputHistory([], ['The user has a long-running process\n```\nlog\n```\nwhy?', 'echo hi']))
       .toEqual(['echo hi']);
   });
+
+  it('drops segmentation garbage recorded by older versions', () => {
+    expect(assembleInputHistory([], [
+      'piclock@piclock ~/axitools ❯❯❯  ✘ 130 piclock@piclock ~/axitools ❯❯❯',
+      'cmdand heredoc> from collections import Counter',
+      'heredoc> EOF',
+      'user@host:~$ ls',
+      'ding\x07dong',
+      'git status',
+    ])).toEqual(['git status']);
+  });
+
+  it('keeps real commands that merely look unusual', () => {
+    expect(assembleInputHistory([], [
+      '> truncate-me.txt',
+      'echo "a > b"',
+      '# a comment',
+      'curl -s https://x.dev | jq .',
+    ])).toEqual(['> truncate-me.txt', 'echo "a > b"', '# a comment', 'curl -s https://x.dev | jq .']);
+  });
 });

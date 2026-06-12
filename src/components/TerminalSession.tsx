@@ -27,7 +27,6 @@ import { assembleInputHistory } from '@/utils/inputHistory';
 import { persistBlocks, loadBlocks } from '@/utils/sessionRestore';
 import { classifySessionCommand, shouldRootSession, detectPort, LONG_RUN_PROMOTE_MS, type SessionKind } from '@/utils/sessionKind';
 import { summarizeSession } from '@/utils/sessionSummary';
-import { classifyExit } from '@/utils/exitStatus';
 import { preserveStreamedOutput } from '@/utils/finalizeOutput';
 import { classifyKeyTarget } from '@/utils/keyRouting';
 import { isMultilineCommand } from '@/utils/isMultilineCommand';
@@ -106,6 +105,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     if (sessionPromoteTimerRef.current) clearTimeout(sessionPromoteTimerRef.current);
     sessionPromoteTimerRef.current = null;
     setActiveSession({ kind, command, rooted: shouldRootSession(kind, 0), port: null });
+    // Shell/connection terminators can stall waiting on remote teardown —
+    // never promote them into a rooted session card with STOP/stdin chrome.
+    if (/^(exit|logout)\b/.test(command.trim())) return;
     if (kind === 'oneshot') {
       // Unknown commands morph once they've clearly become long-running.
       sessionPromoteTimerRef.current = setTimeout(() => {
@@ -399,19 +401,17 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       }
       const isSuggested = aiSuggestedCommands.current.has(fixedBlock.command);
       if (isSuggested) aiSuggestedCommands.current.delete(fixedBlock.command);
-      // Session un-morph: tag the finished block, summarize it, and drop it
-      // into history collapsed — unless it crashed (a failure exit keeps the
-      // card expanded so the error and its affordances stay visible).
+      // Session un-morph: tag the finished block and summarize it. Finished
+      // sessions stay expanded in history — after a ^C on `npm run dev` or
+      // `pm2 logs` the tail of the output is exactly what the user wants.
       const sess = activeSessionRef.current;
       const sessionEnded = !!(pending && sess && (sess.rooted || sess.kind === 'agent'));
-      let sessionCollapse = false;
       if (sessionEnded && sess) {
         fixedBlock = {
           ...fixedBlock,
           sessionKind: sess.kind,
           summaryLine: summarizeSession(sess.kind, fixedBlock.output, sess.port),
         };
-        sessionCollapse = classifyExit(fixedBlock.exitCode, fixedBlock.signal) !== 'failure';
       }
       if (pending) {
         if (sessionPromoteTimerRef.current) {
@@ -420,6 +420,15 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         }
         setActiveSession(null);
       }
+      // Orphan detection: a leftover ACTIVE pending card whose command just
+      // finalized without consuming pendingCommandRef (e.g. a frame that
+      // collapsed out from under it). The command must match — during an
+      // interactive ssh session, nested remote blocks routinely arrive with
+      // no local pending, and those must NOT deactivate the live ssh card.
+      const orphaned = !pending && displayItemsRef.current.some(item =>
+        item.type === 'command' && item.block.id === 'pending' && item.active &&
+        item.block.command === fixedBlock.command,
+      );
       setDisplayItems(prev => {
         if (pending) {
           const idx = prev.findIndex(item => item.type === 'command' && item.block.id === 'pending');
@@ -433,12 +442,26 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
             if (sessionEnded && sess && finalBlock.output !== fixedBlock.output) {
               finalBlock = { ...finalBlock, summaryLine: summarizeSession(sess.kind, finalBlock.output, sess.port) };
             }
-            next[idx] = { type: 'command', block: finalBlock, aiSuggested: isSuggested, defaultCollapsed: sessionCollapse };
+            next[idx] = { type: 'command', block: finalBlock, aiSuggested: isSuggested };
             return next;
           }
         }
-        return [...prev, { type: 'command', block: fixedBlock, aiSuggested: isSuggested, defaultCollapsed: sessionCollapse }];
+        const cleaned = orphaned
+          ? prev.map(item =>
+              item.type === 'command' && item.block.id === 'pending' && item.active
+                ? { ...item, active: false, block: { ...item.block, id: `stale-${Date.now()}` } }
+                : item)
+          : prev;
+        return [...cleaned, { type: 'command', block: fixedBlock, aiSuggested: isSuggested }];
       });
+      // The orphan's session morph also lingers — clear the STOP/stdin chrome.
+      if (orphaned && activeSessionRef.current) {
+        if (sessionPromoteTimerRef.current) {
+          clearTimeout(sessionPromoteTimerRef.current);
+          sessionPromoteTimerRef.current = null;
+        }
+        setActiveSession(null);
+      }
       // Queued RESTART: re-run once the stopped session's block has finalized.
       if (pending && pendingRestartRef.current) {
         const cmd = pendingRestartRef.current;
@@ -1354,19 +1377,21 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     }
     if (it.type !== 'ai') break;
   }
-  // Trailing AI items form the session side conversation while a card is
-  // pinned: shown in the side panel, hidden from history for the duration
-  // (they drop back into the normal stream when the session ends).
+  // Trailing AI items form the session side conversation while a live
+  // session exists (pinned card OR a rooted session living in the
+  // scrollback): shown in the side panel, hidden from history for the
+  // duration (they drop back into the normal stream when the session ends).
   const pinnedBlock = isPinned && lastActiveCommand ? lastActiveCommand : null;
+  const sessionInList = !isPinned && !!sessionForCard && !!lastActiveCommand;
   const sideChatItems: Array<DisplayItem & { type: 'ai' }> = [];
-  if (pinnedBlock) {
+  if (pinnedBlock || sessionInList) {
     for (let i = displayItems.length - 1; i >= 0; i--) {
       const it = displayItems[i];
       if (it.type !== 'ai') break;
       sideChatItems.unshift(it);
     }
   }
-  const historyItems = pinnedBlock
+  const historyItems = (pinnedBlock || sideChatItems.length > 0)
     ? displayItems.filter(i => i !== pinnedBlock && !(sideChatItems as DisplayItem[]).includes(i))
     : displayItems;
 
@@ -1413,7 +1438,10 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           }}
         />
       )}
-      {(
+      {/* Rooted sessions live in the scrollback: one continuous scroll for
+          history + live output. The session side conversation docks as a
+          right-hand column beside the whole stream. */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'stretch', gap: 10 }}>
         <BlockList
           items={historyItems}
           activeBlockId={null}
@@ -1442,8 +1470,32 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           onPasswordDone={handlePasswordDone}
           onInteractiveContainerRef={setInteractivePortalTarget}
           sessionRemote={eff.isRemote}
+          sessionKind={sessionInList ? sessionForCard?.kind : undefined}
+          port={sessionInList ? sessionForCard?.port : undefined}
+          onSessionStop={sessionInList ? handleSessionStop : undefined}
+          onSessionRestart={sessionInList && sessionForCard?.kind !== 'agent' ? handleSessionRestart : undefined}
+          onAIPrompt={sessionInList ? handleSessionAIPrompt : undefined}
+          activeHeaderExtra={sessionInList && eff.isRemote && remoteAi.target ? (
+            <RemoteAiPill
+              view={pillView(remoteAi)}
+              onEnable={handleEnableRemoteAi}
+              onSetMode={handleSetRemoteAiMode}
+              onDismiss={handleDismissRemoteAi}
+            />
+          ) : undefined}
         />
-      )}
+        {sessionInList && sideChatOpen && sideChatItems.length > 0 && (
+          <SessionSideChat
+            items={sideChatItems}
+            onAsk={handleSessionAIPrompt}
+            onClose={() => setSideChatOpen(false)}
+            onCopy={handleCopy}
+            onRunCommand={(cmd) => { aiSuggestedCommands.current.add(cmd); handleRerun(cmd); }}
+            onStopAI={handleStopAI}
+            aiProvider={aiProvider}
+          />
+        )}
+      </div>
       {/* Stable home for the xterm DOM. HiddenXterm always renders here so its
           xterm.js instance is never disposed/remounted. When alt-screen is active
           and the active card exposes a portal container, we imperatively relocate
