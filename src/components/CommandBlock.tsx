@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect, memo, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Copy, Check, GitBranch, RotateCw, Sparkles } from 'lucide-react';
+import { Copy, Check, GitBranch, RotateCw, Sparkles, ChevronsDownUp } from 'lucide-react';
 import { ansiToHtml } from '@/utils/ansiToHtml';
 import { headLines, tailLines } from '@/utils/outputWindow';
 import { classifyExit } from '@/utils/exitStatus';
@@ -450,6 +450,15 @@ export const CommandBlock = memo(function CommandBlock({
             </>
           ) : (
             <>
+              {onToggleCollapse && (
+                <span
+                  className={styles.copyBtn}
+                  title="Collapse block"
+                  onClick={(e) => { e.stopPropagation(); onToggleCollapse(); }}
+                >
+                  <ChevronsDownUp size={11} />
+                </span>
+              )}
               <span
                 className={styles.copyBtn}
                 title="Ask AI about this block"
