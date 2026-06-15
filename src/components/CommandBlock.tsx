@@ -253,23 +253,30 @@ export const CommandBlock = memo(function CommandBlock({
 
   // Long finished output is capped into an internal scroll region (rather than
   // growing the card to full height in the stream). It opens scrolled to the
-  // bottom — the latest output is what the user wants — and a lightly pinned
-  // command bar grows into the top of the box once the start scrolls away.
+  // bottom — the latest output is what the user wants.
   const scrolledOutput = isLong && !active && showAll;
   const scrolledOutRef = useRef<HTMLDivElement>(null);
-  const [cmdBarPinned, setCmdBarPinned] = useState(false);
-  const handleScrolledScroll = useCallback(() => {
-    const el = scrolledOutRef.current;
-    if (el) setCmdBarPinned(el.scrollTop > 4);
-  }, []);
+  const headerRef = useRef<HTMLDivElement>(null);
+  const [headerOffscreen, setHeaderOffscreen] = useState(false);
   useEffect(() => {
-    if (!scrolledOutput) { setCmdBarPinned(false); return; }
+    if (!scrolledOutput) return;
     const el = scrolledOutRef.current;
-    if (el) {
-      el.scrollTop = el.scrollHeight;
-      setCmdBarPinned(el.scrollTop > 4);
-    }
+    if (el) el.scrollTop = el.scrollHeight;
   }, [scrolledOutput, coloredOutput]);
+  // The pinned command bar earns its place only once the real prompt header
+  // has scrolled out of view — while the header is visible it would just echo
+  // it. Then the bar grows into the top of the card to carry the context.
+  useEffect(() => {
+    if (!scrolledOutput) { setHeaderOffscreen(false); return; }
+    const el = headerRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(
+      ([entry]) => setHeaderOffscreen(!entry.isIntersecting),
+      { threshold: 0 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [scrolledOutput]);
 
   const handleOutputClick = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -426,7 +433,7 @@ export const CommandBlock = memo(function CommandBlock({
       /* No click-to-collapse: selecting command text must never fold the
          block. Collapse lives in the context menu; collapsed rows still
          expand on click. */
-      <div className={styles.promptLine}>
+      <div className={styles.promptLine} ref={headerRef}>
         <div className={styles.promptLeft}>
           {(isRemote || !path) && user && (
             <span className={styles.promptUser} style={{ color: modeColor }}>{user}</span>
@@ -551,7 +558,7 @@ export const CommandBlock = memo(function CommandBlock({
                     output — absent at the top, grows in as the start scrolls
                     away. Mirrors the prompt header above it. */}
                 <div
-                  className={`${styles.cmdBar}${cmdBarPinned ? ` ${styles.cmdBarPinned}` : ''}`}
+                  className={`${styles.cmdBar}${headerOffscreen ? ` ${styles.cmdBarPinned}` : ''}`}
                   aria-hidden="true"
                 >
                   {(isRemote || !path) && user && (
@@ -563,7 +570,6 @@ export const CommandBlock = memo(function CommandBlock({
                 </div>
                 <div
                   ref={scrolledOutRef}
-                  onScroll={handleScrolledScroll}
                   className={styles.scrolledOutput}
                   dangerouslySetInnerHTML={{ __html: coloredOutput }}
                   onClick={handleOutputClick}

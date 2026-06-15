@@ -738,30 +738,30 @@
   background-clip: content-box;
 }
 
-/* Lightly pinned "initial command" bar — overlays the top of the scroll box.
-   Absent at the top (the prompt header already shows the command); grows in
-   with a soft backdrop + accent tick once the start of the output scrolls
-   away. */
+/* Lightly pinned "initial command" bar. Sticks to the top of the viewport
+   (it sits outside the inner overflow, so it tracks the outer history scroll)
+   and grows into the top of the card only once the real prompt header has
+   scrolled out of view — while the header is visible the bar stays collapsed
+   so it never just echoes it. */
 .cmdBar {
-  position: absolute;
+  position: sticky;
   top: 0;
-  left: 0;
-  right: 0;
   z-index: 2;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
+  padding: 0 12px;
   font-family: var(--font-mono);
   font-size: 13px;
   pointer-events: none;
+  overflow: hidden;
+  max-height: 0;
   opacity: 0;
-  transform: translateY(-6px);
   background: color-mix(in srgb, var(--bg-card, #14181c) 80%, transparent);
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid transparent;
-  transition: opacity 0.22s ease, transform 0.22s ease,
+  transition: max-height 0.22s ease, opacity 0.22s ease, padding 0.22s ease,
               border-color 0.22s ease, box-shadow 0.22s ease;
 }
 .cmdBar::before {
@@ -777,8 +777,9 @@
   transition: height 0.22s ease;
 }
 .cmdBarPinned {
+  max-height: 40px;
   opacity: 1;
-  transform: none;
+  padding: 6px 12px;
   border-bottom-color: color-mix(in srgb, var(--accent-color, var(--color-shell)) 22%, #20262e);
   box-shadow: 0 6px 14px -10px #000;
 }
