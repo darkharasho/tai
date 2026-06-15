@@ -78,11 +78,22 @@ export function defaultTermiosReader(): TermiosReader {
   // the file and inject a mock reader.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const termios = require('node-termios');
+  // node-termios (0.2.x) exposes the local-flag bitmasks on
+  // `native.ALL_SYMBOLS` (a flat symbol→value map) and `native.LFLAGS`. There
+  // is no `native.constants` — reading that yields `undefined`, so every flag
+  // ANDs to 0 and the tty would look permanently raw. Resolve the masks from
+  // whichever namespace the build provides.
+  const flags = termios.native?.ALL_SYMBOLS ?? termios.native?.LFLAGS ?? termios.native?.constants ?? {};
+  const ECHO = flags.ECHO;
+  const ICANON = flags.ICANON;
+  if (typeof ECHO !== 'number' || typeof ICANON !== 'number') {
+    throw new Error('node-termios: could not resolve ECHO/ICANON bitmasks');
+  }
   return (fd: number) => {
     const t = new termios.Termios(fd);
     return {
-      echo: (t.c_lflag & termios.native.constants.ECHO) !== 0,
-      icanon: (t.c_lflag & termios.native.constants.ICANON) !== 0,
+      echo: (t.c_lflag & ECHO) !== 0,
+      icanon: (t.c_lflag & ICANON) !== 0,
     };
   };
 }

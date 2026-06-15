@@ -61,7 +61,8 @@
       "repo": "tai"
     },
     "asarUnpack": [
-      "node_modules/node-pty/**/*"
+      "node_modules/node-pty/**/*",
+      "node_modules/node-termios/**/*"
     ],
     "extraResources": [
       {
