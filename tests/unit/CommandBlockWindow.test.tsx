@@ -24,7 +24,11 @@ const noop = () => {};
 const base = { onCopy: noop, onAskAI: noop, onRerun: noop };
 
 function renderedLines(container: HTMLElement): string[] {
-  const out = container.querySelector('[class*="output"]');
+  // Long output renders into the capped scroll region (.scrolledOutput);
+  // short/clamped output uses the plain .output node.
+  const out =
+    container.querySelector('[class*="scrolledOutput"]') ??
+    container.querySelector('[class*="output"]:not([class*="Area"])');
   return (out?.textContent ?? '').split('\n').filter(Boolean);
 }
 

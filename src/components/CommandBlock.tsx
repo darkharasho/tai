@@ -251,6 +251,26 @@ export const CommandBlock = memo(function CommandBlock({
     if (el) livePinnedRef.current = isPinnedToBottom(el);
   }, []);
 
+  // Long finished output is capped into an internal scroll region (rather than
+  // growing the card to full height in the stream). It opens scrolled to the
+  // bottom — the latest output is what the user wants — and a lightly pinned
+  // command bar grows into the top of the box once the start scrolls away.
+  const scrolledOutput = isLong && !active && showAll;
+  const scrolledOutRef = useRef<HTMLDivElement>(null);
+  const [cmdBarPinned, setCmdBarPinned] = useState(false);
+  const handleScrolledScroll = useCallback(() => {
+    const el = scrolledOutRef.current;
+    if (el) setCmdBarPinned(el.scrollTop > 4);
+  }, []);
+  useEffect(() => {
+    if (!scrolledOutput) { setCmdBarPinned(false); return; }
+    const el = scrolledOutRef.current;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+      setCmdBarPinned(el.scrollTop > 4);
+    }
+  }, [scrolledOutput, coloredOutput]);
+
   const handleOutputClick = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
     if (target.tagName === 'A' && target.dataset.url) {
@@ -524,21 +544,50 @@ export const CommandBlock = memo(function CommandBlock({
           {cardChrome && (
             <div className={styles.separator} style={isRemote ? SEPARATOR_STYLE_REMOTE : SEPARATOR_STYLE_LOCAL} />
           )}
-          <div className={`${styles.outputArea}${liveScroll ? ` ${styles.liveOutputArea}` : ''}`}>
-            <div
-              ref={liveScroll ? liveOutRef : undefined}
-              onScroll={liveScroll ? handleLiveScroll : undefined}
-              className={`${styles.output}${liveScroll ? ` ${styles.liveOutput}` : ''}`}
-              style={isClamped ? { maxHeight: '300px', overflowY: 'hidden' } : undefined}
-              dangerouslySetInnerHTML={{ __html: coloredOutput }}
-              onClick={handleOutputClick}
-            />
-            {isLong && !active && (
-              <div className={styles.showMore} onClick={() => setShowAll(v => !v)}>
-                {showAll ? 'less' : `${outputLineCount} lines`}
+          {scrolledOutput ? (
+            <div className={styles.outputArea}>
+              <div className={styles.scrollBox}>
+                {/* Lightly pinned reminder of the command that produced this
+                    output — absent at the top, grows in as the start scrolls
+                    away. Mirrors the prompt header above it. */}
+                <div
+                  className={`${styles.cmdBar}${cmdBarPinned ? ` ${styles.cmdBarPinned}` : ''}`}
+                  aria-hidden="true"
+                >
+                  {(isRemote || !path) && user && (
+                    <span className={styles.promptUser} style={{ color: modeColor }}>{user}</span>
+                  )}
+                  {path && <span className={styles.promptPath}>{path}</span>}
+                  <span className={styles.promptSep}>❯</span>
+                  <span className={styles.cmdBarCmd}>{cmdFirst}</span>
+                </div>
+                <div
+                  ref={scrolledOutRef}
+                  onScroll={handleScrolledScroll}
+                  className={styles.scrolledOutput}
+                  dangerouslySetInnerHTML={{ __html: coloredOutput }}
+                  onClick={handleOutputClick}
+                />
               </div>
-            )}
-          </div>
+              <div className={styles.showMore} onClick={() => setShowAll(false)}>less</div>
+            </div>
+          ) : (
+            <div className={`${styles.outputArea}${liveScroll ? ` ${styles.liveOutputArea}` : ''}`}>
+              <div
+                ref={liveScroll ? liveOutRef : undefined}
+                onScroll={liveScroll ? handleLiveScroll : undefined}
+                className={`${styles.output}${liveScroll ? ` ${styles.liveOutput}` : ''}`}
+                style={isClamped ? { maxHeight: '300px', overflowY: 'hidden' } : undefined}
+                dangerouslySetInnerHTML={{ __html: coloredOutput }}
+                onClick={handleOutputClick}
+              />
+              {isLong && !active && (
+                <div className={styles.showMore} onClick={() => setShowAll(v => !v)}>
+                  {showAll ? 'less' : `${outputLineCount} lines`}
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
 
