@@ -158,10 +158,7 @@ export const CommandBlock = memo(function CommandBlock({
   onRestart,
   onAIPrompt,
 }: CommandBlockProps) {
-  // Finished sessions (npm run dev, pm2 logs after ^C) open fully expanded —
-  // the block remounts when the pending card finalizes, so this initializer
-  // sees the final block with sessionKind set.
-  const [showAll, setShowAll] = useState(() => !!block.sessionKind);
+  const [showAll, setShowAll] = useState(true);
   const [copied, setCopied] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);

@@ -17,7 +17,7 @@ export interface EchoChangeEvent extends TermiosState {
 export type TermiosReader = (fd: number) => TermiosState;
 export type ChangeHandler = (e: EchoChangeEvent) => void;
 
-const POLL_INTERVAL_MS = 1000;
+const POLL_INTERVAL_MS = 200;
 
 export class TermiosPoller {
   private _timer: ReturnType<typeof setInterval> | null = null;
@@ -31,7 +31,14 @@ export class TermiosPoller {
 
   start(): void {
     if (this._timer) return;
-    this._last = null;
+    // Capture the baseline synchronously so the very first interval tick can
+    // already report a change — otherwise the first tick is burned snapshotting
+    // the shell's canonical mode and detection lags a full interval.
+    try {
+      this._last = this._read(this._fd);
+    } catch {
+      this._last = null;
+    }
     this._timer = setInterval(() => this._tick(), POLL_INTERVAL_MS);
   }
 
