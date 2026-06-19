@@ -454,17 +454,35 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         item.block.command === fixedBlock.command,
       );
       // Ingest the finalized block into the command index for ghost-text ranking.
+      // We resolve the cwd via getCwd (reads /proc/<pid>/cwd on Linux) so the
+      // stored cwd is the canonical/symlink-resolved path — matching the form
+      // the predictor receives from the tab `cwd` state (also sourced from
+      // getCwd). Using fixedBlock.cwd here would preserve symlinks (e.g.
+      // $PWD = /var/home/user) while the predictor sees the resolved form
+      // (/home/user), causing cwdCounts lookups to never match.
       if (fixedBlock.command && fixedBlock.command.trim()) {
-        const entry = {
-          command: fixedBlock.command,
-          cwd: fixedBlock.cwd,
-          exitCode: fixedBlock.exitCode,
-          ts: fixedBlock.startTime || Date.now(),
-          prevCommand: lastFinalizedCommandRef.current,
-        };
+        const prevCmd = lastFinalizedCommandRef.current;
         lastFinalizedCommandRef.current = fixedBlock.command;
-        window.tai?.commandIndex?.ingest([entry]);
-        setCommandIndex((prev) => { ingestBlock(prev, entry); return { ...prev }; });
+        const _ingestCmd = fixedBlock.command;
+        const _ingestExit = fixedBlock.exitCode;
+        const _ingestTs = fixedBlock.startTime || Date.now();
+        const _ingestIsRemote = fixedBlock.isRemote;
+        (async () => {
+          // For remote blocks the pty cwd is meaningless; fall back to the
+          // block's own cwd field (best-effort).
+          const resolvedCwd = (!_ingestIsRemote && ptyId !== null)
+            ? (await window.tai?.pty?.getCwd(ptyId) ?? fixedBlock.cwd)
+            : fixedBlock.cwd;
+          const entry = {
+            command: _ingestCmd,
+            cwd: resolvedCwd,
+            exitCode: _ingestExit,
+            ts: _ingestTs,
+            prevCommand: prevCmd,
+          };
+          window.tai?.commandIndex?.ingest([entry]);
+          setCommandIndex((prev) => { ingestBlock(prev, entry); return { ...prev }; });
+        })();
       }
       setDisplayItems(prev => {
         if (pending) {

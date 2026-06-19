@@ -47,4 +47,41 @@ describe('frecency ranking', () => {
     const s = idx.stats['x'];
     expect(frecency(s, NOW, '/here')).toBeGreaterThan(frecency(s, NOW, '/elsewhere'));
   });
+
+  it('cwd boost requires matching cwd representation (symlink vs resolved)', () => {
+    // This test locks the contract: ingest with a symlink path and rank with
+    // the resolved (canonical) path — they must match for the cwd boost to
+    // fire. If ingest and predictor use different path forms (e.g.
+    // /var/home/user vs /home/user), cwdCounts[predictorCwd] always misses
+    // and the cwd-local command never wins.
+    const idx = createIndex();
+    const SYMLINK_CWD = '/var/home/user/project';   // e.g. $PWD (unresolved)
+    const RESOLVED_CWD = '/home/user/project';       // e.g. /proc/<pid>/cwd
+
+    // Ingest 'npm run dev' twice in SYMLINK_CWD (as if stored with raw $PWD)
+    ingestBlock(idx, { command: 'npm run dev', ts: NOW, cwd: SYMLINK_CWD });
+    ingestBlock(idx, { command: 'npm run dev', ts: NOW, cwd: SYMLINK_CWD });
+    // Ingest 'npm run build' more times globally (no cwd)
+    for (let i = 0; i < 5; i++) ingestBlock(idx, { command: 'npm run build', ts: NOW - 1000 });
+
+    // Ranking with SYMLINK_CWD matches: 'npm run dev' wins via cwd boost.
+    expect(rankPrefix(idx, 'npm run', NOW, SYMLINK_CWD)[0]).toBe('npm run dev');
+
+    // Ranking with RESOLVED_CWD (predictor form) MISSES the cwd-counts bucket:
+    // 'npm run build' wins on raw frequency, exposing the mismatch bug.
+    // The fix (ingest via getCwd so both sides use RESOLVED_CWD) would cause
+    // cwdCounts[RESOLVED_CWD] to be populated and 'npm run dev' to win again.
+    // We document the BEFORE state here so a regression is visible if someone
+    // reverts the normalization in TerminalSession.tsx.
+    const rankedWithResolved = rankPrefix(idx, 'npm run', NOW, RESOLVED_CWD);
+    // Without normalization: cwd boost misses, frequency wins → 'npm run build' ranks first.
+    expect(rankedWithResolved[0]).toBe('npm run build');
+
+    // And with matching resolved-form ingestion, the boost fires correctly:
+    const idx2 = createIndex();
+    ingestBlock(idx2, { command: 'npm run dev', ts: NOW, cwd: RESOLVED_CWD });
+    ingestBlock(idx2, { command: 'npm run dev', ts: NOW, cwd: RESOLVED_CWD });
+    for (let i = 0; i < 5; i++) ingestBlock(idx2, { command: 'npm run build', ts: NOW - 1000 });
+    expect(rankPrefix(idx2, 'npm run', NOW, RESOLVED_CWD)[0]).toBe('npm run dev');
+  });
 });
