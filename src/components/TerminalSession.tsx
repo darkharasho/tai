@@ -166,6 +166,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const [remoteHistory, setRemoteHistory] = useState<string[]>([]);
   const [commandIndex, setCommandIndex] = useState<CommandIndex>(() => createIndex());
   const lastFinalizedCommandRef = useRef<string | undefined>(undefined);
+  const [lastFinalizedCmd, setLastFinalizedCmd] = useState<string | undefined>(undefined);
+  const [lastFinalizedExit, setLastFinalizedExit] = useState<number | undefined>(undefined);
   const [awaitingInput, setAwaitingInput] = useState(false);
   const [passwordPrompt, setPasswordPrompt] = useState(false);
   const [editValue, setEditValue] = useState<string | undefined>(undefined);
@@ -463,6 +465,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       if (fixedBlock.command && fixedBlock.command.trim()) {
         const prevCmd = lastFinalizedCommandRef.current;
         lastFinalizedCommandRef.current = fixedBlock.command;
+        setLastFinalizedCmd(fixedBlock.command);
+        setLastFinalizedExit(fixedBlock.exitCode);
         const _ingestCmd = fixedBlock.command;
         const _ingestExit = fixedBlock.exitCode;
         const _ingestTs = fixedBlock.startTime || Date.now();
@@ -1118,6 +1122,10 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         return [...cleaned, { type: 'command' as const, block: pendingBlock, active: true }];
       });
       executeCommand(toRun);
+      // Clear stale zero-state so the ghost suggestion isn't retained between
+      // commands. The new values will be populated once the next block finalizes.
+      setLastFinalizedCmd(undefined);
+      setLastFinalizedExit(undefined);
       setEditValue(undefined);
     } else if (aiWorking || isAiActive()) {
       setQueuedPrompts(prev => addQueuedPrompt(prev, value));
@@ -1672,6 +1680,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
             aiProvider={aiProvider}
             trustLevel={trustLevel}
             onTrustLevelChange={onTrustLevelChange}
+            lastCommand={lastFinalizedCmd}
+            lastExitCode={lastFinalizedExit}
           />
         </div>
       )}

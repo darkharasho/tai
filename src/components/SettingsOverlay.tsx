@@ -86,6 +86,13 @@ export function SettingsOverlay({ visible, onClose, config, onSet }: SettingsOve
                   <input type="text" value={config['ai.model']} onChange={e => onSet('ai.model', e.target.value)}
                     className={styles.input} />
                 } />
+                {/* aiNextCommandRefine: flag is persisted and read by TerminalInput,
+                    but the live provider call is not yet wired — pending a future
+                    useSingleShotAi hook. The toggle is inert until that lands. */}
+                <SettingRow label="AI next-command suggestions" value={
+                  <Toggle checked={!!config['aiNextCommandRefine']}
+                    onChange={v => onSet('aiNextCommandRefine', v)} />
+                } />
               </SettingsGroup>
             )}
             {category === 'trust' && (
