@@ -10,6 +10,26 @@ case "$TERM" in dumb) return 0 ;; esac
 [ -n "$__TAI_LOADED" ] && return 0
 __TAI_LOADED=1
 
+# We were loaded via an injected `. '<path>'` line typed into the shell. Drop
+# that one entry so it never pollutes history / up-arrow. Guard requires the
+# command to START with `.` or `source` AND reference our full script path, so
+# that `cat tai-bash.sh`, `vim tai-bash.sh`, etc. are never accidentally deleted.
+if [ -n "$BASH_VERSION" ]; then
+  __tai_h1=$(HISTTIMEFORMAT='' history 1 2>/dev/null)
+  __tai_h1="${__tai_h1#"${__tai_h1%%[![:space:]]*}"}"        # strip leading ws
+  __tai_hidx="${__tai_h1%%[[:space:]]*}"                      # numeric index
+  __tai_hcmd="${__tai_h1#"$__tai_hidx"}"                      # everything after index
+  __tai_hcmd="${__tai_hcmd#"${__tai_hcmd%%[![:space:]]*}"}"  # strip ws before cmd
+  case "$__tai_hcmd" in
+    ". "*"${BASH_SOURCE[0]}"* | \
+    ". '"*"${BASH_SOURCE[0]}"* | \
+    "source "*"${BASH_SOURCE[0]}"* | \
+    "source '"*"${BASH_SOURCE[0]}"* )
+      history -d "$__tai_hidx" 2>/dev/null ;;
+  esac
+  unset __tai_h1 __tai_hidx __tai_hcmd
+fi
+
 __tai_osc133() { printf '\033]133;%s\007' "$1"; }
 
 # OSC 6973: hex-encoded JSON sidechannel. Hex avoids needing to escape OSC
