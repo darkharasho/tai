@@ -118,6 +118,11 @@ contextBridge.exposeInMainWorld('tai', {
     checkRemote: (target: string) => ipcRenderer.invoke('shellIntegration:checkRemote', target),
     installRemote: (target: string) => ipcRenderer.invoke('shellIntegration:installRemote', target),
   },
+  commandIndex: {
+    get: () => ipcRenderer.invoke('commandIndex:get'),
+    ingest: (entries: any[]) => ipcRenderer.send('commandIndex:ingest', entries),
+    flush: () => ipcRenderer.send('commandIndex:flush'),
+  },
   config: {
     get: () => ipcRenderer.invoke('config:get'),
     set: (key: string, value: any) => ipcRenderer.invoke('config:set', key, value),
