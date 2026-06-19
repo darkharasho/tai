@@ -34,6 +34,11 @@ const KEEP_LIVE = 700;
 const FROZEN_MAX_LINES = 30_000;
 const FROZEN_TRIM_TO = 20_000;
 
+const MAX_CURSOR_ADVANCE = 10_000;
+const MAX_LINE_OP = 10_000;
+const MAX_COLS = 10_000;
+export { MAX_CURSOR_ADVANCE, MAX_LINE_OP, MAX_COLS };
+
 function nthNewline(s: string, n: number): number {
   let idx = -1;
   for (let i = 0; i < n; i++) {
@@ -313,18 +318,18 @@ export class TermEmulator {
         break;
       }
       case 'A': this._row = Math.max(0, this._row - (n || 1)); break;
-      case 'B': this._row += (n || 1); this._line(); break;
-      case 'C': this._col += (n || 1); break;
+      case 'B': this._row += Math.min(n || 1, MAX_CURSOR_ADVANCE); this._line(); break;
+      case 'C': this._col = Math.min(this._col + (n || 1), MAX_COLS); break;
       case 'D': this._col = Math.max(0, this._col - (n || 1)); break;
-      case 'E': this._row += (n || 1); this._col = 0; this._line(); break;
+      case 'E': this._row += Math.min(n || 1, MAX_CURSOR_ADVANCE); this._col = 0; this._line(); break;
       case 'F': this._row = Math.max(0, this._row - (n || 1)); this._col = 0; break;
-      case 'G': this._col = Math.max(0, (n || 1) - 1); break;
+      case 'G': this._col = Math.max(0, Math.min((n || 1) - 1, MAX_COLS)); break;
       case 'd': this._row = Math.max(0, (n || 1) - 1); this._line(); break;
       case 'H':
       case 'f': {
         this._row = Math.max(0, (n || 1) - 1);
         const col = Number.isFinite(nums[1]) ? nums[1] : 1;
-        this._col = Math.max(0, (col || 1) - 1);
+        this._col = Math.max(0, Math.min((col || 1) - 1, MAX_COLS));
         this._line();
         break;
       }
@@ -353,12 +358,13 @@ export class TermEmulator {
         break;
       }
       case 'L': { // IL — insert blank lines at the cursor row
-        const blanks = Array.from({ length: n || 1 }, () => ({ chars: [] as string[], sgrs: [] as string[] }));
+        const count = Math.min(n || 1, MAX_LINE_OP);
+        const blanks = Array.from({ length: count }, () => ({ chars: [] as string[], sgrs: [] as string[] }));
         this._lines.splice(this._row, 0, ...blanks);
         break;
       }
       case 'M': { // DL — delete lines at the cursor row
-        this._lines.splice(this._row, n || 1);
+        this._lines.splice(this._row, Math.min(n || 1, MAX_LINE_OP));
         this._line();
         break;
       }
