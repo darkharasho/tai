@@ -5,6 +5,14 @@
 [[ -o interactive ]] || return 0
 [[ "$TERM" == "dumb" ]] && return 0
 
+# Prevent the injected `. '<path>'` bootstrap line from being written to the
+# history file. We only set HISTORY_IGNORE if the user hasn't already set it;
+# clobbering a user-defined value would silently drop unrelated commands.
+# ${(%):-%x} expands to the current file's path; :t gives the basename.
+if [[ -z "${HISTORY_IGNORE+x}" ]]; then
+  HISTORY_IGNORE="(. *${${(%):-%x}:t}*|source *${${(%):-%x}:t}*)"
+fi
+
 # zsh's EPOCHREALTIME comes from the datetime module. Load best-effort; the
 # emitter falls back to $(date +%s)000 if it isn't available.
 zmodload zsh/datetime 2>/dev/null

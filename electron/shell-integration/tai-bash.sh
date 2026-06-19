@@ -10,6 +10,20 @@ case "$TERM" in dumb) return 0 ;; esac
 [ -n "$__TAI_LOADED" ] && return 0
 __TAI_LOADED=1
 
+# We were loaded via an injected `. '<path>'` line typed into the shell. Drop
+# that one entry so it never pollutes history / up-arrow. Guard strictly on our
+# own filename so we never delete a real user command.
+if [ -n "$BASH_VERSION" ]; then
+  __tai_h1=$(HISTTIMEFORMAT='' history 1 2>/dev/null)
+  case "$__tai_h1" in
+    *"${BASH_SOURCE[0]##*/}"*)
+      __tai_h1="${__tai_h1#"${__tai_h1%%[![:space:]]*}"}"   # strip leading ws
+      history -d "${__tai_h1%%[[:space:]]*}" 2>/dev/null     # first token = index
+      ;;
+  esac
+  unset __tai_h1
+fi
+
 __tai_osc133() { printf '\033]133;%s\007' "$1"; }
 
 # OSC 6973: hex-encoded JSON sidechannel. Hex avoids needing to escape OSC

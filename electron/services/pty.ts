@@ -51,6 +51,23 @@ function quoteForShell(p: string): string {
   return `'${p.replace(/'/g, `'\\''`)}'`;
 }
 
+/**
+ * Build the shell command TAI injects to source its integration script.
+ *
+ * A leading space is prepended so that:
+ *  - bash/zsh with HISTCONTROL=ignorespace or HISTORY_IGNORE skip it
+ *  - fish ignores leading-space commands by default
+ *  - the bash self-scrub in tai-bash.sh can also delete it reactively
+ *
+ * Exported for unit-testing.
+ */
+export function buildIntegrationSourceCommand(shellName: string, quotedPath: string): string {
+  if (shellName === 'fish') {
+    return ` source ${quotedPath}\n`;
+  }
+  return ` . ${quotedPath}\n`;
+}
+
 let hasSystemdRun: boolean | undefined;
 function detectSystemdScope(): boolean {
   if (process.platform !== 'linux') return false;
@@ -188,9 +205,7 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
 
     if (!isWindows && script) {
       const quoted = quoteForShell(script);
-      const cmd = shellName === 'fish'
-        ? `source ${quoted}\n`
-        : `. ${quoted}\n`;
+      const cmd = buildIntegrationSourceCommand(shellName!, quoted);
       const startedAt = Date.now();
       // Bash's login startup runs /etc/profile, ~/.bash_profile, etc. before
       // entering its REPL. If we write the source command before the REPL is
