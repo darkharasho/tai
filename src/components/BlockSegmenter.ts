@@ -3,6 +3,7 @@ import { TermEmulator, renderTermText } from '@/utils/termEmulator';
 import { foldPs2Continuations, stripPs2 } from '@/utils/ps2Fold';
 import { parseOsc6973 } from '@/utils/osc6973';
 import { parseInteractiveSshCommand, checkSshLoginState } from '@/utils/sshDetect';
+import { isBootstrapEchoLine } from '@/utils/bootstrapEcho';
 import type { SegmentedBlock } from '@/types';
 
 // Prompt-final glyphs. Beyond the classic `$#%>` we include theme glyphs
@@ -365,6 +366,21 @@ export class BlockSegmenter {
     const output = outputLines.map(l => l.trimEnd()).join('\n').trim();
     const rawOutput = rawOutputLines.join('\n').trim();
 
+    // Suppress the bootstrap-echo line TAI types to source its integration
+    // script (e.g. ` . '/…/tai-bash.sh'`). It arrives before the first OSC
+    // 133 A prompt marker so it always hits this legacy path. Treat it like
+    // empty noise — update bookkeeping but don't emit a block.
+    if (isBootstrapEchoLine(command)) {
+      if (this._inSshSession && newPromptText === this._initialPrompt) {
+        this._setSshSession(false, null);
+      }
+      this._currentPrompt = newPromptText;
+      this._startTime = Date.now();
+      this._emu.reset();
+      this._firePromptChange(newPromptText);
+      return;
+    }
+
     // Nothing ran: a bare Enter, a redrawn prompt, or pure echo noise.
     // Update prompt bookkeeping but don't emit a noise card.
     if (!command && !output) {
@@ -720,6 +736,12 @@ export class BlockSegmenter {
     const promptEmu = new TermEmulator();
     promptEmu.feed(this._osc133RawPrompt);
     const promptText = promptEmu.textUntrimmed() || this._currentPrompt;
+
+    // Suppress the bootstrap-echo line (`. '/…/tai-bash.sh'`) in the rare
+    // case it arrives inside an integrated-path block.
+    if (isBootstrapEchoLine(command)) {
+      return;
+    }
 
     // Skip empty bootstrap "blocks" (e.g. the synthetic prompt that fires
     // right after we source the integration script with no command run).
