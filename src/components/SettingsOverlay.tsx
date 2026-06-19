@@ -15,15 +15,13 @@ type Category = 'general' | 'ai' | 'trust' | 'appearance' | 'keybindings' | 'wor
 
 export function SettingsOverlay({ visible, onClose, config, onSet }: SettingsOverlayProps) {
   const [category, setCategory] = useState<Category>('general');
-  const [workflows, setWorkflowsState] = useState<Array<{id:string;name:string;command:string}>>(() => {
-    try { return (window as any).tai?.workflows?.get?.() ?? []; } catch { return []; }
-  });
+  const [workflows, setWorkflowsState] = useState<Array<{id:string;name:string;command:string}>>([]);
   const [wfName, setWfName] = useState('');
   const [wfCommand, setWfCommand] = useState('');
 
   useEffect(() => {
     if (visible && category === 'workflows') {
-      try { setWorkflowsState((window as any).tai?.workflows?.get?.() ?? []); } catch {}
+      window.tai?.workflows?.get?.()?.then(list => setWorkflowsState(list ?? []));
     }
   }, [visible, category]);
 

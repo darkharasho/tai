@@ -1326,18 +1326,19 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           .sort((a, b) => frecency(b, now, cwd) - frecency(a, now, cwd))
           .slice(0, 30)
           .map(s => ({ id: `h:${s.command}`, label: s.command, value: s.command, source: 'history' as const }));
-        const wfRaw: Workflow[] = (window as any).tai?.workflows?.get?.() ?? [];
-        const wfItems: PaletteItem[] = wfRaw.map(w => ({
-          id: `w:${w.id}`, label: w.name, value: w.command, source: 'workflow' as const, description: w.description,
-        }));
         const cmdItems: PaletteItem[] = getCommandNames().map(name => ({
           id: `c:${name}`, label: name, value: name, source: 'command' as const,
         }));
-        // Deduplicate history against commands
         const cmdSet = new Set(cmdItems.map(c => c.value));
         const dedupedHist = histItems.filter(h => !cmdSet.has(h.value));
-        setPaletteItems([...wfItems, ...dedupedHist, ...cmdItems]);
-        setPaletteOpen(true);
+        Promise.resolve(window.tai?.workflows?.get?.() ?? []).then((wfRaw: Workflow[]) => {
+          const wfItems: PaletteItem[] = wfRaw.map(w => ({
+            id: `w:${w.id}`, label: w.name, value: w.command, source: 'workflow' as const, description: w.description,
+          }));
+          // Deduplicate history against commands
+          setPaletteItems([...wfItems, ...dedupedHist, ...cmdItems]);
+          setPaletteOpen(true);
+        });
         return;
       }
     };
@@ -1387,6 +1388,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     if (runNow) {
       handleSubmit(item.value);
     } else {
+      // Reset to undefined first so re-picking the same value re-triggers the
+      // useEffect in TerminalInput (which only fires on change).
+      setEditValue(undefined);
       setEditValue(item.value);
     }
   }, [handleSubmit]);

@@ -17,6 +17,7 @@ export function WorkflowRunDialog({ workflow, onRun, onCancel }: Props) {
   );
 
   const preview = substituteParams(workflow.command, values);
+  const allFilled = params.every(p => (values[p] ?? '').trim().length > 0);
 
   const handleKeyDown = (e: React.KeyboardEvent, idx: number) => {
     if (e.key === 'Tab') {
@@ -55,8 +56,8 @@ export function WorkflowRunDialog({ workflow, onRun, onCancel }: Props) {
         </div>
         <div className={styles.footer}>
           <button className={styles.cancelBtn} onClick={onCancel}>Cancel</button>
-          <button className={styles.insertBtn} onClick={() => onRun(preview, false)}>Insert</button>
-          <button className={styles.runBtn} onClick={() => onRun(preview, true)}>Run</button>
+          <button className={styles.insertBtn} onClick={() => onRun(preview, false)} disabled={!allFilled}>Insert</button>
+          <button className={styles.runBtn} onClick={() => onRun(preview, true)} disabled={!allFilled}>Run</button>
         </div>
       </div>
     </div>,
