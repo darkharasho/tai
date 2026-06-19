@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Settings } from 'lucide-react';
 import { Toggle } from './Toggle';
 import { THEME_OPTIONS } from '@/theme/themes';
@@ -11,10 +11,21 @@ interface SettingsOverlayProps {
   onSet: (key: string, value: any) => void;
 }
 
-type Category = 'general' | 'ai' | 'trust' | 'appearance' | 'keybindings';
+type Category = 'general' | 'ai' | 'trust' | 'appearance' | 'keybindings' | 'workflows';
 
 export function SettingsOverlay({ visible, onClose, config, onSet }: SettingsOverlayProps) {
   const [category, setCategory] = useState<Category>('general');
+  const [workflows, setWorkflowsState] = useState<Array<{id:string;name:string;command:string}>>(() => {
+    try { return (window as any).tai?.workflows?.get?.() ?? []; } catch { return []; }
+  });
+  const [wfName, setWfName] = useState('');
+  const [wfCommand, setWfCommand] = useState('');
+
+  useEffect(() => {
+    if (visible && category === 'workflows') {
+      try { setWorkflowsState((window as any).tai?.workflows?.get?.() ?? []); } catch {}
+    }
+  }, [visible, category]);
 
   if (!visible) return null;
 
@@ -24,6 +35,7 @@ export function SettingsOverlay({ visible, onClose, config, onSet }: SettingsOve
     { id: 'trust', label: 'Trust' },
     { id: 'appearance', label: 'Appearance' },
     { id: 'keybindings', label: 'Keybindings' },
+    { id: 'workflows', label: 'Workflows' },
   ];
 
   return (
@@ -136,6 +148,44 @@ export function SettingsOverlay({ visible, onClose, config, onSet }: SettingsOve
             {category === 'keybindings' && (
               <div className={styles.keybindingsPlaceholder}>
                 Keybinding customization coming soon.
+              </div>
+            )}
+            {category === 'workflows' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {workflows.map(wf => (
+                    <div key={wf.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, color: 'var(--text-primary)', fontFamily: 'var(--font-sans)', fontWeight: 500 }}>{wf.name}</div>
+                        <div style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{wf.command}</div>
+                      </div>
+                      <button onClick={() => {
+                        const updated = workflows.filter(w => w.id !== wf.id);
+                        setWorkflowsState(updated);
+                        try { (window as any).tai?.workflows?.set?.(updated); } catch {}
+                      }} style={{ background: 'none', border: '1px solid var(--border-subtle)', borderRadius: 4, color: 'var(--text-muted)', cursor: 'pointer', padding: '4px 8px', fontSize: 12, fontFamily: 'var(--font-sans)' }}>
+                        Delete
+                      </button>
+                    </div>
+                  ))}
+                  {workflows.length === 0 && (
+                    <div style={{ fontSize: 13, color: 'var(--text-muted)', fontFamily: 'var(--font-sans)', padding: '8px 0' }}>No workflows yet.</div>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', fontWeight: 600 }}>Add workflow</div>
+                  <input className={styles.input} placeholder="Name" value={wfName} onChange={e => setWfName(e.target.value)} />
+                  <input className={styles.input} placeholder="Command (use {{param}} for params)" value={wfCommand} onChange={e => setWfCommand(e.target.value)} />
+                  <button onClick={() => {
+                    if (!wfName.trim() || !wfCommand.trim()) return;
+                    const updated = [...workflows, { id: crypto.randomUUID(), name: wfName.trim(), command: wfCommand.trim() }];
+                    setWorkflowsState(updated);
+                    try { (window as any).tai?.workflows?.set?.(updated); } catch {}
+                    setWfName(''); setWfCommand('');
+                  }} style={{ alignSelf: 'flex-start', background: 'rgba(255,255,255,0.08)', border: '1px solid var(--border-subtle)', borderRadius: 6, color: 'var(--text-primary)', cursor: 'pointer', padding: '7px 14px', fontSize: 13, fontFamily: 'var(--font-sans)' }}>
+                    Add
+                  </button>
+                </div>
               </div>
             )}
           </div>

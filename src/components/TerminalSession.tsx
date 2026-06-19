@@ -50,6 +50,13 @@ import {
   joinQueuedPrompts,
 } from '@/utils/queuedPrompts';
 import { useAiCleanupOnUnmount } from '@/hooks/useAiCleanupOnUnmount';
+import { CommandPalette } from './CommandPalette';
+import { WorkflowRunDialog } from './WorkflowRunDialog';
+import type { PaletteItem } from '@/utils/palette';
+import type { Workflow } from '@/utils/workflows';
+import { parseParams } from '@/utils/workflows';
+import { frecency } from '@/utils/commandIndex';
+import { getCommandNames } from '@/completions/registry';
 
 interface TerminalSessionProps {
   tabId: string;
@@ -177,6 +184,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   }, [editValue]);
   const [queuedPrompts, setQueuedPrompts] = useState<QueuedPrompt[]>([]);
   const queuedPromptsRef = useRef<QueuedPrompt[]>([]);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteItems, setPaletteItems] = useState<PaletteItem[]>([]);
+  const [wfDialog, setWfDialog] = useState<Workflow | null>(null);
 
   useEffect(() => {
     queuedPromptsRef.current = queuedPrompts;
@@ -1307,11 +1317,34 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         handleStopAI();
         if (ptyId !== null) window.tai?.pty?.write(ptyId, '\x03');
       }
+
+      // Cmd/Ctrl-K: open command palette (page-level focus only — not from xterm)
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
+        e.preventDefault();
+        const now = Date.now();
+        const histItems: PaletteItem[] = Object.values(commandIndex.stats)
+          .sort((a, b) => frecency(b, now, cwd) - frecency(a, now, cwd))
+          .slice(0, 30)
+          .map(s => ({ id: `h:${s.command}`, label: s.command, value: s.command, source: 'history' as const }));
+        const wfRaw: Workflow[] = (window as any).tai?.workflows?.get?.() ?? [];
+        const wfItems: PaletteItem[] = wfRaw.map(w => ({
+          id: `w:${w.id}`, label: w.name, value: w.command, source: 'workflow' as const, description: w.description,
+        }));
+        const cmdItems: PaletteItem[] = getCommandNames().map(name => ({
+          id: `c:${name}`, label: name, value: name, source: 'command' as const,
+        }));
+        // Deduplicate history against commands
+        const cmdSet = new Set(cmdItems.map(c => c.value));
+        const dedupedHist = histItems.filter(h => !cmdSet.has(h.value));
+        setPaletteItems([...wfItems, ...dedupedHist, ...cmdItems]);
+        setPaletteOpen(true);
+        return;
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [visible, ptyId, handleStopAI]);
+  }, [visible, ptyId, handleStopAI, commandIndex, cwd]);
 
   useEffect(() => {
     if (!visible) return;
@@ -1341,6 +1374,31 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     pendingRestartRef.current = sess.command;
     window.tai?.pty?.write(ptyId, '\x03');
   }, [ptyId]);
+
+  const handlePalettePick = useCallback((item: PaletteItem, runNow: boolean) => {
+    setPaletteOpen(false);
+    const params = parseParams(item.value);
+    if (params.length > 0) {
+      // Show the param dialog. We need a Workflow-shaped object.
+      setWfDialog({ id: item.id, name: item.label, command: item.value, description: item.description });
+      return;
+    }
+    // Insert into composer (paste) or run immediately
+    if (runNow) {
+      handleSubmit(item.value);
+    } else {
+      setEditValue(item.value);
+    }
+  }, [handleSubmit]);
+
+  const handleWorkflowRun = useCallback((command: string, runNow: boolean) => {
+    setWfDialog(null);
+    if (runNow) {
+      handleSubmit(command);
+    } else {
+      setEditValue(command);
+    }
+  }, [handleSubmit]);
 
   useEffect(() => {
     const target = focusTargetFor(surface);
@@ -1497,6 +1555,21 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           items={historyItems}
           onClose={handleFindClose}
           onNavigate={handleFindNavigate}
+        />
+      )}
+      {paletteOpen && (
+        <CommandPalette
+          open={paletteOpen}
+          items={paletteItems}
+          onPick={handlePalettePick}
+          onClose={() => setPaletteOpen(false)}
+        />
+      )}
+      {wfDialog && (
+        <WorkflowRunDialog
+          workflow={wfDialog}
+          onRun={handleWorkflowRun}
+          onCancel={() => setWfDialog(null)}
         />
       )}
       {!showXterm && daemonCardState?.show && remoteTarget && (
