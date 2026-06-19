@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useImperativeHandle, forwardRef, useMemo } from 'react';
 import { predictCommandIndexed } from '@/hooks/useGhostText';
 import type { CommandIndex } from '@/utils/commandIndex';
+import { predictNextCommand, type NextCommandCtx } from '@/utils/nextCommand';
 import { classifyInput, FLIP_THRESHOLD } from '@/utils/commandDetector';
 import { stripForceShellPrefix, shouldShowAutoBadge } from '@/utils/inputModeUx';
 import styles from './TerminalInput.module.css';
@@ -15,6 +16,11 @@ const PERM_LABELS: Record<AIProvider, Record<TrustLevel, string>> = {
 };
 
 const GHOST_MIN_PREFIX = 2;
+
+export function zeroStateSuggestion(value: string, mode: string, ctx: NextCommandCtx): string | null {
+  if (value.length > 0 || mode !== 'shell' || !ctx.lastCommand) return null;
+  return predictNextCommand(ctx);
+}
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent);
 
@@ -71,6 +77,8 @@ interface TerminalInputProps {
   aiProvider?: AIProvider;
   trustLevel?: TrustLevel;
   onTrustLevelChange?: (level: TrustLevel) => void;
+  lastCommand?: string;
+  lastExitCode?: number;
 }
 
 interface RemoteAiPillProps {
@@ -111,7 +119,7 @@ export function RemoteAiPill({ view, onEnable, onSetMode, onDismiss }: RemoteAiP
   );
 }
 
-export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>(function TerminalInput({ onSubmit, mode, onModeChange, disabled, cwd, commandIndex, promptInfo, shellIntegrated, history = [], onClear, initialValue, remoteAiView, onEnableRemoteAi, onSetRemoteAiMode, onDismissRemoteAi, aiProvider, trustLevel, onTrustLevelChange }, ref) {
+export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>(function TerminalInput({ onSubmit, mode, onModeChange, disabled, cwd, commandIndex, promptInfo, shellIntegrated, history = [], onClear, initialValue, remoteAiView, onEnableRemoteAi, onSetRemoteAiMode, onDismissRemoteAi, aiProvider, trustLevel, onTrustLevelChange, lastCommand, lastExitCode }, ref) {
   const [value, setValue] = useState(initialValue || '');
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const historyIndexRef = useRef(-1);
@@ -122,10 +130,21 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
   const tabPrefixRef = useRef('');
 
   const prediction = useMemo(
-    () => mode === 'shell' && value.length >= GHOST_MIN_PREFIX && !value.includes('\n')
-      ? predictCommandIndexed(value, commandIndex, Date.now(), cwd)
-      : null,
-    [mode, value, commandIndex, cwd],
+    () => {
+      if (mode !== 'shell') return null;
+      if (value.length === 0) {
+        // Zero-state: show the predicted next command when the composer is empty.
+        return lastCommand
+          ? zeroStateSuggestion(value, mode, { lastCommand, lastExitCode, index: commandIndex })
+          : null;
+      }
+      // Prefix ghost text (P1): require at least GHOST_MIN_PREFIX chars and no newlines.
+      if (value.length >= GHOST_MIN_PREFIX && !value.includes('\n')) {
+        return predictCommandIndexed(value, commandIndex, Date.now(), cwd);
+      }
+      return null;
+    },
+    [mode, value, commandIndex, cwd, lastCommand, lastExitCode],
   );
 
   useEffect(() => {

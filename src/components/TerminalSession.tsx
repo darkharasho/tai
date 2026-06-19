@@ -166,6 +166,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const [remoteHistory, setRemoteHistory] = useState<string[]>([]);
   const [commandIndex, setCommandIndex] = useState<CommandIndex>(() => createIndex());
   const lastFinalizedCommandRef = useRef<string | undefined>(undefined);
+  const lastFinalizedExitCodeRef = useRef<number | undefined>(undefined);
+  const [lastFinalizedCmd, setLastFinalizedCmd] = useState<string | undefined>(undefined);
+  const [lastFinalizedExit, setLastFinalizedExit] = useState<number | undefined>(undefined);
   const [awaitingInput, setAwaitingInput] = useState(false);
   const [passwordPrompt, setPasswordPrompt] = useState(false);
   const [editValue, setEditValue] = useState<string | undefined>(undefined);
@@ -463,6 +466,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       if (fixedBlock.command && fixedBlock.command.trim()) {
         const prevCmd = lastFinalizedCommandRef.current;
         lastFinalizedCommandRef.current = fixedBlock.command;
+        lastFinalizedExitCodeRef.current = fixedBlock.exitCode;
+        setLastFinalizedCmd(fixedBlock.command);
+        setLastFinalizedExit(fixedBlock.exitCode);
         const _ingestCmd = fixedBlock.command;
         const _ingestExit = fixedBlock.exitCode;
         const _ingestTs = fixedBlock.startTime || Date.now();
@@ -1672,6 +1678,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
             aiProvider={aiProvider}
             trustLevel={trustLevel}
             onTrustLevelChange={onTrustLevelChange}
+            lastCommand={lastFinalizedCmd}
+            lastExitCode={lastFinalizedExit}
           />
         </div>
       )}
