@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const mockSpawn = vi.fn();
 vi.mock('child_process', () => ({ spawn: (...a: any[]) => mockSpawn(...a) }));
 
-import { RemoteDaemonProxy, DAEMON_CALL_TIMEOUT_MS } from '../../electron/services/remoteDaemonProxy';
+import { RemoteDaemonProxy, DAEMON_CALL_TIMEOUT_MS, PONG_TIMEOUT_MS } from '../../electron/services/remoteDaemonProxy';
 
 function mockProc() {
   const proc: any = {
@@ -36,5 +36,28 @@ describe('RemoteDaemonProxy.executeTool timeout', () => {
     expect(result.isError).toBe(true);
     expect(result.output).toMatch(/timed out/i);
     expect((proxy as any).pending.size).toBe(0);
+  });
+});
+
+describe('RemoteDaemonProxy pong timeout', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('disconnects when pongs stop arriving', () => {
+    vi.useFakeTimers();
+    const proc = mockProc();
+    mockSpawn.mockReturnValue(proc);
+    const proxy = new RemoteDaemonProxy('user@host');
+    (proxy as any).proc = proc;
+    const onDisconnect = vi.fn();
+    proxy.setOnDisconnect(onDisconnect);
+
+    // Simulate ready → starts heartbeat and sets _lastPong.
+    (proxy as any)._handleMessage({ type: 'ready' });
+    // No pongs ever arrive.
+    vi.advanceTimersByTime(PONG_TIMEOUT_MS + 60_000);
+
+    expect(proxy.isConnected()).toBe(false);
+    expect(onDisconnect).toHaveBeenCalled();
+    vi.useRealTimers();
   });
 });

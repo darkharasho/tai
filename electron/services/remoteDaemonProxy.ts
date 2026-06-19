@@ -2,6 +2,7 @@ import { spawn, ChildProcess } from 'child_process';
 import { randomUUID } from 'crypto';
 
 export const DAEMON_CALL_TIMEOUT_MS = 180_000;
+export const PONG_TIMEOUT_MS = 90_000;
 
 interface ToolResult {
   output: string;
@@ -21,6 +22,7 @@ export class RemoteDaemonProxy {
   private readyResolve!: () => void;
   private readyReject!: (err: Error) => void;
   private pingInterval: NodeJS.Timeout | null = null;
+  private _lastPong = 0;
   private onDisconnect?: () => void;
   private onLspNotify?: (language: string, method: string, params: unknown) => void;
 
@@ -75,9 +77,13 @@ export class RemoteDaemonProxy {
       this.ready = true;
       this.readyResolve();
       this._startHeartbeat();
+      this._lastPong = Date.now();
       return;
     }
-    if (msg.type === 'pong') return;
+    if (msg.type === 'pong') {
+      this._lastPong = Date.now();
+      return;
+    }
     if (msg.type === 'lsp_notify') {
       this.onLspNotify?.(msg.language, msg.method, msg.params);
       return;
@@ -130,7 +136,12 @@ export class RemoteDaemonProxy {
   }
 
   private _startHeartbeat() {
+    this._lastPong = Date.now();
     this.pingInterval = setInterval(() => {
+      if (Date.now() - this._lastPong > PONG_TIMEOUT_MS) {
+        this._handleExit();
+        return;
+      }
       this._write({ type: 'ping' });
     }, 30000);
   }
