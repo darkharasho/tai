@@ -30,6 +30,8 @@ import { summarizeSession } from '@/utils/sessionSummary';
 import { preserveStreamedOutput } from '@/utils/finalizeOutput';
 import { classifyKeyTarget } from '@/utils/keyRouting';
 import { isMultilineCommand } from '@/utils/isMultilineCommand';
+import { createIndex, ingestBlock } from '@/utils/commandIndex';
+import type { CommandIndex } from '@/utils/commandIndex';
 import { buildRecentContext } from '@/utils/aiContext';
 import { redactHistoryEntries, redactSecrets } from '@/utils/redactSecrets';
 import { detectSshError } from '@/utils/sshDetect';
@@ -162,6 +164,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const daemonToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [shellHistory, setShellHistory] = useState<string[]>([]);
   const [remoteHistory, setRemoteHistory] = useState<string[]>([]);
+  const [commandIndex, setCommandIndex] = useState<CommandIndex>(() => createIndex());
+  const lastFinalizedCommandRef = useRef<string | undefined>(undefined);
   const [awaitingInput, setAwaitingInput] = useState(false);
   const [passwordPrompt, setPasswordPrompt] = useState(false);
   const [editValue, setEditValue] = useState<string | undefined>(undefined);
@@ -262,6 +266,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
 
   useEffect(() => {
     window.tai?.pty?.getShellHistory(500).then((lines: string[]) => setShellHistory(lines));
+    window.tai?.commandIndex?.get().then((idx) => idx && setCommandIndex(idx));
   }, []);
 
   useEffect(() => {
@@ -448,6 +453,19 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         item.type === 'command' && item.block.id === 'pending' && item.active &&
         item.block.command === fixedBlock.command,
       );
+      // Ingest the finalized block into the command index for ghost-text ranking.
+      if (fixedBlock.command && fixedBlock.command.trim()) {
+        const entry = {
+          command: fixedBlock.command,
+          cwd: fixedBlock.cwd,
+          exitCode: fixedBlock.exitCode,
+          ts: fixedBlock.startTime || Date.now(),
+          prevCommand: lastFinalizedCommandRef.current,
+        };
+        lastFinalizedCommandRef.current = fixedBlock.command;
+        window.tai?.commandIndex?.ingest([entry]);
+        setCommandIndex((prev) => { ingestBlock(prev, entry); return { ...prev }; });
+      }
       setDisplayItems(prev => {
         if (pending) {
           const idx = prev.findIndex(item => item.type === 'command' && item.block.id === 'pending');
