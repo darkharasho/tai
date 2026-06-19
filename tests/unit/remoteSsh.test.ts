@@ -218,6 +218,25 @@ describe('RemoteSshManager', () => {
     vi.useRealTimers();
   });
 
+  it('rejects an in-flight command when the ssh process exits', async () => {
+    const proc = createMockProcess();
+    mockSpawn.mockReturnValue(proc);
+
+    let exitHandler: Function = () => {};
+    proc.on.mockImplementation((event: string, cb: Function) => {
+      if (event === 'exit') exitHandler = cb;
+    });
+
+    const { stdoutHandler } = await connectWithHandlers(proc);
+    void stdoutHandler; // not needed here
+
+    const p = manager.execute('tab-1', 'sleep 999', 30000);
+    // Process dies mid-command.
+    exitHandler();
+
+    await expect(p).rejects.toThrow(/connection lost|exited/i);
+  });
+
   it('stderr during connect surfaces auth error immediately', async () => {
     const proc = createMockProcess();
     mockSpawn.mockReturnValue(proc);
