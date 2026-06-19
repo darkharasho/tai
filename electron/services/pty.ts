@@ -61,6 +61,21 @@ function quoteForShell(p: string): string {
  *
  * Exported for unit-testing.
  */
+export function buildZshShimEnv(
+  baseEnv: Record<string, string>,
+  opts: { shimDir: string; integrationPath: string; home: string },
+): Record<string, string> {
+  const userZdotdir = baseEnv.ZDOTDIR || opts.home;
+  return {
+    ...baseEnv,
+    ZDOTDIR: opts.shimDir,
+    TAI_ZSH_SHIM: opts.shimDir,
+    TAI_ZSH_INTEGRATION: opts.integrationPath,
+    TAI_ZDOTDIR_USER: userZdotdir,
+    TAI_ZDOTDIR_WAS_SET: baseEnv.ZDOTDIR ? '1' : '',
+  };
+}
+
 export function buildIntegrationSourceCommand(shellName: string, quotedPath: string): string {
   if (shellName === 'fish') {
     return ` source ${quotedPath}\n`;
