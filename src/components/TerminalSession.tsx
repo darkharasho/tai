@@ -100,7 +100,12 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const pendingRestartRef = useRef<string | null>(null);
   const rerunRef = useRef<((command: string, displayCommand?: string) => void) | null>(null);
   useEffect(() => () => {
-    if (sessionPromoteTimerRef.current) clearTimeout(sessionPromoteTimerRef.current);
+    // Clear ALL timer refs on unmount so they cannot fire setState on a dead component.
+    // daemonToastTimerRef and echoInteractiveTimerRef are declared further below in the
+    // same component; refs are stable objects so the closure captures them correctly.
+    for (const r of [sessionPromoteTimerRef, daemonToastTimerRef, echoInteractiveTimerRef, findFlashTimerRef] as Array<React.MutableRefObject<ReturnType<typeof setTimeout> | number | null>>) {
+      if (r.current != null) { clearTimeout(r.current as ReturnType<typeof setTimeout>); r.current = null; }
+    }
   }, []);
 
   const beginSession = useCallback((command: string) => {
