@@ -23,14 +23,12 @@ export function resolveCompletion(spec: CompletionSpec, tokens: string[], lastTo
   // tokens[0] is the command itself. Walk subcommands by the words after it.
   let subs = spec.subcommands ?? [];
   let opts = spec.options ?? [];
-  let node: SubcommandSpec | null = null;
   let prevToken = '';
   for (let i = 1; i < tokens.length; i++) {
     const t = tokens[i];
     prevToken = t;
     const match = subs.find((s) => s.name === t);
     if (match) {
-      node = match;
       subs = match.subcommands ?? [];
       opts = match.options ?? [];
     }

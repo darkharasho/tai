@@ -13,3 +13,11 @@ const SPECS: Record<string, CompletionSpec> = {
 export function getSpec(command: string): CompletionSpec | null {
   return SPECS[command] ?? null;
 }
+
+export function getCommandNames(): string[] {
+  return Object.keys(SPECS);
+}
+
+export function listSpecs(): CompletionSpec[] {
+  return Object.values(SPECS);
+}
