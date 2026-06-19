@@ -2,7 +2,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { CommandPalette } from '@/components/CommandPalette';
-import { PaletteItem } from '@/utils/palette';
+import type { PaletteItem } from '@/utils/palette';
 
 const items: PaletteItem[] = [
   { id: '1', label: 'git status', value: 'git status', source: 'history' },
