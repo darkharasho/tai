@@ -628,7 +628,15 @@ export class BlockSegmenter {
         break;
       case 'output': {
         if (this._inSshSession && SSH_CLOSED_RE.test(chunk)) {
+          // Hard-reset depth counters unconditionally so a drifted _cmdDepth
+          // (remote command died before its OSC 133 D) never keeps the session
+          // stuck.  _sshClosePending is intentionally kept true so the
+          // subsequent D marker can still suppress the 127 exit code on the
+          // `exit` block (sshTeardown guard in _finalizeBlock).
+          this._sshDepth = 0;
+          this._cmdDepth = 0;
           this._sshClosePending = true;
+          this._setSshSession(false, null);
         }
         // The emulator models the line discipline (overwrite, backspace,
         // erase, cursor-up redraws), so readline/pyrepl per-keystroke prompt
