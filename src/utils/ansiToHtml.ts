@@ -19,6 +19,8 @@ function escapeHtml(str: string): string {
 function parse256Color(codes: number[], i: number): { color: string | null; consumed: number } {
   if (codes[i + 1] === 5) {
     const n = codes[i + 2];
+    // NaN guard is defensive for any direct caller passing pre-parsed arrays;
+    // the normal `split(';').map(Number)` path never yields NaN (missing slots become 0).
     if (n == null || Number.isNaN(n)) return { color: null, consumed: 2 };
     if (n < 16) {
       // Basic 16 map onto the themed SGR palette: 0-7 → codes 30-37, 8-15 → 90-97.
@@ -36,6 +38,8 @@ function parse256Color(codes: number[], i: number): { color: string | null; cons
   }
   if (codes[i + 1] === 2) {
     const r = codes[i + 2], g = codes[i + 3], b = codes[i + 4];
+    // NaN guard is defensive for any direct caller passing pre-parsed arrays;
+    // the normal `split(';').map(Number)` path never yields NaN (missing slots become 0).
     if ([r, g, b].some((v) => v == null || Number.isNaN(v))) return { color: null, consumed: 2 };
     return { color: `rgb(${r},${g},${b})`, consumed: 5 };
   }
