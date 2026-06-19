@@ -414,7 +414,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       } catch { /* ignore */ }
     };
     poll();
-    const interval = setInterval(poll, 1500);
+    const interval = setInterval(poll, 400);
     return () => { cancelled = true; clearInterval(interval); };
   }, [displayItems.some(item => item.type === 'command' && item.active), ptyId]);
 
@@ -680,15 +680,17 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       // Debounce activation: commands like `brew` briefly disable ICANON for
       // progress bars, causing a false `interactiveProgram` signal. Require
       // the raw-mode state to persist before flipping the surface to `docked`.
-      // Deactivation is immediate so the surface snaps back to `composer`
-      // the moment the child restores canonical mode or exits.
+      // A real REPL/TUI stays in raw mode indefinitely, so a short window is
+      // enough to filter the transient toggles while keeping the input surface
+      // snappy. Deactivation is immediate so the surface snaps back to
+      // `composer` the moment the child restores canonical mode or exits.
       if (e.interactiveProgram) {
         if (!interactiveModeRef.current && !echoInteractiveTimerRef.current) {
           echoInteractiveTimerRef.current = setTimeout(() => {
             echoInteractiveTimerRef.current = null;
             setInteractiveMode(true);
             setInteractiveFullscreen(false);
-          }, 1500);
+          }, 500);
         }
       } else {
         if (echoInteractiveTimerRef.current) {

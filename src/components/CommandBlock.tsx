@@ -158,10 +158,7 @@ export const CommandBlock = memo(function CommandBlock({
   onRestart,
   onAIPrompt,
 }: CommandBlockProps) {
-  // Finished sessions (npm run dev, pm2 logs after ^C) open fully expanded —
-  // the block remounts when the pending card finalizes, so this initializer
-  // sees the final block with sessionKind set.
-  const [showAll, setShowAll] = useState(() => !!block.sessionKind);
+  const [showAll, setShowAll] = useState(true);
   const [copied, setCopied] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -253,6 +250,33 @@ export const CommandBlock = memo(function CommandBlock({
     const el = liveOutRef.current;
     if (el) livePinnedRef.current = isPinnedToBottom(el);
   }, []);
+
+  // Long finished output is capped into an internal scroll region (rather than
+  // growing the card to full height in the stream). It opens scrolled to the
+  // bottom — the latest output is what the user wants.
+  const scrolledOutput = isLong && !active && showAll;
+  const scrolledOutRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+  const [headerOffscreen, setHeaderOffscreen] = useState(false);
+  useEffect(() => {
+    if (!scrolledOutput) return;
+    const el = scrolledOutRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [scrolledOutput, coloredOutput]);
+  // The pinned command bar earns its place only once the real prompt header
+  // has scrolled out of view — while the header is visible it would just echo
+  // it. Then the bar grows into the top of the card to carry the context.
+  useEffect(() => {
+    if (!scrolledOutput) { setHeaderOffscreen(false); return; }
+    const el = headerRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const io = new IntersectionObserver(
+      ([entry]) => setHeaderOffscreen(!entry.isIntersecting),
+      { threshold: 0 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [scrolledOutput]);
 
   const handleOutputClick = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -409,7 +433,7 @@ export const CommandBlock = memo(function CommandBlock({
       /* No click-to-collapse: selecting command text must never fold the
          block. Collapse lives in the context menu; collapsed rows still
          expand on click. */
-      <div className={styles.promptLine}>
+      <div className={styles.promptLine} ref={headerRef}>
         <div className={styles.promptLeft}>
           {(isRemote || !path) && user && (
             <span className={styles.promptUser} style={{ color: modeColor }}>{user}</span>
@@ -527,21 +551,49 @@ export const CommandBlock = memo(function CommandBlock({
           {cardChrome && (
             <div className={styles.separator} style={isRemote ? SEPARATOR_STYLE_REMOTE : SEPARATOR_STYLE_LOCAL} />
           )}
-          <div className={`${styles.outputArea}${liveScroll ? ` ${styles.liveOutputArea}` : ''}`}>
-            <div
-              ref={liveScroll ? liveOutRef : undefined}
-              onScroll={liveScroll ? handleLiveScroll : undefined}
-              className={`${styles.output}${liveScroll ? ` ${styles.liveOutput}` : ''}`}
-              style={isClamped ? { maxHeight: '300px', overflowY: 'hidden' } : undefined}
-              dangerouslySetInnerHTML={{ __html: coloredOutput }}
-              onClick={handleOutputClick}
-            />
-            {isLong && !active && (
-              <div className={styles.showMore} onClick={() => setShowAll(v => !v)}>
-                {showAll ? 'less' : `${outputLineCount} lines`}
+          {scrolledOutput ? (
+            <div className={styles.outputArea}>
+              <div className={styles.scrollBox}>
+                {/* Lightly pinned reminder of the command that produced this
+                    output — absent at the top, grows in as the start scrolls
+                    away. Mirrors the prompt header above it. */}
+                <div
+                  className={`${styles.cmdBar}${headerOffscreen ? ` ${styles.cmdBarPinned}` : ''}`}
+                  aria-hidden="true"
+                >
+                  {(isRemote || !path) && user && (
+                    <span className={styles.promptUser} style={{ color: modeColor }}>{user}</span>
+                  )}
+                  {path && <span className={styles.promptPath}>{path}</span>}
+                  <span className={styles.promptSep}>❯</span>
+                  <span className={styles.cmdBarCmd}>{cmdFirst}</span>
+                </div>
+                <div
+                  ref={scrolledOutRef}
+                  className={styles.scrolledOutput}
+                  dangerouslySetInnerHTML={{ __html: coloredOutput }}
+                  onClick={handleOutputClick}
+                />
               </div>
-            )}
-          </div>
+              <div className={styles.showMore} onClick={() => setShowAll(false)}>less</div>
+            </div>
+          ) : (
+            <div className={`${styles.outputArea}${liveScroll ? ` ${styles.liveOutputArea}` : ''}`}>
+              <div
+                ref={liveScroll ? liveOutRef : undefined}
+                onScroll={liveScroll ? handleLiveScroll : undefined}
+                className={`${styles.output}${liveScroll ? ` ${styles.liveOutput}` : ''}`}
+                style={isClamped ? { maxHeight: '300px', overflowY: 'hidden' } : undefined}
+                dangerouslySetInnerHTML={{ __html: coloredOutput }}
+                onClick={handleOutputClick}
+              />
+              {isLong && !active && (
+                <div className={styles.showMore} onClick={() => setShowAll(v => !v)}>
+                  {showAll ? 'less' : `${outputLineCount} lines`}
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
 

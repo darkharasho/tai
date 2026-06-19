@@ -55,7 +55,11 @@ jobs:
 
   build-windows:
     needs: test
-    runs-on: windows-latest
+    # Pinned to windows-2022 (VS 2022). GitHub rolled windows-latest to a
+    # VS 2026 image (windows-2025-vs2026) that the bundled node-gyp can't
+    # detect, breaking the node-pty electron-rebuild ("Could not find any
+    # Visual Studio installation"). VS 2022 is detected fine.
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

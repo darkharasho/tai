@@ -23,10 +23,9 @@ describe('TermiosPoller', () => {
     const read = vi.fn(() => states[Math.min(i++, states.length - 1)]);
     const onChange = vi.fn();
     const p = new TermiosPoller(123, read, onChange);
-    p.start();
-    vi.advanceTimersByTime(1000); // baseline
-    vi.advanceTimersByTime(1000); // no change
-    vi.advanceTimersByTime(1000); // echo off → event
+    p.start();                    // baseline captured synchronously
+    vi.advanceTimersByTime(200);  // no change
+    vi.advanceTimersByTime(200);  // echo off → event
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenLastCalledWith({ echo: false, icanon: true, passwordPrompt: true, interactiveProgram: false });
   });
@@ -37,9 +36,8 @@ describe('TermiosPoller', () => {
       .mockReturnValue({ echo: false, icanon: false });
     const onChange = vi.fn();
     const p = new TermiosPoller(123, read, onChange);
-    p.start();
-    vi.advanceTimersByTime(1000);
-    vi.advanceTimersByTime(1000);
+    p.start();                    // baseline captured synchronously
+    vi.advanceTimersByTime(200);  // raw mode → event
     expect(onChange).toHaveBeenCalledWith({ echo: false, icanon: false, passwordPrompt: false, interactiveProgram: true });
   });
 
@@ -49,9 +47,8 @@ describe('TermiosPoller', () => {
       .mockReturnValue({ echo: true, icanon: false });
     const onChange = vi.fn();
     const p = new TermiosPoller(123, read, onChange);
-    p.start();
-    vi.advanceTimersByTime(1000);
-    vi.advanceTimersByTime(1000);
+    p.start();                    // baseline captured synchronously
+    vi.advanceTimersByTime(200);  // raw mode → event
     expect(onChange).toHaveBeenCalledWith({ echo: true, icanon: false, passwordPrompt: false, interactiveProgram: true });
   });
 

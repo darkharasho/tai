@@ -709,3 +709,85 @@
   padding: 1px 7px;
   flex-shrink: 0;
 }
+
+/* ── Capped scroll region for long finished output ─────────────────────────
+   Long output is bounded into an internal scroll box (instead of growing the
+   card to full height in the stream) and opens scrolled to the latest line. */
+.scrollBox {
+  position: relative;
+  margin-top: 2px;
+}
+
+.scrolledOutput {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text-muted) 35%, transparent) transparent;
+}
+.scrolledOutput::-webkit-scrollbar { width: 9px; }
+.scrolledOutput::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-muted) 30%, transparent);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+/* Lightly pinned "initial command" bar. Sticks to the top of the viewport
+   (it sits outside the inner overflow, so it tracks the outer history scroll)
+   and grows into the top of the card only once the real prompt header has
+   scrolled out of view — while the header is visible the bar stays collapsed
+   so it never just echoes it. */
+.cmdBar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  pointer-events: none;
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  background: color-mix(in srgb, var(--bg-card, #14181c) 80%, transparent);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid transparent;
+  transition: max-height 0.22s ease, opacity 0.22s ease, padding 0.22s ease,
+              border-color 0.22s ease, box-shadow 0.22s ease;
+}
+.cmdBar::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 2px;
+  height: 0;
+  transform: translateY(-50%);
+  background: var(--accent-color, var(--color-shell));
+  border-radius: 2px;
+  transition: height 0.22s ease;
+}
+.cmdBarPinned {
+  max-height: 40px;
+  opacity: 1;
+  padding: 6px 12px;
+  border-bottom-color: color-mix(in srgb, var(--accent-color, var(--color-shell)) 22%, #20262e);
+  box-shadow: 0 6px 14px -10px #000;
+}
+.cmdBarPinned::before { height: 60%; }
+
+.cmdBarCmd {
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

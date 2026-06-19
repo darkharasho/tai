@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
 import '@testing-library/jest-dom';
-import { render } from '@testing-library/react';
+import { render, fireEvent } from '@testing-library/react';
 import { CommandBlock } from '../../src/components/CommandBlock';
 import type { SegmentedBlock } from '../../src/types';
 
@@ -59,8 +59,11 @@ describe('pinned live card output containment', () => {
     expect(container.textContent).toContain('line1');
   });
 
-  it('still clamps long non-session output to the head', () => {
+  it('still clamps long non-session output to the head when collapsed', () => {
     const { container } = render(<CommandBlock block={makeBlock(100)} {...base} />);
+    // Long output now opens fully expanded; collapse via the expander to clamp.
+    const expander = container.querySelector('[class*="showMore"]') as HTMLElement;
+    fireEvent.click(expander);
     expect(container.textContent).toContain('line1');
     expect(container.textContent).not.toContain('line100');
   });
