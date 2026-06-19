@@ -10,6 +10,7 @@ import { setupGitService } from './services/git';
 import { setupGeminiService, destroyAllGemini } from './services/gemini';
 import { initFocusTracking, setupNotifyService } from './services/notify';
 import { registerUpdater } from './services/updater';
+import { purgeStaleTempFiles } from './services/tempCleanup';
 
 if (process.env.VITE_DEV_SERVER_URL) {
   app.commandLine.appendSwitch('remote-debugging-port', '9222');
@@ -104,6 +105,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  purgeStaleTempFiles(os.tmpdir());
   createWindow();
   if (mainWindow) initFocusTracking(mainWindow);
   registerUpdater(mainWindow!);
