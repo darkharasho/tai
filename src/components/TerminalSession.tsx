@@ -46,6 +46,7 @@ import {
   removeQueuedPrompt,
   joinQueuedPrompts,
 } from '@/utils/queuedPrompts';
+import { useAiCleanupOnUnmount } from '@/hooks/useAiCleanupOnUnmount';
 
 interface TerminalSessionProps {
   tabId: string;
@@ -191,6 +192,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const inputRef = useRef<TerminalInputHandle>(null);
   const providerRef = useRef(createProvider(aiProvider, tabId));
   const aiCleanupRef = useRef<(() => void) | null>(null);
+  useAiCleanupOnUnmount(tabId, aiCleanupRef);
   const isAiActive = () => aiCleanupRef.current !== null;
   const aiBlockIdRef = useRef<string | null>(null);
   const aiSuggestedCommands = useRef<Set<string>>(new Set());
