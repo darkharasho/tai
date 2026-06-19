@@ -20,7 +20,12 @@ export function deserializeIndex(raw: string | null, now: number): CommandIndex 
         typeof parsed.next !== 'object') {
       return createIndex();
     }
-    const idx: CommandIndex = { stats: parsed.stats, next: parsed.next ?? {} };
+    const idx: CommandIndex = {
+      stats: parsed.stats,
+      next: (parsed.next && typeof parsed.next === 'object' && !Array.isArray(parsed.next))
+        ? parsed.next
+        : {},
+    };
     if (Object.keys(idx.stats).length > MAX_INDEX_COMMANDS) capIndex(idx, now);
     return idx;
   } catch {

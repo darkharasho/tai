@@ -17,6 +17,13 @@ describe('commandIndexStore (de)serialize', () => {
     expect(Object.keys(deserializeIndex('{"stats":42}', 1).stats)).toHaveLength(0);
   });
 
+  it('coerces an array next-map to {} (does not pass array through)', () => {
+    const result = deserializeIndex('{"stats":{},"next":[]}', 1);
+    expect(Array.isArray(result.next)).toBe(false);
+    expect(typeof result.next).toBe('object');
+    expect(Object.keys(result.stats)).toHaveLength(0);
+  });
+
   it('caps an oversized deserialized index', () => {
     const idx = createIndex();
     for (let i = 0; i < 5000; i++) ingestBlock(idx, { command: `c${i}`, ts: i });
