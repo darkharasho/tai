@@ -86,6 +86,10 @@ export function SettingsOverlay({ visible, onClose, config, onSet }: SettingsOve
                   <input type="text" value={config['ai.model']} onChange={e => onSet('ai.model', e.target.value)}
                     className={styles.input} />
                 } />
+                <SettingRow label="AI next-command suggestions" value={
+                  <Toggle checked={!!config['aiNextCommandRefine']}
+                    onChange={v => onSet('aiNextCommandRefine', v)} />
+                } />
               </SettingsGroup>
             )}
             {category === 'trust' && (

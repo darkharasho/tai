@@ -17,6 +17,7 @@ const DEFAULTS = {
   'appearance.colorMode': 'high',
   'appearance.cardAccent': 'brackets',
   'appearance.noise': true,
+  'aiNextCommandRefine': false,
 };
 
 export function useSettings() {

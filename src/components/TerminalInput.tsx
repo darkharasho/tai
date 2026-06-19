@@ -4,6 +4,7 @@ import type { CommandIndex } from '@/utils/commandIndex';
 import { predictNextCommand, type NextCommandCtx } from '@/utils/nextCommand';
 import { classifyInput, FLIP_THRESHOLD } from '@/utils/commandDetector';
 import { stripForceShellPrefix, shouldShowAutoBadge } from '@/utils/inputModeUx';
+import { buildNextCommandPrompt, extractCommand } from '@/utils/aiNextCommand';
 import styles from './TerminalInput.module.css';
 import { ShieldCheck, ShieldOff } from 'lucide-react';
 import type { AIProvider, TrustLevel } from '@/types';
@@ -79,6 +80,10 @@ interface TerminalInputProps {
   onTrustLevelChange?: (level: TrustLevel) => void;
   lastCommand?: string;
   lastExitCode?: number;
+  aiNextCommandRefine?: boolean;
+  /** Called with a prompt string when AI next-command refine is enabled and a zero-state suggestion is showing.
+   *  The caller should resolve with the raw AI text response (or reject/throw to cancel silently). */
+  onRequestAiSuggestion?: (prompt: string) => Promise<string>;
 }
 
 interface RemoteAiPillProps {
@@ -119,7 +124,7 @@ export function RemoteAiPill({ view, onEnable, onSetMode, onDismiss }: RemoteAiP
   );
 }
 
-export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>(function TerminalInput({ onSubmit, mode, onModeChange, disabled, cwd, commandIndex, promptInfo, shellIntegrated, history = [], onClear, initialValue, remoteAiView, onEnableRemoteAi, onSetRemoteAiMode, onDismissRemoteAi, aiProvider, trustLevel, onTrustLevelChange, lastCommand, lastExitCode }, ref) {
+export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>(function TerminalInput({ onSubmit, mode, onModeChange, disabled, cwd, commandIndex, promptInfo, shellIntegrated, history = [], onClear, initialValue, remoteAiView, onEnableRemoteAi, onSetRemoteAiMode, onDismissRemoteAi, aiProvider, trustLevel, onTrustLevelChange, lastCommand, lastExitCode, aiNextCommandRefine, onRequestAiSuggestion }, ref) {
   const [value, setValue] = useState(initialValue || '');
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const historyIndexRef = useRef(-1);
@@ -128,15 +133,18 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
   const [tabCompletions, setTabCompletions] = useState<string[]>([]);
   const [tabIndex, setTabIndex] = useState(-1);
   const tabPrefixRef = useRef('');
+  const [aiRefinedSuggestion, setAiRefinedSuggestion] = useState<string | null>(null);
+  const aiRefineTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const aiRefineAbortRef = useRef<AbortController | null>(null);
 
   const prediction = useMemo(
     () => {
       if (mode !== 'shell') return null;
       if (value.length === 0) {
-        // Zero-state: show the predicted next command when the composer is empty.
-        return lastCommand
-          ? zeroStateSuggestion(value, mode, { lastCommand, lastExitCode, index: commandIndex })
-          : null;
+        // Zero-state: prefer AI refined suggestion when available, else heuristic.
+        if (!lastCommand) return null;
+        if (aiRefinedSuggestion) return aiRefinedSuggestion;
+        return zeroStateSuggestion(value, mode, { lastCommand, lastExitCode, index: commandIndex });
       }
       // Prefix ghost text (P1): require at least GHOST_MIN_PREFIX chars and no newlines.
       if (value.length >= GHOST_MIN_PREFIX && !value.includes('\n')) {
@@ -144,7 +152,7 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
       }
       return null;
     },
-    [mode, value, commandIndex, cwd, lastCommand, lastExitCode],
+    [mode, value, commandIndex, cwd, lastCommand, lastExitCode, aiRefinedSuggestion],
   );
 
   useEffect(() => {
@@ -174,6 +182,72 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
   useEffect(() => {
     inputRef.current?.focus();
   }, [mode]);
+
+  // Debounced AI refine: only fires when the flag is on, composer is empty (zero-state),
+  // a heuristic suggestion exists, and a callback is provided. Cancels on any keystroke /
+  // non-empty value. Flag off → never calls AI.
+  useEffect(() => {
+    // Clear any pending refined suggestion whenever value changes.
+    if (value.length > 0) {
+      setAiRefinedSuggestion(null);
+    }
+
+    if (
+      !aiNextCommandRefine ||
+      !onRequestAiSuggestion ||
+      value.length > 0 ||
+      mode !== 'shell' ||
+      !lastCommand
+    ) {
+      // Cancel any in-flight debounce / request when conditions no longer hold.
+      if (aiRefineTimerRef.current !== null) {
+        clearTimeout(aiRefineTimerRef.current);
+        aiRefineTimerRef.current = null;
+      }
+      if (aiRefineAbortRef.current) {
+        aiRefineAbortRef.current.abort();
+        aiRefineAbortRef.current = null;
+      }
+      return;
+    }
+
+    // Conditions met: debounce the AI call by 400 ms.
+    if (aiRefineTimerRef.current !== null) clearTimeout(aiRefineTimerRef.current);
+    aiRefineTimerRef.current = setTimeout(() => {
+      aiRefineTimerRef.current = null;
+      const abortController = new AbortController();
+      aiRefineAbortRef.current = abortController;
+
+      const prompt = buildNextCommandPrompt({
+        lastCommand,
+        recentCommands: history,
+        cwd,
+      });
+
+      onRequestAiSuggestion(prompt)
+        .then((aiText) => {
+          if (abortController.signal.aborted) return;
+          const cmd = extractCommand(aiText);
+          // Only replace if the composer is still empty.
+          if (cmd) setAiRefinedSuggestion(cmd);
+        })
+        .catch(() => {
+          // Silently discard errors (cancelled or provider error).
+        })
+        .finally(() => {
+          if (aiRefineAbortRef.current === abortController) aiRefineAbortRef.current = null;
+        });
+    }, 400);
+
+    return () => {
+      if (aiRefineTimerRef.current !== null) {
+        clearTimeout(aiRefineTimerRef.current);
+        aiRefineTimerRef.current = null;
+      }
+      aiRefineAbortRef.current?.abort();
+      aiRefineAbortRef.current = null;
+    };
+  }, [aiNextCommandRefine, onRequestAiSuggestion, value, mode, lastCommand, history, cwd]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Tab' && e.shiftKey) {
