@@ -34,6 +34,7 @@ import { buildRecentContext } from '@/utils/aiContext';
 import { redactHistoryEntries, redactSecrets } from '@/utils/redactSecrets';
 import { detectSshError } from '@/utils/sshDetect';
 import { capDisplayItems } from '@/utils/blockCap';
+import { clampStoredOutput } from '@/utils/clampStoredOutput';
 import {
   initialRemoteAi, pillView, onSshChange, enableWatch, setMode,
   setInstalling, setHelperInstalled, dismissOffer, setError,
@@ -529,7 +530,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           const next = [...prev];
           const item = next[idx];
           if (item.type === 'command') {
-            next[idx] = { ...item, block: { ...item.block, output: current.clean, rawOutput: current.raw } };
+            next[idx] = { ...item, block: { ...item.block, output: clampStoredOutput(current.clean), rawOutput: clampStoredOutput(current.raw) } };
           }
           return next;
         });
