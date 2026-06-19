@@ -11,6 +11,7 @@ import { generateHistoryServerScript, generateHistoryMcpConfig } from './mcpHist
 import { enrichEnv, resolveBinary } from './platform';
 import { getAvailableClaudeModels } from './claudeModels';
 import { createIdleWatchdog } from './idleWatchdog';
+import { safeWrite } from './procIo';
 
 const sshManager = new RemoteSshManager();
 const toolProxy = new RemoteToolProxy(sshManager);
@@ -352,7 +353,11 @@ async function handleRemoteToolCalls(
               }],
             },
           });
-          state.process?.stdin!.write(errorResult + '\n');
+          safeWrite(state.process, errorResult + '\n', (err) => {
+            state.busy = false;
+            safeSend(win, 'ai:error', key, `Failed to send to AI provider: ${err.message}`);
+            safeSend(win, 'ai:message', key, { type: 'done' });
+          });
         }
         safeSend(win, 'ai:message', key, {
           type: 'remote:connection_failed',
@@ -389,7 +394,11 @@ async function handleRemoteToolCalls(
         }],
       },
     });
-    state.process?.stdin!.write(toolResult + '\n');
+    safeWrite(state.process, toolResult + '\n', (err) => {
+      state.busy = false;
+      safeSend(win, 'ai:error', key, `Failed to send to AI provider: ${err.message}`);
+      safeSend(win, 'ai:message', key, { type: 'done' });
+    });
 
     safeSend(win, 'ai:message', key, {
       type: 'user',
@@ -465,7 +474,11 @@ export function setupClaudeService(getWindow: () => BrowserWindow | null) {
       type: 'user',
       message: { role: 'user', content: message },
     });
-    proc.stdin!.write(payload + '\n');
+    safeWrite(proc, payload + '\n', (err) => {
+      state.busy = false;
+      safeSend(win, 'ai:error', key, `Failed to send to AI provider: ${err.message}`);
+      safeSend(win, 'ai:message', key, { type: 'done' });
+    });
 
     return true;
   });
@@ -615,18 +628,19 @@ export function setupClaudeService(getWindow: () => BrowserWindow | null) {
         state.awaitingApproval = false;
         state.pendingToolUse = null;
 
-        const proc = state.process;
-        if (proc?.stdin && !proc.stdin.destroyed) {
-          state.busy = true;
-          const retryMsg = JSON.stringify({
-            type: 'user',
-            message: {
-              role: 'user',
-              content: `The user has approved the use of the "${pending.toolName}" tool. Please proceed with the same tool call you just attempted.`,
-            },
-          });
-          proc.stdin.write(retryMsg + '\n');
-        }
+        state.busy = true;
+        const retryMsg = JSON.stringify({
+          type: 'user',
+          message: {
+            role: 'user',
+            content: `The user has approved the use of the "${pending.toolName}" tool. Please proceed with the same tool call you just attempted.`,
+          },
+        });
+        safeWrite(state.process, retryMsg + '\n', (err) => {
+          state.busy = false;
+          safeSend(win, 'ai:error', key, `Failed to send to AI provider: ${err.message}`);
+          safeSend(win, 'ai:message', key, { type: 'done' });
+        });
         return true;
       }
     } catch (err: any) {
@@ -654,21 +668,22 @@ export function setupClaudeService(getWindow: () => BrowserWindow | null) {
 
     // Send the tool output to the CLI as a new user message so the model
     // can continue with the actual result.
-    const proc = state.process;
-    if (proc?.stdin && !proc.stdin.destroyed) {
-      const maxLen = 8000;
-      const truncated = result.length > maxLen
-        ? result.slice(0, maxLen) + `\n... (truncated ${result.length - maxLen} chars)`
-        : result;
-      const followUp = JSON.stringify({
-        type: 'user',
-        message: {
-          role: 'user',
-          content: `[${pending.toolName} output]\n${truncated}`,
-        },
-      });
-      proc.stdin.write(followUp + '\n');
-    }
+    const maxLen = 8000;
+    const truncated = result.length > maxLen
+      ? result.slice(0, maxLen) + `\n... (truncated ${result.length - maxLen} chars)`
+      : result;
+    const followUp = JSON.stringify({
+      type: 'user',
+      message: {
+        role: 'user',
+        content: `[${pending.toolName} output]\n${truncated}`,
+      },
+    });
+    safeWrite(state.process, followUp + '\n', (err) => {
+      state.busy = false;
+      safeSend(win, 'ai:error', key, `Failed to send to AI provider: ${err.message}`);
+      safeSend(win, 'ai:message', key, { type: 'done' });
+    });
 
     return true;
   });
