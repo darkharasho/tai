@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 import { enrichEnv, resolveBinary } from './platform';
+import { createIdleWatchdog } from './idleWatchdog';
 
 function enrichedEnv(): Record<string, string> {
   return enrichEnv();
@@ -191,9 +192,21 @@ export function setupCodexService(getWindow: () => BrowserWindow | null) {
     state.busy = true;
     state.buffer = '';
 
+    const watchdog = createIdleWatchdog({
+      onIdle: () => {
+        if (state.process && !state.process.killed) state.process.kill();
+        if (state.busy) {
+          state.busy = false;
+          safeSend(win, 'ai:error', key, 'AI provider timed out (no output for 120s).');
+          safeSend(win, 'ai:message', key, { type: 'done' });
+        }
+      },
+    });
+
     safeSend(win, 'ai:message', key, { type: 'streaming_start' });
 
     proc.stdout?.on('data', (data: Buffer) => {
+      watchdog.kick();
       if (state.process !== proc) return;
 
       state.buffer += data.toString();
@@ -227,6 +240,7 @@ export function setupCodexService(getWindow: () => BrowserWindow | null) {
     });
 
     proc.on('exit', () => {
+      watchdog.cancel();
       if (state.process !== proc) return;
       if (state.buffer.trim()) {
         try {

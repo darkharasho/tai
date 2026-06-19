@@ -10,6 +10,7 @@ import { generateMcpServerScript, generateMcpConfig } from './mcpRemoteServer';
 import { generateHistoryServerScript, generateHistoryMcpConfig } from './mcpHistoryServer';
 import { enrichEnv, resolveBinary } from './platform';
 import { getAvailableClaudeModels } from './claudeModels';
+import { createIdleWatchdog } from './idleWatchdog';
 
 const sshManager = new RemoteSshManager();
 const toolProxy = new RemoteToolProxy(sshManager);
@@ -179,7 +180,19 @@ function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, perm
   state.process = proc;
   state.buffer = '';
 
+  const watchdog = createIdleWatchdog({
+    onIdle: () => {
+      if (state.process && !state.process.killed) state.process.kill();
+      if (state.busy) {
+        state.busy = false;
+        safeSend(win, 'ai:error', key, 'AI provider timed out (no output for 120s).');
+        safeSend(win, 'ai:message', key, { type: 'done' });
+      }
+    },
+  });
+
   proc.stdout!.on('data', (chunk: Buffer) => {
+    watchdog.kick();
     state.buffer += chunk.toString();
     const lines = state.buffer.split('\n');
     state.buffer = lines.pop() || '';
@@ -294,6 +307,7 @@ function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, perm
   });
 
   proc.on('exit', (code, signal) => {
+    watchdog.cancel();
     console.log(`[daemon] claude process exited code=${code} signal=${signal}`);
     const wasBusy = state.busy;
     state.process = null;
