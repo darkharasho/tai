@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useImperativeHandle, forwardRef, useMemo } from 'react';
-import { predictCommand } from '@/hooks/useGhostText';
+import { predictCommandIndexed } from '@/hooks/useGhostText';
+import type { CommandIndex } from '@/utils/commandIndex';
 import { classifyInput, FLIP_THRESHOLD } from '@/utils/commandDetector';
 import { stripForceShellPrefix, shouldShowAutoBadge } from '@/utils/inputModeUx';
 import styles from './TerminalInput.module.css';
@@ -12,6 +13,8 @@ const PERM_LABELS: Record<AIProvider, Record<TrustLevel, string>> = {
   codex: { 'ask': 'Auto', 'approve-edits': 'Read-only', 'bypass': 'Full Access' },
   gemini: { 'ask': 'Default', 'approve-edits': 'Auto Edit', 'bypass': 'Yolo' },
 };
+
+const GHOST_MIN_PREFIX = 2;
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent);
 
@@ -55,6 +58,7 @@ interface TerminalInputProps {
   onModeChange: (mode: InputMode) => void;
   disabled?: boolean;
   cwd: string;
+  commandIndex: CommandIndex;
   promptInfo?: { text: string; isRemote: boolean; sshTarget?: string } | null;
   shellIntegrated?: boolean;
   history?: string[];
@@ -107,7 +111,7 @@ export function RemoteAiPill({ view, onEnable, onSetMode, onDismiss }: RemoteAiP
   );
 }
 
-export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>(function TerminalInput({ onSubmit, mode, onModeChange, disabled, cwd, promptInfo, shellIntegrated, history = [], onClear, initialValue, remoteAiView, onEnableRemoteAi, onSetRemoteAiMode, onDismissRemoteAi, aiProvider, trustLevel, onTrustLevelChange }, ref) {
+export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>(function TerminalInput({ onSubmit, mode, onModeChange, disabled, cwd, commandIndex, promptInfo, shellIntegrated, history = [], onClear, initialValue, remoteAiView, onEnableRemoteAi, onSetRemoteAiMode, onDismissRemoteAi, aiProvider, trustLevel, onTrustLevelChange }, ref) {
   const [value, setValue] = useState(initialValue || '');
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const historyIndexRef = useRef(-1);
@@ -118,8 +122,10 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
   const tabPrefixRef = useRef('');
 
   const prediction = useMemo(
-    () => mode === 'shell' && value.length >= 5 && !value.includes('\n') ? predictCommand(value, history) : null,
-    [value, history, mode],
+    () => mode === 'shell' && value.length >= GHOST_MIN_PREFIX && !value.includes('\n')
+      ? predictCommandIndexed(value, commandIndex, Date.now(), cwd)
+      : null,
+    [mode, value, commandIndex, cwd],
   );
 
   useEffect(() => {

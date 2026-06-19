@@ -1638,6 +1638,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
             mode={inputMode}
             onModeChange={handleInputModeChange}
             cwd={cwd}
+            commandIndex={commandIndex}
             promptInfo={eff.isRemote
               ? { text: promptInfo?.text ?? '', isRemote: true, sshTarget: eff.sshTarget ?? undefined }
               : promptInfo}
