@@ -33,6 +33,7 @@ import { isMultilineCommand } from '@/utils/isMultilineCommand';
 import { buildRecentContext } from '@/utils/aiContext';
 import { redactHistoryEntries, redactSecrets } from '@/utils/redactSecrets';
 import { detectSshError } from '@/utils/sshDetect';
+import { capDisplayItems } from '@/utils/blockCap';
 import {
   initialRemoteAi, pillView, onSshChange, enableWatch, setMode,
   setInstalling, setHelperInstalled, dismissOffer, setError,
@@ -453,7 +454,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
               finalBlock = { ...finalBlock, summaryLine: summarizeSession(sess.kind, finalBlock.output, sess.port) };
             }
             next[idx] = { type: 'command', block: finalBlock, aiSuggested: isSuggested };
-            return next;
+            return capDisplayItems(next);
           }
         }
         const cleaned = orphaned
@@ -462,7 +463,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
                 ? { ...item, active: false, block: { ...item.block, id: `stale-${Date.now()}` } }
                 : item)
           : prev;
-        return [...cleaned, { type: 'command', block: fixedBlock, aiSuggested: isSuggested }];
+        return capDisplayItems([...cleaned, { type: 'command', block: fixedBlock, aiSuggested: isSuggested }]);
       });
       // The orphan's session morph also lingers — clear the STOP/stdin chrome.
       if (orphaned && activeSessionRef.current) {
@@ -725,9 +726,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       }
     };
 
-    setDisplayItems(prev => [...prev,
+    setDisplayItems(prev => capDisplayItems([...prev,
       { type: 'ai' as const, id: aiId, question: displayQuestion ?? prompt, content: '', suggestedCommands: [], streaming: true, remote: eff.isRemote },
-    ]);
+    ]));
 
     const finalize = () => {
       setDisplayItems(prev => {
@@ -857,7 +858,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           entries = [];
           knownToolIds = new Set<string>();
           lastTextEntry = '';
-          setDisplayItems(prev => [...prev, {
+          setDisplayItems(prev => capDisplayItems([...prev, {
             type: 'ai' as const,
             id: currentAiId,
             question: '',
@@ -865,7 +866,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
             suggestedCommands: [],
             streaming: true,
             remote: eff.isRemote,
-          }]);
+          }]));
           aiBlockIdRef.current = currentAiId;
         }
 
@@ -935,7 +936,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       if (msg.type === 'remote:connection_failed') {
         const sshErr = detectSshError(msg.error ?? '');
         const hint = sshErr ? `\n\n${sshErr.message}` : '';
-        setDisplayItems(prev => [...prev, {
+        setDisplayItems(prev => capDisplayItems([...prev, {
           type: 'ai' as const,
           id: nextBlockId(),
           question: '',
@@ -943,7 +944,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           suggestedCommands: [],
           streaming: false,
           entries: [{ kind: 'text' as const, text: `**SSH connection failed:** ${msg.error}${hint}\n\nAI commands will run locally.` }],
-        }]);
+        }]));
         return;
       }
 
@@ -1106,7 +1107,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     };
     pendingCommandRef.current = { command: display, startTime: Date.now() };
     beginSession(display);
-    setDisplayItems(prev => [...prev, { type: 'command' as const, block: pendingBlock, active: true }]);
+    setDisplayItems(prev => capDisplayItems([...prev, { type: 'command' as const, block: pendingBlock, active: true }]));
     executeCommand(command);
   }, [executeCommand, promptInfo, beginSession]);
   useEffect(() => { rerunRef.current = handleRerun; }, [handleRerun]);
