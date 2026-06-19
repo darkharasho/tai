@@ -1,6 +1,8 @@
 import { spawn, ChildProcess } from 'child_process';
 import { randomUUID } from 'crypto';
 
+export const DAEMON_CALL_TIMEOUT_MS = 180_000;
+
 interface ToolResult {
   output: string;
   isError: boolean;
@@ -147,8 +149,15 @@ export class RemoteDaemonProxy {
     const params = this._mapParams(toolName, input);
     const daemonTool = toolName.toLowerCase();
 
-    return new Promise((resolve) => {
-      this.pending.set(id, { resolve });
+    return new Promise<ToolResult>((resolve) => {
+      const timer = setTimeout(() => {
+        if (this.pending.delete(id)) {
+          resolve({ output: `daemon tool '${toolName}' timed out after ${DAEMON_CALL_TIMEOUT_MS}ms`, isError: true });
+        }
+      }, DAEMON_CALL_TIMEOUT_MS);
+      this.pending.set(id, {
+        resolve: (r) => { clearTimeout(timer); resolve(r); },
+      });
       this._write({ id, tool: daemonTool, params });
     });
   }
