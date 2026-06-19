@@ -83,6 +83,10 @@ declare global {
         ingest: (entries: import('@/utils/commandIndex').IngestEntry[]) => void;
         flush: () => void;
       };
+      workflows: {
+        get: () => Promise<import('@/utils/workflows').Workflow[]>;
+        set: (list: import('@/utils/workflows').Workflow[]) => void;
+      };
       config: {
         get: () => Promise<Record<string, any>>;
         set: (key: string, value: any) => Promise<Record<string, any>>;
