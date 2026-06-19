@@ -76,7 +76,8 @@
         "from": "electron/shell-integration",
         "to": "shell-integration",
         "filter": [
-          "**/*"
+          "**/*",
+          "**/.*"
         ]
       }
     ]

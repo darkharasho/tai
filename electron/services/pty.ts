@@ -76,6 +76,17 @@ export function buildZshShimEnv(
   };
 }
 
+/**
+ * Converts a zsh-shim env object into systemd-run `--setenv=KEY=VALUE` args.
+ * These are inserted before the `--` separator in the systemd-run argv so that
+ * the zsh shim variables are explicitly forwarded even if scope env inheritance
+ * behaves unexpectedly. Exported for unit-testing.
+ */
+export function zshShimSetenvArgs(shimEnv: Record<string, string>): string[] {
+  const keys = ['ZDOTDIR', 'TAI_ZSH_SHIM', 'TAI_ZSH_INTEGRATION', 'TAI_ZDOTDIR_USER', 'TAI_ZDOTDIR_WAS_SET'] as const;
+  return keys.map((k) => `--setenv=${k}=${shimEnv[k] ?? ''}`);
+}
+
 export function buildIntegrationSourceCommand(shellName: string, quotedPath: string): string {
   if (shellName === 'fish') {
     return ` source ${quotedPath}\n`;
@@ -144,6 +155,7 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
       const shell = process.env.SHELL || '/bin/bash';
       const useScope = canUseSystemdScope();
       spawnCmd = useScope ? 'systemd-run' : shell;
+      // spawnArgs finalized below after zsh-shim detection (may insert --setenv flags).
       spawnArgs = useScope
         ? ['--user', '--scope', '--quiet', '--', shell, '--login']
         : ['--login'];
@@ -162,8 +174,32 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
       const integ = integrationScriptFor('zsh');
       const shim = dir ? path.join(dir, 'zsh-shim') : null;
       if (shim && integ && fs.existsSync(shim)) {
-        Object.assign(env, buildZshShimEnv(env, { shimDir: shim, integrationPath: integ, home: os.homedir() }));
+        const shimEnv = buildZshShimEnv(env, { shimDir: shim, integrationPath: integ, home: os.homedir() });
+        Object.assign(env, shimEnv);
         zshShimActive = true;
+        // For the systemd-run --scope path, --scope *should* inherit the caller
+        // environment, but we insert explicit --setenv args as insurance so the
+        // zsh shim variables are guaranteed to reach the child process.
+        if (spawnCmd === 'systemd-run') {
+          const setenvArgs = zshShimSetenvArgs(shimEnv);
+          // Insert before the '--' separator (systemd-run flags must precede '--').
+          const sepIdx = spawnArgs.indexOf('--');
+          if (sepIdx !== -1) {
+            spawnArgs = [
+              ...spawnArgs.slice(0, sepIdx),
+              ...setenvArgs,
+              ...spawnArgs.slice(sepIdx),
+            ];
+          }
+        }
+      } else {
+        console.warn(
+          '[tai] zsh-shim not found, falling back to typed injection:',
+          !dir ? 'shell-integration dir unavailable' :
+          !integ ? 'integration script not found' :
+          !shim ? 'shim path could not be resolved' :
+          `shim dir missing at ${shim}`,
+        );
       }
     }
 
