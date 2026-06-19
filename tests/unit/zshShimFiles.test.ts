@@ -22,7 +22,7 @@ describe('zsh shim files', () => {
     for (const f of ['.zshenv', '.zprofile']) {
       const z = read(f);
       expect(z, f).toMatch(/TAI_ZDOTDIR_USER/);
-      expect(z, f).toMatch(/ZDOTDIR="?\$\{?TAI_ZSH_SHIM/);  // re-assert shim
+      expect(z, f).toMatch(/export ZDOTDIR="\$TAI_ZSH_SHIM"/);  // re-assert shim (export form)
     }
   });
   it('every shim file guards user-file existence with [ -f ]', () => {
