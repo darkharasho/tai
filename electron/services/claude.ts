@@ -324,6 +324,10 @@ function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, perm
       if (p) try { fs.unlinkSync(p); } catch {}
     }
     if (wasBusy) {
+      if (state.buffer && state.buffer.trim()) {
+        safeSend(win, 'ai:error', key, 'Response may be incomplete — provider exited mid-output.');
+        state.buffer = '';
+      }
       safeSend(win, 'ai:message', key, { type: 'done' });
     }
   });
