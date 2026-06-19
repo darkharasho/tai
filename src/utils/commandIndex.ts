@@ -76,3 +76,38 @@ export function capIndex(index: CommandIndex, now: number): void {
     delete index.next[k];
   }
 }
+
+export const W_FREQ = 1;
+export const W_RECENT = 2;
+export const W_CWD = 1.5;
+export const HALF_LIFE_MS = 1000 * 60 * 60 * 24 * 7;
+
+export function frecency(stat: CommandStat, now: number, cwd?: string): number {
+  const ageMs = Math.max(0, now - stat.lastTs);
+  const recency = Math.pow(0.5, ageMs / HALF_LIFE_MS); // 1 → 0 over half-lives
+  const cwdHits = cwd ? (stat.cwdCounts[cwd] ?? 0) : 0;
+  return (
+    W_FREQ * Math.log(stat.count + 1) +
+    W_RECENT * recency +
+    W_CWD * (cwdHits > 0 ? Math.log(cwdHits + 1) : 0)
+  );
+}
+
+export function rankPrefix(index: CommandIndex, prefix: string, now: number, cwd?: string): string[] {
+  const lower = prefix.toLowerCase();
+  if (!lower.trim()) return [];
+  const matches: { command: string; score: number }[] = [];
+  for (const command in index.stats) {
+    const cl = command.toLowerCase();
+    if (cl === lower || !cl.startsWith(lower)) continue;
+    matches.push({ command, score: frecency(index.stats[command], now, cwd) });
+  }
+  matches.sort((a, b) => b.score - a.score);
+  return matches.map((m) => m.command);
+}
+
+export function topNext(index: CommandIndex, prevCommand: string, n: number): string[] {
+  const bucket = index.next[prevCommand.trim()];
+  if (!bucket) return [];
+  return Object.keys(bucket).sort((a, b) => bucket[b] - bucket[a]).slice(0, n);
+}
