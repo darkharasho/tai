@@ -30,6 +30,8 @@ import { summarizeSession } from '@/utils/sessionSummary';
 import { preserveStreamedOutput } from '@/utils/finalizeOutput';
 import { classifyKeyTarget } from '@/utils/keyRouting';
 import { isMultilineCommand } from '@/utils/isMultilineCommand';
+import { createIndex, ingestBlock } from '@/utils/commandIndex';
+import type { CommandIndex } from '@/utils/commandIndex';
 import { buildRecentContext } from '@/utils/aiContext';
 import { redactHistoryEntries, redactSecrets } from '@/utils/redactSecrets';
 import { detectSshError } from '@/utils/sshDetect';
@@ -162,6 +164,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const daemonToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [shellHistory, setShellHistory] = useState<string[]>([]);
   const [remoteHistory, setRemoteHistory] = useState<string[]>([]);
+  const [commandIndex, setCommandIndex] = useState<CommandIndex>(() => createIndex());
+  const lastFinalizedCommandRef = useRef<string | undefined>(undefined);
   const [awaitingInput, setAwaitingInput] = useState(false);
   const [passwordPrompt, setPasswordPrompt] = useState(false);
   const [editValue, setEditValue] = useState<string | undefined>(undefined);
@@ -262,6 +266,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
 
   useEffect(() => {
     window.tai?.pty?.getShellHistory(500).then((lines: string[]) => setShellHistory(lines));
+    window.tai?.commandIndex?.get().then((idx) => idx && setCommandIndex(idx));
   }, []);
 
   useEffect(() => {
@@ -448,6 +453,37 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         item.type === 'command' && item.block.id === 'pending' && item.active &&
         item.block.command === fixedBlock.command,
       );
+      // Ingest the finalized block into the command index for ghost-text ranking.
+      // We resolve the cwd via getCwd (reads /proc/<pid>/cwd on Linux) so the
+      // stored cwd is the canonical/symlink-resolved path — matching the form
+      // the predictor receives from the tab `cwd` state (also sourced from
+      // getCwd). Using fixedBlock.cwd here would preserve symlinks (e.g.
+      // $PWD = /var/home/user) while the predictor sees the resolved form
+      // (/home/user), causing cwdCounts lookups to never match.
+      if (fixedBlock.command && fixedBlock.command.trim()) {
+        const prevCmd = lastFinalizedCommandRef.current;
+        lastFinalizedCommandRef.current = fixedBlock.command;
+        const _ingestCmd = fixedBlock.command;
+        const _ingestExit = fixedBlock.exitCode;
+        const _ingestTs = fixedBlock.startTime || Date.now();
+        const _ingestIsRemote = fixedBlock.isRemote;
+        (async () => {
+          // For remote blocks the pty cwd is meaningless; fall back to the
+          // block's own cwd field (best-effort).
+          const resolvedCwd = (!_ingestIsRemote && ptyId !== null)
+            ? (await window.tai?.pty?.getCwd(ptyId) ?? fixedBlock.cwd)
+            : fixedBlock.cwd;
+          const entry = {
+            command: _ingestCmd,
+            cwd: resolvedCwd,
+            exitCode: _ingestExit,
+            ts: _ingestTs,
+            prevCommand: prevCmd,
+          };
+          window.tai?.commandIndex?.ingest([entry]);
+          setCommandIndex((prev) => { ingestBlock(prev, entry); return { ...prev }; });
+        })();
+      }
       setDisplayItems(prev => {
         if (pending) {
           const idx = prev.findIndex(item => item.type === 'command' && item.block.id === 'pending');
@@ -1620,6 +1656,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
             mode={inputMode}
             onModeChange={handleInputModeChange}
             cwd={cwd}
+            commandIndex={commandIndex}
             promptInfo={eff.isRemote
               ? { text: promptInfo?.text ?? '', isRemote: true, sshTarget: eff.sshTarget ?? undefined }
               : promptInfo}

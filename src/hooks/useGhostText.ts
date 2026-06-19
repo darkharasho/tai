@@ -1,4 +1,13 @@
 import { useState, useCallback } from 'react';
+import { type CommandIndex, rankPrefix } from '@/utils/commandIndex';
+
+export function predictCommandIndexed(
+  prefix: string, index: CommandIndex, now: number, cwd?: string,
+): string | null {
+  if (!prefix || !prefix.trim()) return null;
+  const ranked = rankPrefix(index, prefix, now, cwd);
+  return ranked.length > 0 ? ranked[0] : null;
+}
 
 export function predictCommand(prefix: string, history: string[]): string | null {
   if (!prefix || !prefix.trim()) return null;

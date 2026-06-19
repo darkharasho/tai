@@ -78,6 +78,11 @@ declare global {
           summary?: string;
         }) => void;
       };
+      commandIndex: {
+        get: () => Promise<import('@/utils/commandIndex').CommandIndex>;
+        ingest: (entries: import('@/utils/commandIndex').IngestEntry[]) => void;
+        flush: () => void;
+      };
       config: {
         get: () => Promise<Record<string, any>>;
         set: (key: string, value: any) => Promise<Record<string, any>>;
