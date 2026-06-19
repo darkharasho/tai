@@ -111,3 +111,18 @@ export function topNext(index: CommandIndex, prevCommand: string, n: number): st
   if (!bucket) return [];
   return Object.keys(bucket).sort((a, b) => bucket[b] - bucket[a]).slice(0, n);
 }
+
+/**
+ * Returns true if a finalized block should be ingested into the local command
+ * index.  Remote blocks are excluded because their cwd is a remote path and
+ * will never match local predictor cwd, polluting suggestions.  Empty commands
+ * are excluded because there is nothing useful to index.
+ *
+ * Note: AI-suggested commands that the user actually ran are NOT filtered —
+ * they are valid local history regardless of how they were composed.
+ */
+export function shouldIndexBlock(block: { isRemote?: boolean; command: string }): boolean {
+  if (block.isRemote) return false;
+  if (!block.command.trim()) return false;
+  return true;
+}

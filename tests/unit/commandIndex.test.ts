@@ -1,6 +1,6 @@
 // tests/unit/commandIndex.test.ts
 import { describe, it, expect } from 'vitest';
-import { createIndex, ingestBlock, ingestHistoryLines, capIndex, MAX_INDEX_COMMANDS } from '@/utils/commandIndex';
+import { createIndex, ingestBlock, ingestHistoryLines, capIndex, MAX_INDEX_COMMANDS, shouldIndexBlock } from '@/utils/commandIndex';
 
 describe('commandIndex ingestion', () => {
   it('counts repeated commands and records cwd buckets', () => {
@@ -44,5 +44,29 @@ describe('commandIndex ingestion', () => {
     capIndex(idx, 1_000_000);
     expect(Object.keys(idx.stats).length).toBeLessThanOrEqual(MAX_INDEX_COMMANDS);
     expect(idx.stats['keep-me']).toBeTruthy();
+  });
+});
+
+describe('shouldIndexBlock', () => {
+  it('returns false for remote blocks', () => {
+    expect(shouldIndexBlock({ isRemote: true, command: 'ls' })).toBe(false);
+  });
+
+  it('returns false for empty command', () => {
+    expect(shouldIndexBlock({ isRemote: false, command: '' })).toBe(false);
+    expect(shouldIndexBlock({ isRemote: false, command: '   ' })).toBe(false);
+  });
+
+  it('returns true for normal local command', () => {
+    expect(shouldIndexBlock({ isRemote: false, command: 'git status' })).toBe(true);
+  });
+
+  it('returns true when isRemote is undefined (local default)', () => {
+    expect(shouldIndexBlock({ command: 'npm test' })).toBe(true);
+  });
+
+  it('returns true for AI-suggested commands that the user ran locally (isSuggested is not filtered)', () => {
+    // AI-suggested commands are valid local history; only isRemote matters
+    expect(shouldIndexBlock({ isRemote: false, command: 'git push --force-with-lease' })).toBe(true);
   });
 });

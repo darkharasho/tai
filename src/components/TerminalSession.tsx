@@ -30,7 +30,7 @@ import { summarizeSession } from '@/utils/sessionSummary';
 import { preserveStreamedOutput } from '@/utils/finalizeOutput';
 import { classifyKeyTarget } from '@/utils/keyRouting';
 import { isMultilineCommand } from '@/utils/isMultilineCommand';
-import { createIndex, ingestBlock } from '@/utils/commandIndex';
+import { createIndex, ingestBlock, shouldIndexBlock } from '@/utils/commandIndex';
 import type { CommandIndex } from '@/utils/commandIndex';
 import { buildRecentContext } from '@/utils/aiContext';
 import { redactHistoryEntries, redactSecrets } from '@/utils/redactSecrets';
@@ -472,7 +472,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       // getCwd). Using fixedBlock.cwd here would preserve symlinks (e.g.
       // $PWD = /var/home/user) while the predictor sees the resolved form
       // (/home/user), causing cwdCounts lookups to never match.
-      if (fixedBlock.command && fixedBlock.command.trim()) {
+      if (shouldIndexBlock({ isRemote: fixedBlock.isRemote, command: fixedBlock.command ?? '' })) {
         const prevCmd = lastFinalizedCommandRef.current;
         lastFinalizedCommandRef.current = fixedBlock.command;
         setLastFinalizedCmd(fixedBlock.command);
@@ -480,11 +480,10 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         const _ingestCmd = fixedBlock.command;
         const _ingestExit = fixedBlock.exitCode;
         const _ingestTs = fixedBlock.startTime || Date.now();
-        const _ingestIsRemote = fixedBlock.isRemote;
         (async () => {
-          // For remote blocks the pty cwd is meaningless; fall back to the
-          // block's own cwd field (best-effort).
-          const resolvedCwd = (!_ingestIsRemote && ptyId !== null)
+          // For remote blocks shouldIndexBlock already returns false above, so
+          // here we know the block is local and pty cwd is valid.
+          const resolvedCwd = ptyId !== null
             ? (await window.tai?.pty?.getCwd(ptyId) ?? fixedBlock.cwd)
             : fixedBlock.cwd;
           const entry = {
