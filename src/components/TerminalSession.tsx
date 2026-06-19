@@ -1388,10 +1388,11 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     if (runNow) {
       handleSubmit(item.value);
     } else {
-      // Reset to undefined first so re-picking the same value re-triggers the
-      // useEffect in TerminalInput (which only fires on change).
-      setEditValue(undefined);
-      setEditValue(item.value);
+      // Call insertValue directly on the TerminalInput imperative ref so that
+      // repeated identical picks always update the composer — React 18 batching
+      // would collapse a setEditValue(undefined)+setEditValue(same) double-call
+      // into a single commit, making the initialValue useEffect a no-op.
+      inputRef.current?.insertValue(item.value);
     }
   }, [handleSubmit]);
 
@@ -1400,7 +1401,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     if (runNow) {
       handleSubmit(command);
     } else {
-      setEditValue(command);
+      // Same imperative-ref approach as handlePalettePick: avoids batching issue
+      // on repeated identical workflow substitutions.
+      inputRef.current?.insertValue(command);
     }
   }, [handleSubmit]);
 

@@ -40,6 +40,10 @@ export interface TerminalInputHandle {
   paste: (text: string) => void;
   focus: () => void;
   blur: () => void;
+  /** Imperatively set the composer value and focus it.
+   *  Bypasses the initialValue→useEffect path, so repeated identical
+   *  picks always update the composer regardless of React batching. */
+  insertValue: (v: string) => void;
 }
 
 function stripPromptGlyphs(text: string): string {
@@ -183,6 +187,10 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
     },
     blur: () => {
       inputRef.current?.blur();
+    },
+    insertValue: (v: string) => {
+      setValue(v);
+      inputRef.current?.focus();
     },
   }));
 
