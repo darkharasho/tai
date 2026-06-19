@@ -221,6 +221,16 @@
   color: var(--bg-base);
 }
 
+.tabItemValue {
+  font-family: var(--font-mono, monospace);
+}
+
+.tabItemDesc {
+  margin-left: 8px;
+  opacity: 0.6;
+  font-size: 0.85em;
+}
+
 .remoteToggle {
   background: none;
   border: 1px solid var(--color-agent-dim, rgba(255, 160, 60, 0.3));

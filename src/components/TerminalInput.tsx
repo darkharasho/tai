@@ -9,6 +9,17 @@ import styles from './TerminalInput.module.css';
 import { ShieldCheck, ShieldOff } from 'lucide-react';
 import type { AIProvider, TrustLevel } from '@/types';
 import type { PillView, RemoteAiMode } from '@/utils/remoteAiSession';
+import { tokenize, resolveCompletion, type CompletionItem } from '@/completions/resolveCompletion';
+import { getSpec } from '@/completions/registry';
+
+export function getSpecCompletions(line: string): CompletionItem[] | null {
+  const { tokens, lastToken } = tokenize(line);
+  if (tokens.length === 0) return null;
+  const spec = getSpec(tokens[0]);
+  if (!spec) return null;
+  const items = resolveCompletion(spec, tokens, lastToken).items;
+  return items.length > 0 ? items : null;
+}
 
 const PERM_LABELS: Record<AIProvider, Record<TrustLevel, string>> = {
   claude: { 'ask': 'Default', 'approve-edits': 'Auto Edits', 'bypass': 'Bypass' },
@@ -130,7 +141,7 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
   const historyIndexRef = useRef(-1);
   const savedInputRef = useRef('');
   const [manualOverride, setManualOverride] = useState(false);
-  const [tabCompletions, setTabCompletions] = useState<string[]>([]);
+  const [tabCompletions, setTabCompletions] = useState<CompletionItem[]>([]);
   const [tabIndex, setTabIndex] = useState(-1);
   const tabPrefixRef = useRef('');
   const [aiRefinedSuggestion, setAiRefinedSuggestion] = useState<string | null>(null);
@@ -271,7 +282,26 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
       if (tabCompletions.length > 1 && tabPrefixRef.current) {
         const next = (tabIndex + 1) % tabCompletions.length;
         setTabIndex(next);
-        setValue(tabPrefixRef.current + tabCompletions[next]);
+        setValue(tabPrefixRef.current + tabCompletions[next].value);
+        return;
+      }
+
+      // Resolver-first: try spec completions before calling compgen.
+      const specItems = getSpecCompletions(text);
+      if (specItems !== null) {
+        const { lastToken } = tokenize(text);
+        const prefix = text.slice(0, text.length - lastToken.length);
+        if (specItems.length === 1) {
+          setValue(prefix + specItems[0].value + ' ');
+          setTabCompletions([]);
+          setTabIndex(-1);
+          tabPrefixRef.current = '';
+        } else {
+          setTabCompletions(specItems);
+          setTabIndex(0);
+          tabPrefixRef.current = prefix;
+          setValue(prefix + specItems[0].value);
+        }
         return;
       }
 
@@ -298,7 +328,7 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
             setTabIndex(-1);
             tabPrefixRef.current = '';
           } else {
-            setTabCompletions(completions);
+            setTabCompletions(completions.map((c) => ({ value: c })));
             setTabIndex(0);
             tabPrefixRef.current = prefix;
             setValue(prefix + completions[0]);
@@ -437,8 +467,9 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
       {tabCompletions.length > 1 && (
         <div className={styles.tabPopup}>
           {tabCompletions.map((c, i) => (
-            <div key={c} className={`${styles.tabItem} ${i === tabIndex ? styles.tabItemActive : ''}`}>
-              {c}
+            <div key={c.value} className={`${styles.tabItem} ${i === tabIndex ? styles.tabItemActive : ''}`}>
+              <span className={styles.tabItemValue}>{c.value}</span>
+              {c.description && <span className={styles.tabItemDesc}>{c.description}</span>}
             </div>
           ))}
         </div>
