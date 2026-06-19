@@ -23,6 +23,7 @@ export class RemoteDaemonProxy {
   private readyReject!: (err: Error) => void;
   private pingInterval: NodeJS.Timeout | null = null;
   private _lastPong = 0;
+  private _exited = false;
   private onDisconnect?: () => void;
   private onLspNotify?: (language: string, method: string, params: unknown) => void;
 
@@ -37,6 +38,7 @@ export class RemoteDaemonProxy {
   setOnLspNotify(fn: (language: string, method: string, params: unknown) => void) { this.onLspNotify = fn; }
 
   connect(): Promise<void> {
+    this._exited = false;
     this.proc = spawn('ssh', [this.target, '~/.tai/tai-daemon', '--connect'], {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -123,6 +125,8 @@ export class RemoteDaemonProxy {
   }
 
   private _handleExit() {
+    if (this._exited) return;
+    this._exited = true;
     if (!this.ready) {
       this.readyReject(new Error('SSH process exited before daemon became ready'));
     }
@@ -202,6 +206,7 @@ export class RemoteDaemonProxy {
       pending.resolve({ output: 'disconnected', isError: true });
     }
     this.pending.clear();
+    this._exited = true;
     this.proc?.kill();
     this.proc = null;
     this.ready = false;

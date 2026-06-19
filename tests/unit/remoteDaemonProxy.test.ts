@@ -61,3 +61,30 @@ describe('RemoteDaemonProxy pong timeout', () => {
     vi.useRealTimers();
   });
 });
+
+describe('RemoteDaemonProxy._handleExit double-invocation guard', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('calls onDisconnect exactly once even when _handleExit is triggered by pong-timeout and then directly', () => {
+    vi.useFakeTimers();
+    const proc = mockProc();
+    mockSpawn.mockReturnValue(proc);
+    const proxy = new RemoteDaemonProxy('user@host');
+    (proxy as any).proc = proc;
+    const onDisconnect = vi.fn();
+    proxy.setOnDisconnect(onDisconnect);
+
+    // Simulate ready → starts heartbeat.
+    (proxy as any)._handleMessage({ type: 'ready' });
+
+    // Advance past PONG_TIMEOUT_MS so the heartbeat interval fires _handleExit once.
+    vi.advanceTimersByTime(PONG_TIMEOUT_MS + 60_000);
+
+    // Call _handleExit again directly (simulates the process exit event arriving after pong-timeout).
+    (proxy as any)._handleExit();
+
+    // onDisconnect must have been called exactly once.
+    expect(onDisconnect).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+});
