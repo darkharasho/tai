@@ -8,12 +8,19 @@ import {
 const SAVE_DEBOUNCE_MS = 5000;
 const indexFile = () => path.join(app.getPath('userData'), 'command-index.json');
 
+// Guard against a pathologically large on-disk index (e.g. corrupted or hand-
+// edited). JSON.parse on a 100 MB string stalls the main process. If the raw
+// file exceeds this limit we discard it and start fresh — same contract as a
+// corrupt JSON file.
+export const MAX_FILE_BYTES = 5 * 1024 * 1024; // 5 MB
+
 export function serializeIndex(index: CommandIndex): string {
   return JSON.stringify(index);
 }
 
 export function deserializeIndex(raw: string | null, now: number): CommandIndex {
   if (!raw) return createIndex();
+  if (raw.length > MAX_FILE_BYTES) return createIndex();
   try {
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed.stats !== 'object' || Array.isArray(parsed.stats) ||
