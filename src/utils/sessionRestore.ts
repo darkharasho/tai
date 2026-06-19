@@ -20,9 +20,14 @@ interface Payload {
 /**
  * Persist the finished command blocks of a tab. Active/pending blocks and AI
  * items are skipped — only completed shell history survives a restart.
+ *
+ * On QuotaExceededError the function sheds the oldest half of blocks and
+ * retries, halving on each failure until only one block remains. If even one
+ * block exceeds quota (or a non-quota error is thrown) the save is skipped
+ * best-effort. One console.warn is emitted per shed cycle.
  */
 export function persistBlocks(tabId: string, items: DisplayItem[]): void {
-  const blocks = items
+  const all = items
     .filter((i): i is DisplayItem & { type: 'command' } =>
       i.type === 'command' && !i.active && i.block.id !== 'pending')
     .slice(-MAX_PERSISTED_BLOCKS)
@@ -31,11 +36,19 @@ export function persistBlocks(tabId: string, items: DisplayItem[]): void {
       output: tailLines(block.output, MAX_PERSISTED_LINES).text,
       rawOutput: tailLines(block.rawOutput, MAX_PERSISTED_LINES).text,
     }));
-  const payload: Payload = { v: VERSION, savedAt: Date.now(), blocks };
-  try {
-    localStorage.setItem(keyFor(tabId), JSON.stringify(payload));
-  } catch {
-    // Quota or serialization failure — session restore is best-effort.
+
+  for (let blocks = all; ; blocks = blocks.slice(Math.ceil(blocks.length / 2))) {
+    const payload: Payload = { v: VERSION, savedAt: Date.now(), blocks };
+    try {
+      localStorage.setItem(keyFor(tabId), JSON.stringify(payload));
+      return;
+    } catch (e) {
+      if (blocks.length > 1 && (e as any)?.name === 'QuotaExceededError') {
+        console.warn(`[sessionRestore] quota exceeded for ${tabId}; shedding to ${Math.ceil(blocks.length / 2)} blocks`);
+        continue;
+      }
+      return; // non-quota error or down to 1 block — best-effort, give up
+    }
   }
 }
 

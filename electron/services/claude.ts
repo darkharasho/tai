@@ -10,6 +10,9 @@ import { generateMcpServerScript, generateMcpConfig } from './mcpRemoteServer';
 import { generateHistoryServerScript, generateHistoryMcpConfig } from './mcpHistoryServer';
 import { enrichEnv, resolveBinary } from './platform';
 import { getAvailableClaudeModels } from './claudeModels';
+import { createIdleWatchdog } from './idleWatchdog';
+import { safeWrite } from './procIo';
+import { classifyProviderError } from '../../src/utils/classifyProviderError';
 
 const sshManager = new RemoteSshManager();
 const toolProxy = new RemoteToolProxy(sshManager);
@@ -179,7 +182,19 @@ function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, perm
   state.process = proc;
   state.buffer = '';
 
+  const watchdog = createIdleWatchdog({
+    onIdle: () => {
+      if (state.process && !state.process.killed) state.process.kill();
+      if (state.busy) {
+        state.busy = false;
+        safeSend(win, 'ai:error', key, 'AI provider timed out (no output for 120s).');
+        safeSend(win, 'ai:message', key, { type: 'done' });
+      }
+    },
+  });
+
   proc.stdout!.on('data', (chunk: Buffer) => {
+    watchdog.kick();
     state.buffer += chunk.toString();
     const lines = state.buffer.split('\n');
     state.buffer = lines.pop() || '';
@@ -290,10 +305,13 @@ function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, perm
   proc.stderr!.on('data', (chunk: Buffer) => {
     const text = chunk.toString();
     if (isRemoteExec) console.log(`[daemon] claude/bwrap stderr: ${text.trim()}`);
-    safeSend(win, 'ai:error', key, text);
+    const { category } = classifyProviderError(text);
+    console.log(`[ai:error] category=${category} text=${text.trim()}`);
+    safeSend(win, 'ai:error', key, text, category);
   });
 
   proc.on('exit', (code, signal) => {
+    watchdog.cancel();
     console.log(`[daemon] claude process exited code=${code} signal=${signal}`);
     const wasBusy = state.busy;
     state.process = null;
@@ -306,6 +324,10 @@ function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, perm
       if (p) try { fs.unlinkSync(p); } catch {}
     }
     if (wasBusy) {
+      if (state.buffer && state.buffer.trim()) {
+        safeSend(win, 'ai:error', key, 'Response may be incomplete — provider exited mid-output.');
+        state.buffer = '';
+      }
       safeSend(win, 'ai:message', key, { type: 'done' });
     }
   });
@@ -338,7 +360,11 @@ async function handleRemoteToolCalls(
               }],
             },
           });
-          state.process?.stdin!.write(errorResult + '\n');
+          safeWrite(state.process, errorResult + '\n', (err) => {
+            state.busy = false;
+            safeSend(win, 'ai:error', key, `Failed to send to AI provider: ${err.message}`);
+            safeSend(win, 'ai:message', key, { type: 'done' });
+          });
         }
         safeSend(win, 'ai:message', key, {
           type: 'remote:connection_failed',
@@ -375,7 +401,11 @@ async function handleRemoteToolCalls(
         }],
       },
     });
-    state.process?.stdin!.write(toolResult + '\n');
+    safeWrite(state.process, toolResult + '\n', (err) => {
+      state.busy = false;
+      safeSend(win, 'ai:error', key, `Failed to send to AI provider: ${err.message}`);
+      safeSend(win, 'ai:message', key, { type: 'done' });
+    });
 
     safeSend(win, 'ai:message', key, {
       type: 'user',
@@ -451,7 +481,11 @@ export function setupClaudeService(getWindow: () => BrowserWindow | null) {
       type: 'user',
       message: { role: 'user', content: message },
     });
-    proc.stdin!.write(payload + '\n');
+    safeWrite(proc, payload + '\n', (err) => {
+      state.busy = false;
+      safeSend(win, 'ai:error', key, `Failed to send to AI provider: ${err.message}`);
+      safeSend(win, 'ai:message', key, { type: 'done' });
+    });
 
     return true;
   });
@@ -601,18 +635,19 @@ export function setupClaudeService(getWindow: () => BrowserWindow | null) {
         state.awaitingApproval = false;
         state.pendingToolUse = null;
 
-        const proc = state.process;
-        if (proc?.stdin && !proc.stdin.destroyed) {
-          state.busy = true;
-          const retryMsg = JSON.stringify({
-            type: 'user',
-            message: {
-              role: 'user',
-              content: `The user has approved the use of the "${pending.toolName}" tool. Please proceed with the same tool call you just attempted.`,
-            },
-          });
-          proc.stdin.write(retryMsg + '\n');
-        }
+        state.busy = true;
+        const retryMsg = JSON.stringify({
+          type: 'user',
+          message: {
+            role: 'user',
+            content: `The user has approved the use of the "${pending.toolName}" tool. Please proceed with the same tool call you just attempted.`,
+          },
+        });
+        safeWrite(state.process, retryMsg + '\n', (err) => {
+          state.busy = false;
+          safeSend(win, 'ai:error', key, `Failed to send to AI provider: ${err.message}`);
+          safeSend(win, 'ai:message', key, { type: 'done' });
+        });
         return true;
       }
     } catch (err: any) {
@@ -640,21 +675,22 @@ export function setupClaudeService(getWindow: () => BrowserWindow | null) {
 
     // Send the tool output to the CLI as a new user message so the model
     // can continue with the actual result.
-    const proc = state.process;
-    if (proc?.stdin && !proc.stdin.destroyed) {
-      const maxLen = 8000;
-      const truncated = result.length > maxLen
-        ? result.slice(0, maxLen) + `\n... (truncated ${result.length - maxLen} chars)`
-        : result;
-      const followUp = JSON.stringify({
-        type: 'user',
-        message: {
-          role: 'user',
-          content: `[${pending.toolName} output]\n${truncated}`,
-        },
-      });
-      proc.stdin.write(followUp + '\n');
-    }
+    const maxLen = 8000;
+    const truncated = result.length > maxLen
+      ? result.slice(0, maxLen) + `\n... (truncated ${result.length - maxLen} chars)`
+      : result;
+    const followUp = JSON.stringify({
+      type: 'user',
+      message: {
+        role: 'user',
+        content: `[${pending.toolName} output]\n${truncated}`,
+      },
+    });
+    safeWrite(state.process, followUp + '\n', (err) => {
+      state.busy = false;
+      safeSend(win, 'ai:error', key, `Failed to send to AI provider: ${err.message}`);
+      safeSend(win, 'ai:message', key, { type: 'done' });
+    });
 
     return true;
   });

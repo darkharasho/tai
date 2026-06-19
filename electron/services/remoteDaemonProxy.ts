@@ -1,6 +1,9 @@
 import { spawn, ChildProcess } from 'child_process';
 import { randomUUID } from 'crypto';
 
+export const DAEMON_CALL_TIMEOUT_MS = 180_000;
+export const PONG_TIMEOUT_MS = 90_000;
+
 interface ToolResult {
   output: string;
   isError: boolean;
@@ -19,6 +22,8 @@ export class RemoteDaemonProxy {
   private readyResolve!: () => void;
   private readyReject!: (err: Error) => void;
   private pingInterval: NodeJS.Timeout | null = null;
+  private _lastPong = 0;
+  private _exited = false;
   private onDisconnect?: () => void;
   private onLspNotify?: (language: string, method: string, params: unknown) => void;
 
@@ -33,6 +38,7 @@ export class RemoteDaemonProxy {
   setOnLspNotify(fn: (language: string, method: string, params: unknown) => void) { this.onLspNotify = fn; }
 
   connect(): Promise<void> {
+    this._exited = false;
     this.proc = spawn('ssh', [this.target, '~/.tai/tai-daemon', '--connect'], {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -73,9 +79,13 @@ export class RemoteDaemonProxy {
       this.ready = true;
       this.readyResolve();
       this._startHeartbeat();
+      this._lastPong = Date.now();
       return;
     }
-    if (msg.type === 'pong') return;
+    if (msg.type === 'pong') {
+      this._lastPong = Date.now();
+      return;
+    }
     if (msg.type === 'lsp_notify') {
       this.onLspNotify?.(msg.language, msg.method, msg.params);
       return;
@@ -115,6 +125,8 @@ export class RemoteDaemonProxy {
   }
 
   private _handleExit() {
+    if (this._exited) return;
+    this._exited = true;
     if (!this.ready) {
       this.readyReject(new Error('SSH process exited before daemon became ready'));
     }
@@ -128,7 +140,12 @@ export class RemoteDaemonProxy {
   }
 
   private _startHeartbeat() {
+    this._lastPong = Date.now();
     this.pingInterval = setInterval(() => {
+      if (Date.now() - this._lastPong > PONG_TIMEOUT_MS) {
+        this._handleExit();
+        return;
+      }
       this._write({ type: 'ping' });
     }, 30000);
   }
@@ -147,8 +164,15 @@ export class RemoteDaemonProxy {
     const params = this._mapParams(toolName, input);
     const daemonTool = toolName.toLowerCase();
 
-    return new Promise((resolve) => {
-      this.pending.set(id, { resolve });
+    return new Promise<ToolResult>((resolve) => {
+      const timer = setTimeout(() => {
+        if (this.pending.delete(id)) {
+          resolve({ output: `daemon tool '${toolName}' timed out after ${DAEMON_CALL_TIMEOUT_MS}ms`, isError: true });
+        }
+      }, DAEMON_CALL_TIMEOUT_MS);
+      this.pending.set(id, {
+        resolve: (r) => { clearTimeout(timer); resolve(r); },
+      });
       this._write({ id, tool: daemonTool, params });
     });
   }
@@ -182,6 +206,7 @@ export class RemoteDaemonProxy {
       pending.resolve({ output: 'disconnected', isError: true });
     }
     this.pending.clear();
+    this._exited = true;
     this.proc?.kill();
     this.proc = null;
     this.ready = false;

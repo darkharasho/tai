@@ -37,6 +37,12 @@ export class RemoteSshManager {
     this.sessions.set(tabId, session);
 
     proc.on('exit', () => {
+      const s = this.sessions.get(tabId);
+      if (s?.pendingReject) {
+        s.pendingReject(new Error('SSH connection lost (process exited)'));
+        s.pendingResolve = null;
+        s.pendingReject = null;
+      }
       this.sessions.delete(tabId);
     });
 

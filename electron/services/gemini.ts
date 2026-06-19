@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import { createGeminiAcpClient } from './gemini-acp';
 import type { GeminiAcpClient } from './gemini-acp';
 import { enrichEnv } from './platform';
+import { IDLE_TIMEOUT_MS } from './idleWatchdog';
 
 function enrichedEnv(): Record<string, string> {
   return enrichEnv();
@@ -408,12 +409,50 @@ export function setupGeminiService(getWindow: () => BrowserWindow | null) {
       }
       prompt.push({ type: 'text', text: message });
 
-      const result = await client.request<any>('session/prompt', {
-        sessionId,
-        prompt,
-        approvalMode: approvalMode || 'auto_edit',
-        model: model || undefined,
+      let settled = false;
+      let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+      const timeoutPromise = new Promise<never>((_resolve, reject) => {
+        timeoutHandle = setTimeout(() => {
+          reject(new Error(`__gemini_timeout__`));
+        }, IDLE_TIMEOUT_MS);
       });
+
+      let result: any;
+      try {
+        result = await Promise.race([
+          client.request<any>('session/prompt', {
+            sessionId,
+            prompt,
+            approvalMode: approvalMode || 'auto_edit',
+            model: model || undefined,
+          }),
+          timeoutPromise,
+        ]);
+      } catch (raceError) {
+        if (timeoutHandle) { clearTimeout(timeoutHandle); timeoutHandle = null; }
+        if (!settled) {
+          settled = true;
+          state.busy = false;
+          if (raceError instanceof Error && raceError.message === '__gemini_timeout__') {
+            // Abort the in-flight ACP request by disposing the transport so a
+            // late response cannot double-settle.
+            state.transport?.dispose();
+            state.transport = null;
+            state.sessionId = null;
+            state.bootstrapped = false;
+            safeSend(win, 'ai:error', key, 'AI provider timed out (no response for 120s).');
+            safeSend(win, 'ai:message', key, { type: 'done' });
+          } else {
+            disableGemini(win, key, state, raceError instanceof Error ? raceError.message : 'Gemini request failed');
+          }
+        }
+        return false;
+      }
+
+      if (timeoutHandle) { clearTimeout(timeoutHandle); timeoutHandle = null; }
+      if (settled) return false; // timeout won the race simultaneously
+      settled = true;
 
       if (bootstrapText) state.bootstrapped = true;
 

@@ -39,6 +39,11 @@ type ShellIntegrationCallback = (active: boolean) => void;
 type SshSessionCallback = (active: boolean, target: string | null) => void;
 type BlockActiveCallback = (active: boolean) => void;
 
+// Maximum bytes accumulated per OSC/DCS payload buffer. Sequences beyond this
+// limit are silently truncated (head-preserving); marker semantics live at the
+// start so truncating the tail is safe.
+export const MAX_OSC_PAYLOAD = 64 * 1024;
+
 // OSC 133 markers: ESC ] 133 ; <X>[;...] (BEL | ESC \)
 // We only care about the trailing payload for the D marker (exit code).
 const OSC133_RE = /\x1b\]133;([ABCD])([^\x07\x1b]*)?(?:\x07|\x1b\\)/g;
@@ -612,14 +617,26 @@ export class BlockSegmenter {
     if (this._inAltScreen) return;
     switch (this._osc133Phase) {
       case 'prompt':
-        this._osc133RawPrompt += chunk;
+        if (this._osc133RawPrompt.length < MAX_OSC_PAYLOAD) {
+          this._osc133RawPrompt += chunk.slice(0, MAX_OSC_PAYLOAD - this._osc133RawPrompt.length);
+        }
         break;
       case 'command':
-        this._osc133RawCommand += chunk;
+        if (this._osc133RawCommand.length < MAX_OSC_PAYLOAD) {
+          this._osc133RawCommand += chunk.slice(0, MAX_OSC_PAYLOAD - this._osc133RawCommand.length);
+        }
         break;
       case 'output': {
         if (this._inSshSession && SSH_CLOSED_RE.test(chunk)) {
+          // Hard-reset depth counters unconditionally so a drifted _cmdDepth
+          // (remote command died before its OSC 133 D) never keeps the session
+          // stuck.  _sshClosePending is intentionally kept true so the
+          // subsequent D marker can still suppress the 127 exit code on the
+          // `exit` block (sshTeardown guard in _finalizeBlock).
+          this._sshDepth = 0;
+          this._cmdDepth = 0;
           this._sshClosePending = true;
+          this._setSshSession(false, null);
         }
         // The emulator models the line discipline (overwrite, backspace,
         // erase, cursor-up redraws), so readline/pyrepl per-keystroke prompt
