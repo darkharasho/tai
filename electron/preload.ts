@@ -123,6 +123,10 @@ contextBridge.exposeInMainWorld('tai', {
     ingest: (entries: any[]) => ipcRenderer.send('commandIndex:ingest', entries),
     flush: () => ipcRenderer.send('commandIndex:flush'),
   },
+  workflows: {
+    get: () => ipcRenderer.invoke('workflows:get'),
+    set: (list: any[]) => ipcRenderer.send('workflows:set', list),
+  },
   config: {
     get: () => ipcRenderer.invoke('config:get'),
     set: (key: string, value: any) => ipcRenderer.invoke('config:set', key, value),
