@@ -150,6 +150,23 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
       termName = 'xterm-256color';
     }
 
+    // Compute shell name early so we can mutate env before pty.spawn.
+    const shellPath = process.env.SHELL || '/bin/bash';
+    const shellName = isWindows ? null : detectShellName(shellPath);
+
+    // zsh: load integration via a ZDOTDIR shim at startup (no typed source,
+    // no echo, no history). Other shells keep the typed-injection path below.
+    let zshShimActive = false;
+    if (!isWindows && shellName === 'zsh') {
+      const dir = shellIntegrationDir();
+      const integ = integrationScriptFor('zsh');
+      const shim = dir ? path.join(dir, 'zsh-shim') : null;
+      if (shim && integ && fs.existsSync(shim)) {
+        Object.assign(env, buildZshShimEnv(env, { shimDir: shim, integrationPath: integ, home: os.homedir() }));
+        zshShimActive = true;
+      }
+    }
+
     const term = pty.spawn(spawnCmd, spawnArgs, {
       name: termName,
       cwd: cwd || os.homedir(),
@@ -209,8 +226,6 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
     let integrationInjected = false;
     let lastDataAt = Date.now();
 
-    const shellPath = process.env.SHELL || '/bin/bash';
-    const shellName = isWindows ? null : detectShellName(shellPath);
     const script = shellName ? integrationScriptFor(shellName) : null;
 
     term.onData((data) => {
@@ -218,7 +233,7 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
       buffer.push(data);
     });
 
-    if (!isWindows && script) {
+    if (!isWindows && script && !(shellName === 'zsh' && zshShimActive)) {
       const quoted = quoteForShell(script);
       const cmd = buildIntegrationSourceCommand(shellName!, quoted);
       const startedAt = Date.now();
