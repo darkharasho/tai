@@ -39,4 +39,14 @@ describe('createIdleWatchdog', () => {
     vi.advanceTimersByTime(5000);
     expect(onIdle).toHaveBeenCalledOnce();
   });
+
+  it('does not re-arm after cancel()', () => {
+    const onIdle = vi.fn();
+    const wd = createIdleWatchdog({ idleMs: 1000, onIdle });
+    wd.kick();
+    wd.cancel();
+    wd.kick();
+    vi.advanceTimersByTime(2000);
+    expect(onIdle).not.toHaveBeenCalled();
+  });
 });

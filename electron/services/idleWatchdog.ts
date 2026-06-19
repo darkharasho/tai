@@ -10,14 +10,19 @@ export function createIdleWatchdog(opts: { idleMs?: number; onIdle: () => void }
   let timer: ReturnType<typeof setTimeout> | null = null;
   let fired = false;
 
-  const cancel = () => {
+  const clearTimer = () => {
     if (timer) { clearTimeout(timer); timer = null; }
+  };
+
+  const cancel = () => {
+    fired = true;
+    clearTimer();
   };
 
   return {
     kick() {
       if (fired) return;
-      cancel();
+      clearTimer();
       timer = setTimeout(() => {
         fired = true;
         timer = null;
