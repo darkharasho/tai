@@ -13,7 +13,6 @@ const npm: CompletionSpec = {
     ] },
     { name: 'test', description: 'Run the test script' },
     { name: 'start', description: 'Run the start script' },
-    { name: 'build', description: 'Run the build script' },
     { name: 'init', description: 'Create a new package.json', options: [
       { names: ['-y', '--yes'], description: 'Skip prompts with defaults' },
     ] },

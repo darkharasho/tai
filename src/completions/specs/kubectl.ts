@@ -49,9 +49,7 @@ const kubectl: CompletionSpec = {
     { name: 'edit', description: 'Edit a resource in the default editor' },
     { name: 'config', description: 'Modify kubeconfig files', subcommands: [
       { name: 'get-contexts', description: 'Describe one or many contexts' },
-      { name: 'use-context', description: 'Set the current context', options: [
-        { names: ['--namespace'], description: 'Namespace', takesArg: true },
-      ] },
+      { name: 'use-context', description: 'Set the current context' },
       { name: 'current-context', description: 'Display the current context' },
       { name: 'set-context', description: 'Set a context entry in kubeconfig' },
     ] },
