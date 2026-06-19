@@ -12,6 +12,7 @@ import { enrichEnv, resolveBinary } from './platform';
 import { getAvailableClaudeModels } from './claudeModels';
 import { createIdleWatchdog } from './idleWatchdog';
 import { safeWrite } from './procIo';
+import { classifyProviderError } from '../../src/utils/classifyProviderError';
 
 const sshManager = new RemoteSshManager();
 const toolProxy = new RemoteToolProxy(sshManager);
@@ -304,7 +305,9 @@ function ensureProcess(win: BrowserWindow | null, key: string, cwd: string, perm
   proc.stderr!.on('data', (chunk: Buffer) => {
     const text = chunk.toString();
     if (isRemoteExec) console.log(`[daemon] claude/bwrap stderr: ${text.trim()}`);
-    safeSend(win, 'ai:error', key, text);
+    const { category } = classifyProviderError(text);
+    console.log(`[ai:error] category=${category} text=${text.trim()}`);
+    safeSend(win, 'ai:error', key, text, category);
   });
 
   proc.on('exit', (code, signal) => {
