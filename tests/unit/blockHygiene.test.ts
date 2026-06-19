@@ -178,4 +178,48 @@ describe('BlockSegmenter hygiene (screenshot regressions)', () => {
     expect(blocks[0].command).toBe('for i in 1 2; do\necho $i\ndone');
     expect(blocks[0].output).toBe('1\n2');
   });
+
+  it('suppresses the bash bootstrap-echo line but segments the next real command', () => {
+    // Simulate what the TTY produces when TAI types ` . '/tmp/x/tai-bash.sh'`
+    // into a fresh bash tab. The echo arrives before the first OSC 133 A (the
+    // shell integration hasn't loaded yet), so it hits the legacy path.
+    const PROMPT = 'user@host:~$ ';
+    const seg = new BlockSegmenter();
+    const blocks: any[] = [];
+    seg.onBlock(b => blocks.push(b));
+
+    // First prompt — sets up the initial prompt state.
+    seg.feed(PROMPT);
+    // The bootstrap line is echoed by the TTY before integration loads.
+    seg.feed(" . '/tmp/x/tai-bash.sh'\r\n");
+    // The shell sources the integration and re-emits the prompt.
+    seg.feed(PROMPT);
+    // Now the user runs a real command.
+    seg.feed('echo hello\r\n');
+    seg.feed('hello\r\n');
+    seg.feed(PROMPT);
+
+    // No block must be emitted for the bootstrap echo.
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].command).toBe('echo hello');
+    expect(blocks[0].output).toBe('hello');
+  });
+
+  it('suppresses the bootstrap echo in the integrated OSC 133 path', () => {
+    const A = '\x1b]133;A\x07', B = '\x1b]133;B\x07', C = '\x1b]133;C\x07';
+    const D = (ec: number) => `\x1b]133;D;${ec}\x07`;
+    const seg = new BlockSegmenter();
+    const blocks: any[] = [];
+    seg.onBlock(b => blocks.push(b));
+
+    // Bootstrap echo arrives as the "command" in a block (defense-in-depth).
+    seg.feed(`${A}user@host:~$ ${B}. '/tmp/x/tai-bash.sh'\n${C}${D(0)}`);
+    // A real command follows normally.
+    seg.feed(`${A}user@host:~$ ${B}echo hi\n${C}hi\n${D(0)}${A}user@host:~$ ${B}`);
+
+    // Bootstrap block must be dropped; only the real command block is emitted.
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].command).toBe('echo hi');
+    expect(blocks[0].output).toBe('hi');
+  });
 });
