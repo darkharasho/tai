@@ -96,9 +96,10 @@ interface TerminalInputProps {
   lastCommand?: string;
   lastExitCode?: number;
   aiNextCommandRefine?: boolean;
-  /** Called with a prompt string when AI next-command refine is enabled and a zero-state suggestion is showing.
-   *  The caller should resolve with the raw AI text response (or reject/throw to cancel silently). */
-  onRequestAiSuggestion?: (prompt: string) => Promise<string>;
+  /** Called with a prompt string and abort signal when AI next-command refine is enabled and a zero-state
+   *  suggestion is showing. The caller should resolve with the raw AI text response (or reject/throw to
+   *  cancel silently). The signal fires when the effect is torn down or conditions no longer hold. */
+  onRequestAiSuggestion?: (prompt: string, signal: AbortSignal) => Promise<string>;
 }
 
 interface RemoteAiPillProps {
@@ -243,7 +244,7 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
         cwd,
       });
 
-      onRequestAiSuggestion(prompt)
+      onRequestAiSuggestion(prompt, abortController.signal)
         .then((aiText) => {
           if (abortController.signal.aborted) return;
           const cmd = extractCommand(aiText);

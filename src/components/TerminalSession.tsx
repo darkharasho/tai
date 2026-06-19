@@ -30,7 +30,7 @@ import { summarizeSession } from '@/utils/sessionSummary';
 import { preserveStreamedOutput } from '@/utils/finalizeOutput';
 import { classifyKeyTarget } from '@/utils/keyRouting';
 import { isMultilineCommand } from '@/utils/isMultilineCommand';
-import { createIndex, ingestBlock } from '@/utils/commandIndex';
+import { createIndex, ingestBlock, shouldIndexBlock } from '@/utils/commandIndex';
 import type { CommandIndex } from '@/utils/commandIndex';
 import { buildRecentContext } from '@/utils/aiContext';
 import { redactHistoryEntries, redactSecrets } from '@/utils/redactSecrets';
@@ -50,6 +50,7 @@ import {
   joinQueuedPrompts,
 } from '@/utils/queuedPrompts';
 import { useAiCleanupOnUnmount } from '@/hooks/useAiCleanupOnUnmount';
+import { useSingleShotAi } from '@/hooks/useSingleShotAi';
 import { CommandPalette } from './CommandPalette';
 import { WorkflowRunDialog } from './WorkflowRunDialog';
 import type { PaletteItem } from '@/utils/palette';
@@ -90,6 +91,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const { config } = useSettings();
   const claudeModel = config['claude.model'] || 'sonnet';
   const claudeEffort = config['claude.effort'] || 'auto';
+  const aiNextCommandRefine = !!config['aiNextCommandRefine'];
   // Seed with the previous session's finished blocks (rendered collapsed);
   // best-effort, so a corrupt payload just yields an empty session.
   const [displayItems, setDisplayItems] = useState<DisplayItem[]>(() =>
@@ -215,6 +217,14 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const providerRef = useRef(createProvider(aiProvider, tabId));
   const aiCleanupRef = useRef<(() => void) | null>(null);
   useAiCleanupOnUnmount(tabId, aiCleanupRef);
+  // Single-shot AI for predictive next-command refine. Uses a dedicated key
+  // (${tabId}::predict) so it never collides with the tab's real AI session.
+  const singleShotAi = useSingleShotAi(tabId, {
+    cwd,
+    model: claudeModel,
+    effort: claudeEffort,
+    permMode: trustLevel,
+  });
   const isAiActive = () => aiCleanupRef.current !== null;
   const aiBlockIdRef = useRef<string | null>(null);
   const aiSuggestedCommands = useRef<Set<string>>(new Set());
@@ -472,7 +482,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       // getCwd). Using fixedBlock.cwd here would preserve symlinks (e.g.
       // $PWD = /var/home/user) while the predictor sees the resolved form
       // (/home/user), causing cwdCounts lookups to never match.
-      if (fixedBlock.command && fixedBlock.command.trim()) {
+      if (shouldIndexBlock({ isRemote: fixedBlock.isRemote, command: fixedBlock.command ?? '' })) {
         const prevCmd = lastFinalizedCommandRef.current;
         lastFinalizedCommandRef.current = fixedBlock.command;
         setLastFinalizedCmd(fixedBlock.command);
@@ -480,11 +490,10 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         const _ingestCmd = fixedBlock.command;
         const _ingestExit = fixedBlock.exitCode;
         const _ingestTs = fixedBlock.startTime || Date.now();
-        const _ingestIsRemote = fixedBlock.isRemote;
         (async () => {
-          // For remote blocks the pty cwd is meaningless; fall back to the
-          // block's own cwd field (best-effort).
-          const resolvedCwd = (!_ingestIsRemote && ptyId !== null)
+          // For remote blocks shouldIndexBlock already returns false above, so
+          // here we know the block is local and pty cwd is valid.
+          const resolvedCwd = ptyId !== null
             ? (await window.tai?.pty?.getCwd(ptyId) ?? fixedBlock.cwd)
             : fixedBlock.cwd;
           const entry = {
@@ -1762,6 +1771,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
             onTrustLevelChange={onTrustLevelChange}
             lastCommand={lastFinalizedCmd}
             lastExitCode={lastFinalizedExit}
+            aiNextCommandRefine={aiNextCommandRefine}
+            onRequestAiSuggestion={singleShotAi}
           />
         </div>
       )}
