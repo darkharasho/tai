@@ -78,9 +78,11 @@ HISTTIMEFORMAT='' history
     expect(out).toMatch(/echo hello world/);
   });
 
-  it('leaves history unchanged when no bootstrap line is present', () => {
-    // Source the script directly without first having a matching history entry.
-    // The guard should not delete anything.
+  it('removes the bootstrap source-command entry and preserves prior real commands', () => {
+    // `source <path>` is one of the two injection forms TAI uses (the other is
+    // `. '<path>'`). It starts with `source` and contains the full script path,
+    // so the scrub guard SHOULD match and delete it. The commands seeded before
+    // the source call must survive untouched.
     const script = `
 set -o history
 history -s "echo hello"
@@ -89,13 +91,12 @@ source "${TAI_BASH}"
 HISTTIMEFORMAT='' history
 `;
     const out = runBash(script);
-    // The pre-seeded commands should still be present (source != ., different guard).
-    // Specifically, at minimum neither should be spuriously wiped.
-    // Note: `source` also contains the script path; it WILL match the guard since
-    // it ends with the basename. That's intentional — both `. path` and
-    // `source path` are injection forms. The real commands seeded earlier survive.
+    // The pre-seeded commands must still be present.
     expect(out).toMatch(/echo hello/);
     expect(out).toMatch(/git status/);
+    // The bootstrap source line itself should be gone.
+    const basename = path.basename(TAI_BASH);
+    expect(out).not.toMatch(basename);
   });
 
   it('self-scrub guard checks filename — unrelated commands are safe', () => {
@@ -112,5 +113,45 @@ HISTTIMEFORMAT='' history
     expect(out).toMatch(/other-script\.sh/);
     // The bootstrap entry itself should be gone.
     expect(out).not.toMatch(basename);
+  });
+
+  it('regression: real command that merely MENTIONS the script filename is NOT deleted', () => {
+    // Before the fix, `case "$__tai_h1" in *"${BASH_SOURCE[0]##*/}"*)` matched
+    // any command containing the basename, so `cat tai-bash.sh` or `vim tai-bash.sh`
+    // as the last command would be spuriously deleted. The tightened guard requires
+    // the command to START with `.` or `source`, so these must survive.
+    const basename = path.basename(TAI_BASH); // "tai-bash.sh"
+    const catScript = `
+set -o history
+history -s "ls"
+history -s "cat ${TAI_BASH}"
+ . "${TAI_BASH}"
+HISTTIMEFORMAT='' history
+`;
+    const catOut = runBash(catScript);
+    // cat tai-bash.sh was the last real command before sourcing — it must survive.
+    expect(catOut).toMatch(/cat /);
+    expect(catOut).toMatch(basename);
+
+    const vimScript = `
+set -o history
+history -s "vim ${TAI_BASH}"
+ . "${TAI_BASH}"
+HISTTIMEFORMAT='' history
+`;
+    const vimOut = runBash(vimScript);
+    // vim tai-bash.sh must also survive — it doesn't start with `.` or `source`.
+    expect(vimOut).toMatch(/vim /);
+    expect(vimOut).toMatch(basename);
+
+    const gitDiffScript = `
+set -o history
+history -s "git diff ${TAI_BASH}"
+ . "${TAI_BASH}"
+HISTTIMEFORMAT='' history
+`;
+    const gitDiffOut = runBash(gitDiffScript);
+    expect(gitDiffOut).toMatch(/git diff/);
+    expect(gitDiffOut).toMatch(basename);
   });
 });
