@@ -5,16 +5,13 @@
  */
 export class CredentialVault {
   private _secret: Buffer | null = null;
-  private _caller: Buffer | null = null;
 
   set(secret: Buffer): void {
     this._wipe();
     // Copy so callers can't mutate/free our backing store out from under us.
     this._secret = Buffer.from(secret);
-    // Zero-fill the caller's original buffer so they can't access it anymore.
+    // Zero-fill the caller's original buffer immediately so they don't keep it in memory.
     secret.fill(0);
-    // Keep a reference to the caller's buffer to zero-fill it on replacement.
-    this._caller = secret;
   }
 
   get(): Buffer | null {
@@ -33,10 +30,6 @@ export class CredentialVault {
     if (this._secret) {
       this._secret.fill(0);
       this._secret = null;
-    }
-    if (this._caller) {
-      this._caller.fill(0);
-      this._caller = null;
     }
   }
 }
