@@ -18,7 +18,12 @@ type CommandItem = DisplayItem & { type: 'command' };
 
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
-  return s.slice(0, max) + `\n… (${s.length - max} chars truncated)`;
+  // Don't cut between a high and low surrogate — that leaves a lone surrogate,
+  // which serializes to invalid JSON and the API rejects the request.
+  let end = max;
+  const last = s.charCodeAt(end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) end -= 1;
+  return s.slice(0, end) + `\n… (${s.length - end} chars truncated)`;
 }
 
 function isFailed(c: CommandItem): boolean {

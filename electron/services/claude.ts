@@ -7,6 +7,7 @@ import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { sdkOptions } from './claudeSdkOptions';
 import { translateSdkMessage } from './claudeSdkTranslate';
 import { ApprovalBridge } from './claudeApprovalBridge';
+import { stripLoneSurrogates } from '../../src/utils/sanitizeSurrogates';
 import { RemoteSshManager } from './remoteSsh';
 import { RemoteDaemonProxy } from './remoteDaemonProxy';
 import { generateMcpServerScript, generateMcpConfig } from './mcpRemoteServer';
@@ -246,13 +247,19 @@ export function setupClaudeService(getWindow: () => BrowserWindow | null) {
     const win = getWindow();
     const state = getState(key);
     state.cwd = cwd;
+    // The message embeds terminal-derived context (recent output, remote
+    // session text). That output can contain unpaired UTF-16 surrogates (mis-
+    // decoded PTY bytes, or an emoji split by a .slice truncation), which make
+    // the API request body invalid JSON ("no low surrogate in string"). Strip
+    // them before the text reaches the SDK / API.
+    const safeMessage = stripLoneSurrogates(message);
     // A permission-mode change requires a fresh query (it's a query-create option).
     const permChanged = state.permMode !== null && state.permMode !== permMode;
     state.permMode = permMode;
 
     if (state.busy && state.pushInput && !permChanged) {
       // Continue the live conversation with another user turn.
-      state.pushInput({ type: 'user', message: { role: 'user', content: message }, parent_tool_use_id: null });
+      state.pushInput({ type: 'user', message: { role: 'user', content: safeMessage }, parent_tool_use_id: null });
       return;
     }
     if (state.busy && state.abort) {
@@ -260,7 +267,7 @@ export function setupClaudeService(getWindow: () => BrowserWindow | null) {
       state.approvals.clear();
       try { state.abort.abort(); } catch {}
     }
-    startQuery(win, key, message, model);
+    startQuery(win, key, safeMessage, model);
   });
 
   ipcMain.on('ai:cancel', (_event, key: string) => {
@@ -287,7 +294,15 @@ export function setupClaudeService(getWindow: () => BrowserWindow | null) {
     const state = getState(key);
     if (state.historyFilePath) {
       try {
-        fs.writeFileSync(state.historyFilePath, JSON.stringify(entries), { mode: 0o600 });
+        // The MCP history tool feeds these entries back to the model, so the
+        // command/output strings must be valid JSON — strip any unpaired
+        // surrogates from terminal output before persisting.
+        const safe = entries.map((e) => ({
+          ...e,
+          command: stripLoneSurrogates(e.command ?? ''),
+          output: stripLoneSurrogates(e.output ?? ''),
+        }));
+        fs.writeFileSync(state.historyFilePath, JSON.stringify(safe), { mode: 0o600 });
       } catch {}
     }
   });
