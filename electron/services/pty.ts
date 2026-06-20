@@ -11,7 +11,7 @@ import { createBackpressureGate, type BackpressureGate } from './backpressureGat
 import { TermiosPoller, defaultTermiosReader } from './termiosPoller';
 import { parseHistoryFile, unmetafyZsh } from './parseShellHistory';
 import { credentialVault } from './credentialVault';
-import { resolveForeground } from './foregroundProcess';
+import { resolveForegroundDetail } from './foregroundProcess';
 import { decideAutoFill } from './sudoAutoFill';
 
 const BACKPRESSURE_HIGH = 512 * 1024;
@@ -123,9 +123,15 @@ interface TerminalEntry {
   poller: TermiosPoller | null;
 }
 const allTerminals = new Map<number, TerminalEntry>();
-// Tracks the last time we auto-filled a sudo prompt per PTY, so a fast
-// re-prompt (sudo rejecting the cached secret) can invalidate the cache.
-const lastAutoFillAt = new Map<number, number>();
+// The tpgid of the sudo process we most recently auto-filled per PTY. If that
+// SAME sudo process prompts again, our cached secret was wrong (reject); a
+// different sudo process is a fresh prompt (auto-fill again).
+const lastFilledTpgid = new Map<number, number>();
+// Per-PTY timer that re-checks the tty shortly after an auto-fill, to catch a
+// chained sudo prompt the edge-triggered poller collapsed into one interval.
+const autoFillRecheckTimers = new Map<number, ReturnType<typeof setTimeout>>();
+// Delay before re-sampling the tty after an auto-fill (ms).
+const AUTOFILL_RECHECK_MS = 300;
 let nextId = 1;
 
 export function setupPtyService(getWindow: () => BrowserWindow | null) {
@@ -236,26 +242,45 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
     if (process.platform !== 'win32' && typeof masterFd === 'number') {
       try {
         const reader = defaultTermiosReader();
+        // After auto-filling, re-sample the tty once. Chained sudo commands
+        // (`sudo a; sudo b`) flip echo off→on→off faster than the 200ms poll,
+        // so the edge detector never re-reports the second prompt; nudging the
+        // poller baseline forces it to re-detect and re-decide.
+        const scheduleAutoFillRecheck = () => {
+          const prev = autoFillRecheckTimers.get(id);
+          if (prev) clearTimeout(prev);
+          const t = setTimeout(() => {
+            autoFillRecheckTimers.delete(id);
+            const entry = allTerminals.get(id);
+            if (!entry?.poller) return;
+            let st: { echo: boolean; icanon: boolean };
+            try { st = reader(masterFd); } catch { return; }
+            // Still parked at a password prompt the poller didn't re-emit.
+            if (!st.echo && st.icanon) entry.poller.resetBaseline();
+          }, AUTOFILL_RECHECK_MS);
+          autoFillRecheckTimers.set(id, t);
+        };
         poller = new TermiosPoller(masterFd, reader, (e) => {
           if (e.passwordPrompt && process.platform === 'linux') {
-            const foreground = resolveForeground(term.pid);
-            const last = lastAutoFillAt.get(id) ?? null;
+            const fg = resolveForegroundDetail(term.pid);
             const decision = decideAutoFill({
-              foreground,
+              foreground: fg.kind,
               vaultSet: credentialVault.isSet(),
-              msSinceLastAutoFill: last === null ? null : Date.now() - last,
+              tpgid: fg.tpgid,
+              lastFilledTpgid: lastFilledTpgid.get(id) ?? null,
             });
             if (decision === 'auto-fill') {
               const secret = credentialVault.get();
               if (secret) {
                 try { term.write(secret.toString('utf8') + '\n'); } catch {}
-                lastAutoFillAt.set(id, Date.now());
+                if (fg.tpgid !== null) lastFilledTpgid.set(id, fg.tpgid);
                 safeSend('pty:auto-auth', id);
+                scheduleAutoFillRecheck();
                 return; // do NOT surface the widget
               }
             } else if (decision === 'reject') {
               credentialVault.clear();
-              lastAutoFillAt.delete(id);
+              lastFilledTpgid.delete(id);
               safeSend('pty:secret-state', false);
               // fall through to surface the widget for a fresh attempt
             }
@@ -277,7 +302,9 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
     term.onExit(() => {
       poller?.stop();
       allTerminals.delete(id);
-      lastAutoFillAt.delete(id);
+      lastFilledTpgid.delete(id);
+      const recheck = autoFillRecheckTimers.get(id);
+      if (recheck) { clearTimeout(recheck); autoFillRecheckTimers.delete(id); }
     });
 
     // Inject shell integration once bash/zsh/fish has finished its rc files

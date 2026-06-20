@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveForeground } from '../../electron/services/foregroundProcess';
+import { resolveForeground, resolveForegroundDetail } from '../../electron/services/foregroundProcess';
 
 // stat layout: "<pid> (<comm>) <state> <ppid> <pgrp> <session> <tty_nr> <tpgid> ..."
 // After slicing past ") ", tpgid is field index 5.
@@ -46,5 +46,38 @@ describe('resolveForeground', () => {
   it('returns "unknown" when a read throws', () => {
     const fakeRead = (_p: string): string => { throw new Error('ENOENT'); };
     expect(resolveForeground(100, fakeRead)).toBe('unknown');
+  });
+});
+
+describe('resolveForegroundDetail', () => {
+  it('returns kind + tpgid for a sudo foreground', () => {
+    const fakeRead = (p: string) => {
+      if (p === '/proc/100/stat') return statWithTpgid(200);
+      if (p === '/proc/200/comm') return 'sudo\n';
+      throw new Error('unexpected path ' + p);
+    };
+    expect(resolveForegroundDetail(100, fakeRead)).toEqual({ kind: 'sudo', tpgid: 200 });
+  });
+
+  it('returns kind=other with the tpgid for a non-sudo foreground', () => {
+    const fakeRead = (p: string) => {
+      if (p === '/proc/100/stat') return statWithTpgid(321);
+      if (p === '/proc/321/comm') return 'ssh\n';
+      throw new Error('unexpected path ' + p);
+    };
+    expect(resolveForegroundDetail(100, fakeRead)).toEqual({ kind: 'other', tpgid: 321 });
+  });
+
+  it('returns kind=unknown, tpgid=null when tpgid is invalid', () => {
+    const fakeRead = (p: string) => {
+      if (p === '/proc/100/stat') return statWithTpgid(-1);
+      throw new Error('unexpected path ' + p);
+    };
+    expect(resolveForegroundDetail(100, fakeRead)).toEqual({ kind: 'unknown', tpgid: null });
+  });
+
+  it('returns kind=unknown, tpgid=null when a read throws', () => {
+    const fakeRead = (_p: string): string => { throw new Error('ENOENT'); };
+    expect(resolveForegroundDetail(100, fakeRead)).toEqual({ kind: 'unknown', tpgid: null });
   });
 });

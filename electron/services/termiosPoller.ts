@@ -49,6 +49,18 @@ export class TermiosPoller {
     }
   }
 
+  /**
+   * Force the next poll to treat the current tty state as a change. Edge
+   * detection misses transitions that collapse inside one poll interval — e.g.
+   * chained sudo commands where echo flips off→on→off faster than 200ms, so a
+   * real second password prompt is never re-reported. Resetting the baseline to
+   * a shell-like (echo on, canonical) state guarantees the next read of a
+   * password prompt re-emits onChange.
+   */
+  resetBaseline(): void {
+    this._last = { echo: true, icanon: true };
+  }
+
   private _tick(): void {
     let state: TermiosState;
     try {
