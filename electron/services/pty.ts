@@ -10,6 +10,9 @@ import { createCoalescingBuffer, type CoalescingBuffer } from './coalescingBuffe
 import { createBackpressureGate, type BackpressureGate } from './backpressureGate';
 import { TermiosPoller, defaultTermiosReader } from './termiosPoller';
 import { parseHistoryFile, unmetafyZsh } from './parseShellHistory';
+import { credentialVault } from './credentialVault';
+import { resolveForeground } from './foregroundProcess';
+import { decideAutoFill } from './sudoAutoFill';
 
 const BACKPRESSURE_HIGH = 512 * 1024;
 const BACKPRESSURE_LOW = 128 * 1024;
@@ -120,6 +123,9 @@ interface TerminalEntry {
   poller: TermiosPoller | null;
 }
 const allTerminals = new Map<number, TerminalEntry>();
+// Tracks the last time we auto-filled a sudo prompt per PTY, so a fast
+// re-prompt (sudo rejecting the cached secret) can invalidate the cache.
+const lastAutoFillAt = new Map<number, number>();
 let nextId = 1;
 
 export function setupPtyService(getWindow: () => BrowserWindow | null) {
@@ -231,6 +237,29 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
       try {
         const reader = defaultTermiosReader();
         poller = new TermiosPoller(masterFd, reader, (e) => {
+          if (e.passwordPrompt && process.platform === 'linux') {
+            const foreground = resolveForeground(term.pid);
+            const last = lastAutoFillAt.get(id) ?? null;
+            const decision = decideAutoFill({
+              foreground,
+              vaultSet: credentialVault.isSet(),
+              msSinceLastAutoFill: last === null ? null : Date.now() - last,
+            });
+            if (decision === 'auto-fill') {
+              const secret = credentialVault.get();
+              if (secret) {
+                try { term.write(secret.toString('utf8') + '\n'); } catch {}
+                lastAutoFillAt.set(id, Date.now());
+                safeSend('pty:auto-auth', id);
+                return; // do NOT surface the widget
+              }
+            } else if (decision === 'reject') {
+              credentialVault.clear();
+              lastAutoFillAt.delete(id);
+              safeSend('pty:secret-state', false);
+              // fall through to surface the widget for a fresh attempt
+            }
+          }
           safeSend('pty:echo-change', id, {
             echo: e.echo,
             icanon: e.icanon,
@@ -248,6 +277,7 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
     term.onExit(() => {
       poller?.stop();
       allTerminals.delete(id);
+      lastAutoFillAt.delete(id);
     });
 
     // Inject shell integration once bash/zsh/fish has finished its rc files
@@ -326,6 +356,17 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
 
   ipcMain.on('pty:stop-echo-poll', (_event, id: number) => {
     allTerminals.get(id)?.poller?.stop();
+  });
+
+  ipcMain.on('pty:remember-secret', (_event, secret: string) => {
+    if (typeof secret !== 'string' || secret.length === 0) return;
+    credentialVault.set(Buffer.from(secret, 'utf8'));
+    safeSend('pty:secret-state', true);
+  });
+
+  ipcMain.on('pty:forget-secret', () => {
+    credentialVault.clear();
+    safeSend('pty:secret-state', false);
   });
 
   ipcMain.handle('pty:getProcess', (_event, id: number) => {

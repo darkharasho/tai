@@ -32,6 +32,18 @@ contextBridge.exposeInMainWorld('tai', {
       ipcRenderer.on('pty:echo-change', listener);
       return () => ipcRenderer.removeListener('pty:echo-change', listener);
     },
+    rememberSecret: (secret: string) => ipcRenderer.send('pty:remember-secret', secret),
+    forgetSecret: () => ipcRenderer.send('pty:forget-secret'),
+    onAutoAuth: (callback: (id: number) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, id: number) => callback(id);
+      ipcRenderer.on('pty:auto-auth', listener);
+      return () => ipcRenderer.removeListener('pty:auto-auth', listener);
+    },
+    onSecretState: (callback: (cached: boolean) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, cached: boolean) => callback(cached);
+      ipcRenderer.on('pty:secret-state', listener);
+      return () => ipcRenderer.removeListener('pty:secret-state', listener);
+    },
   },
   window: {
     minimize: () => ipcRenderer.send('window:minimize'),
