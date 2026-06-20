@@ -703,6 +703,15 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       }
     });
 
+    const cleanupAutoAuth = window.tai?.pty?.onAutoAuth?.((id: number) => {
+      if (cancelled) return;
+      if (id !== ptyId) return;
+      // A cached sudo auto-fill happened in the main process: the termios
+      // echo-change widget was suppressed there, but the text-driven
+      // BlockSegmenter prompt may still have fired — dismiss it.
+      setPasswordPrompt(false);
+    });
+
     const cleanupData = window.tai?.pty?.onData((id: number, data: string) => {
       if (cancelled) return;
       if (id !== ptyId) return;
@@ -724,6 +733,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       cleanupData?.();
       cleanupResized?.();
       cleanupEcho?.();
+      cleanupAutoAuth?.();
       if (echoInteractiveTimerRef.current) {
         clearTimeout(echoInteractiveTimerRef.current);
         echoInteractiveTimerRef.current = null;
