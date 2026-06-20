@@ -10,6 +10,9 @@ import { createCoalescingBuffer, type CoalescingBuffer } from './coalescingBuffe
 import { createBackpressureGate, type BackpressureGate } from './backpressureGate';
 import { TermiosPoller, defaultTermiosReader } from './termiosPoller';
 import { parseHistoryFile, unmetafyZsh } from './parseShellHistory';
+import { credentialVault } from './credentialVault';
+import { resolveForegroundDetail } from './foregroundProcess';
+import { decideAutoFill } from './sudoAutoFill';
 
 const BACKPRESSURE_HIGH = 512 * 1024;
 const BACKPRESSURE_LOW = 128 * 1024;
@@ -120,6 +123,15 @@ interface TerminalEntry {
   poller: TermiosPoller | null;
 }
 const allTerminals = new Map<number, TerminalEntry>();
+// The tpgid of the sudo process we most recently auto-filled per PTY. If that
+// SAME sudo process prompts again, our cached secret was wrong (reject); a
+// different sudo process is a fresh prompt (auto-fill again).
+const lastFilledTpgid = new Map<number, number>();
+// Per-PTY timer that re-checks the tty shortly after an auto-fill, to catch a
+// chained sudo prompt the edge-triggered poller collapsed into one interval.
+const autoFillRecheckTimers = new Map<number, ReturnType<typeof setTimeout>>();
+// Delay before re-sampling the tty after an auto-fill (ms).
+const AUTOFILL_RECHECK_MS = 300;
 let nextId = 1;
 
 export function setupPtyService(getWindow: () => BrowserWindow | null) {
@@ -230,7 +242,49 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
     if (process.platform !== 'win32' && typeof masterFd === 'number') {
       try {
         const reader = defaultTermiosReader();
+        // After auto-filling, re-sample the tty once. Chained sudo commands
+        // (`sudo a; sudo b`) flip echo off→on→off faster than the 200ms poll,
+        // so the edge detector never re-reports the second prompt; nudging the
+        // poller baseline forces it to re-detect and re-decide.
+        const scheduleAutoFillRecheck = () => {
+          const prev = autoFillRecheckTimers.get(id);
+          if (prev) clearTimeout(prev);
+          const t = setTimeout(() => {
+            autoFillRecheckTimers.delete(id);
+            const entry = allTerminals.get(id);
+            if (!entry?.poller) return;
+            let st: { echo: boolean; icanon: boolean };
+            try { st = reader(masterFd); } catch { return; }
+            // Still parked at a password prompt the poller didn't re-emit.
+            if (!st.echo && st.icanon) entry.poller.resetBaseline();
+          }, AUTOFILL_RECHECK_MS);
+          autoFillRecheckTimers.set(id, t);
+        };
         poller = new TermiosPoller(masterFd, reader, (e) => {
+          if (e.passwordPrompt && process.platform === 'linux') {
+            const fg = resolveForegroundDetail(term.pid);
+            const decision = decideAutoFill({
+              foreground: fg.kind,
+              vaultSet: credentialVault.isSet(),
+              tpgid: fg.tpgid,
+              lastFilledTpgid: lastFilledTpgid.get(id) ?? null,
+            });
+            if (decision === 'auto-fill') {
+              const secret = credentialVault.get();
+              if (secret) {
+                try { term.write(secret.toString('utf8') + '\n'); } catch {}
+                if (fg.tpgid !== null) lastFilledTpgid.set(id, fg.tpgid);
+                safeSend('pty:auto-auth', id);
+                scheduleAutoFillRecheck();
+                return; // do NOT surface the widget
+              }
+            } else if (decision === 'reject') {
+              credentialVault.clear();
+              lastFilledTpgid.delete(id);
+              safeSend('pty:secret-state', false);
+              // fall through to surface the widget for a fresh attempt
+            }
+          }
           safeSend('pty:echo-change', id, {
             echo: e.echo,
             icanon: e.icanon,
@@ -248,6 +302,9 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
     term.onExit(() => {
       poller?.stop();
       allTerminals.delete(id);
+      lastFilledTpgid.delete(id);
+      const recheck = autoFillRecheckTimers.get(id);
+      if (recheck) { clearTimeout(recheck); autoFillRecheckTimers.delete(id); }
     });
 
     // Inject shell integration once bash/zsh/fish has finished its rc files
@@ -326,6 +383,17 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
 
   ipcMain.on('pty:stop-echo-poll', (_event, id: number) => {
     allTerminals.get(id)?.poller?.stop();
+  });
+
+  ipcMain.on('pty:remember-secret', (_event, secret: string) => {
+    if (typeof secret !== 'string' || secret.length === 0) return;
+    credentialVault.set(Buffer.from(secret, 'utf8'));
+    safeSend('pty:secret-state', true);
+  });
+
+  ipcMain.on('pty:forget-secret', () => {
+    credentialVault.clear();
+    safeSend('pty:secret-state', false);
   });
 
   ipcMain.handle('pty:getProcess', (_event, id: number) => {

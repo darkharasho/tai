@@ -22,6 +22,7 @@ import { hasActiveAi } from '@/utils/hasActiveAi';
 import { patchBlock } from '@/utils/blockMeta';
 import { BlockFinder } from './BlockFinder';
 import { SessionSideChat } from './SessionSideChat';
+import { SudoCacheBadge, useSudoCacheState } from './SudoCacheBadge';
 import { buildSessionAiPrompt } from '@/utils/sessionAiPrompt';
 import { assembleInputHistory } from '@/utils/inputHistory';
 import { persistBlocks, loadBlocks } from '@/utils/sessionRestore';
@@ -179,6 +180,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const [lastFinalizedExit, setLastFinalizedExit] = useState<number | undefined>(undefined);
   const [awaitingInput, setAwaitingInput] = useState(false);
   const [passwordPrompt, setPasswordPrompt] = useState(false);
+  const sudoCache = useSudoCacheState(ptyId);
   const [editValue, setEditValue] = useState<string | undefined>(undefined);
   const editValueRef = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -701,6 +703,15 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       }
     });
 
+    const cleanupAutoAuth = window.tai?.pty?.onAutoAuth?.((id: number) => {
+      if (cancelled) return;
+      if (id !== ptyId) return;
+      // A cached sudo auto-fill happened in the main process: the termios
+      // echo-change widget was suppressed there, but the text-driven
+      // BlockSegmenter prompt may still have fired — dismiss it.
+      setPasswordPrompt(false);
+    });
+
     const cleanupData = window.tai?.pty?.onData((id: number, data: string) => {
       if (cancelled) return;
       if (id !== ptyId) return;
@@ -722,6 +733,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       cleanupData?.();
       cleanupResized?.();
       cleanupEcho?.();
+      cleanupAutoAuth?.();
       if (echoInteractiveTimerRef.current) {
         clearTimeout(echoInteractiveTimerRef.current);
         echoInteractiveTimerRef.current = null;
@@ -1568,6 +1580,11 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
 
   return (
     <div ref={sessionRootRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0, position: 'relative' }}>
+      <SudoCacheBadge
+        cached={sudoCache.cached}
+        flash={sudoCache.flash}
+        onForget={() => window.tai?.pty?.forgetSecret?.()}
+      />
       {findOpen && (
         <BlockFinder
           items={historyItems}

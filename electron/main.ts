@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { spawn } from 'child_process';
 import { setupPtyService, destroyAllTerminals } from './services/pty';
+import { credentialVault } from './services/credentialVault';
 import { setupClaudeService, destroyAllClaude } from './services/claude';
 import { setupCodexService, destroyAllCodex } from './services/codex';
 import { setupGitService } from './services/git';
@@ -122,6 +123,7 @@ app.whenReady().then(() => {
 });
 
 app.on('before-quit', () => {
+  credentialVault.clear();
   destroyAllTerminals();
   destroyAllClaude();
   destroyAllCodex();

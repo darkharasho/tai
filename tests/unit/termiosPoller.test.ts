@@ -52,6 +52,24 @@ describe('TermiosPoller', () => {
     expect(onChange).toHaveBeenCalledWith({ echo: true, icanon: false, passwordPrompt: false, interactiveProgram: true });
   });
 
+  it('resetBaseline() forces a re-emit of an otherwise-unchanged password-prompt state', () => {
+    // Chained sudo collapses the echo off→on→off transition into one poll
+    // window, so the edge detector never re-fires for the second prompt.
+    // resetBaseline() makes the next identical read count as a change.
+    const read = vi.fn().mockReturnValue({ echo: false, icanon: true });
+    const onChange = vi.fn();
+    const p = new TermiosPoller(123, read, onChange);
+    p.start();                    // baseline captured synchronously as (off,on)
+    vi.advanceTimersByTime(200);  // (off,on) == baseline → no event
+    expect(onChange).not.toHaveBeenCalled();
+    p.resetBaseline();            // baseline → shell-like (on,on)
+    vi.advanceTimersByTime(200);  // (off,on) != (on,on) → re-fires
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ passwordPrompt: true }),
+    );
+  });
+
   it('stop() halts the poll loop', () => {
     const read = vi.fn().mockReturnValue({ echo: true, icanon: true });
     const p = new TermiosPoller(123, read, vi.fn());
