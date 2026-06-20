@@ -1,15 +1,13 @@
 import { ipcMain, BrowserWindow } from 'electron';
-import { ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { query } from '@anthropic-ai/claude-agent-sdk';
+import { query, AbortError } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import { sdkOptions, HISTORY_TOOL } from './claudeSdkOptions';
+import { sdkOptions } from './claudeSdkOptions';
 import { translateSdkMessage } from './claudeSdkTranslate';
 import { ApprovalBridge } from './claudeApprovalBridge';
 import { RemoteSshManager } from './remoteSsh';
-import { RemoteToolProxy } from './remoteToolProxy';
 import { RemoteDaemonProxy } from './remoteDaemonProxy';
 import { generateMcpServerScript, generateMcpConfig } from './mcpRemoteServer';
 import { generateHistoryServerScript, generateHistoryMcpConfig } from './mcpHistoryServer';
@@ -19,7 +17,6 @@ import { createIdleWatchdog } from './idleWatchdog';
 import { classifyProviderError } from '../../src/utils/classifyProviderError';
 
 const sshManager = new RemoteSshManager();
-const toolProxy = new RemoteToolProxy(sshManager);
 
 interface ClaudeState {
   /** Pushes the next queued user turn into the live query; null when idle. */
@@ -172,17 +169,21 @@ function startQuery(win: BrowserWindow | null, key: string, firstMessage: string
         for (const env of translateSdkMessage(msg)) safeSend(win, 'ai:message', key, env);
       }
     } catch (err: any) {
-      const text = err?.message || String(err);
-      const { category } = classifyProviderError(text);
-      safeSend(win, 'ai:error', key, text, category);
-      safeSend(win, 'ai:message', key, { type: 'done' });
+      if (!(err instanceof AbortError) && err?.name !== 'AbortError') {
+        const text = err?.message || String(err);
+        const { category } = classifyProviderError(text);
+        safeSend(win, 'ai:error', key, text, category);
+        safeSend(win, 'ai:message', key, { type: 'done' });
+      }
     } finally {
       watchdog.cancel();
-      state.busy = false;
-      state.pushInput = null;
-      state.endInput = null;
-      state.abort = null;
-      state.approvals.clear();
+      if (state.abort === abort) {   // only the active query clears shared state
+        state.busy = false;
+        state.pushInput = null;
+        state.endInput = null;
+        state.abort = null;
+        state.approvals.clear();
+      }
     }
   })();
 }
@@ -299,6 +300,10 @@ export function setupClaudeService(getWindow: () => BrowserWindow | null) {
       try { state.abort.abort(); } catch {}
       state.abort = null;
       state.sessionId = null;
+      state.busy = false;
+      state.pushInput = null;
+      state.endInput = null;
+      safeSend(getWindow(), 'ai:message', key, { type: 'done' });
     }
 
     if (!target) {
