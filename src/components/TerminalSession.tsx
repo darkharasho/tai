@@ -22,6 +22,7 @@ import { hasActiveAi } from '@/utils/hasActiveAi';
 import { patchBlock } from '@/utils/blockMeta';
 import { BlockFinder } from './BlockFinder';
 import { SessionSideChat } from './SessionSideChat';
+import { SudoCacheBadge, useSudoCacheState } from './SudoCacheBadge';
 import { buildSessionAiPrompt } from '@/utils/sessionAiPrompt';
 import { assembleInputHistory } from '@/utils/inputHistory';
 import { persistBlocks, loadBlocks } from '@/utils/sessionRestore';
@@ -179,6 +180,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const [lastFinalizedExit, setLastFinalizedExit] = useState<number | undefined>(undefined);
   const [awaitingInput, setAwaitingInput] = useState(false);
   const [passwordPrompt, setPasswordPrompt] = useState(false);
+  const sudoCache = useSudoCacheState(ptyId);
   const [editValue, setEditValue] = useState<string | undefined>(undefined);
   const editValueRef = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -1568,6 +1570,11 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
 
   return (
     <div ref={sessionRootRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0, position: 'relative' }}>
+      <SudoCacheBadge
+        cached={sudoCache.cached}
+        flash={sudoCache.flash}
+        onForget={() => window.tai?.pty?.forgetSecret?.()}
+      />
       {findOpen && (
         <BlockFinder
           items={historyItems}
