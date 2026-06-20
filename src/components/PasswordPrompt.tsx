@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { Toggle } from './Toggle';
 
 interface PasswordPromptProps {
   ptyId: number;
@@ -70,19 +71,23 @@ export function PasswordPrompt({ ptyId, onDone }: PasswordPromptProps) {
         {'•'.repeat(dots)}
         <span style={{ opacity: 0.5, animation: 'pulse 1s ease-in-out infinite' }}>|</span>
       </span>
-      <label
+      <span
         onKeyDown={(e) => e.stopPropagation()}
-        style={{ color: 'var(--text-muted)', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0, cursor: 'pointer' }}
+        onMouseDown={(e) => e.preventDefault()} // keep keyboard focus on the password field
+        style={{ display: 'flex', alignItems: 'center', gap: '7px', flexShrink: 0 }}
       >
-        <input
-          type="checkbox"
+        <span
+          onClick={() => { setRemember(v => !v); containerRef.current?.focus(); }}
+          style={{ color: 'var(--text-muted)', fontSize: '11px', cursor: 'pointer', userSelect: 'none' }}
+        >
+          Remember for this session
+        </span>
+        <Toggle
           checked={remember}
-          onChange={(e) => setRemember(e.target.checked)}
-          tabIndex={-1}
-          style={{ cursor: 'pointer' }}
+          onChange={(v) => { setRemember(v); containerRef.current?.focus(); }}
+          ariaLabel="Remember sudo password for this session"
         />
-        Remember for this session
-      </label>
+      </span>
       <span style={{ color: 'var(--text-muted)', fontSize: '10px', flexShrink: 0 }}>Enter to submit</span>
     </div>
   );
