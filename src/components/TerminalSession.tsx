@@ -1382,6 +1382,11 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const surface = deriveInputSurface({
     altScreenVisible, interactiveMode, interactiveFullscreen, awaitingInput, passwordPrompt,
     rootedSession: !!(activeSession?.rooted && hasActiveBlock),
+    // Windows (ConPTY) has no termios / /proc, so the signals above never fire;
+    // fall back to the live terminal whenever a command is running so the user
+    // can type into a program that's waiting for input.
+    isWindows: window.tai?.system?.platform === 'win32',
+    commandRunning: hasActiveBlock,
   });
 
   // Session chrome only for genuinely rooted/agent sessions — a quick oneshot

@@ -27,6 +27,13 @@ export interface InteractiveSignals {
   passwordPrompt: boolean;
   /** The active block is a long-running session (see sessionKind.shouldRootSession). */
   rootedSession?: boolean;
+  /** Windows fallback inputs. Windows (ConPTY) has no termios and no /proc, so
+   *  none of the interactivity signals above can be detected. When `isWindows`
+   *  is set and a command is running, we fall back to the live terminal so the
+   *  user can still type into a program that's waiting for input. */
+  isWindows?: boolean;
+  /** A command is currently executing in the foreground (not the idle shell). */
+  commandRunning?: boolean;
 }
 
 export function deriveInputSurface(s: InteractiveSignals): InputSurface {
@@ -38,6 +45,11 @@ export function deriveInputSurface(s: InteractiveSignals): InputSurface {
   // Termios signals outrank rooting: a server that drops to raw mode or asks
   // a cooked question gets the richer surface for that moment.
   if (s.rootedSession) return 'rooted';
+  // Windows has no termios / /proc, so the signals above never fire. Any
+  // running command might be waiting for input, so fall back to the live
+  // terminal (docked) — a plain-terminal experience — instead of stranding the
+  // user on the composer with no way to type into the foreground program.
+  if (s.isWindows && s.commandRunning) return 'docked';
   return 'composer';
 }
 

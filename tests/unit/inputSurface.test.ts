@@ -54,6 +54,29 @@ describe('deriveInputSurface', () => {
     expect(deriveInputSurface({ ...base, rootedSession: true, passwordPrompt: true })).toBe('tier1');
     expect(deriveInputSurface({ ...base, rootedSession: true, altScreenVisible: true })).toBe('fullscreen');
   });
+
+  // Windows has no termios / /proc, so the interactivity signals
+  // (awaitingInput, interactiveMode, passwordPrompt, altScreenVisible) never
+  // fire. Without a fallback the surface is stuck on `composer` and a running
+  // command that waits for input hangs with nowhere to type. The fallback:
+  // any running command on Windows gets the live terminal (docked).
+  it('windows: a running command falls back to docked (live terminal)', () => {
+    expect(deriveInputSurface({ ...base, isWindows: true, commandRunning: true })).toBe('docked');
+  });
+
+  it('windows: no running command stays on the composer', () => {
+    expect(deriveInputSurface({ ...base, isWindows: true, commandRunning: false })).toBe('composer');
+  });
+
+  it('the windows fallback never applies off-windows (unix uses real signals)', () => {
+    expect(deriveInputSurface({ ...base, isWindows: false, commandRunning: true })).toBe('composer');
+  });
+
+  it('the windows fallback is outranked by rooted sessions and real prompts', () => {
+    expect(deriveInputSurface({ ...base, isWindows: true, commandRunning: true, rootedSession: true })).toBe('rooted');
+    expect(deriveInputSurface({ ...base, isWindows: true, commandRunning: true, passwordPrompt: true })).toBe('tier1');
+    expect(deriveInputSurface({ ...base, isWindows: true, commandRunning: true, altScreenVisible: true })).toBe('fullscreen');
+  });
 });
 
 describe('rooted surface helpers', () => {
