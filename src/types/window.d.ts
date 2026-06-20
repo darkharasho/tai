@@ -18,6 +18,10 @@ declare global {
         startEchoPoll: (id: number) => void;
         stopEchoPoll: (id: number) => void;
         onEchoChange: (callback: (id: number, e: { echo: boolean; icanon: boolean; passwordPrompt: boolean; interactiveProgram: boolean }) => void) => () => void;
+        rememberSecret: (secret: string) => void;
+        forgetSecret: () => void;
+        onAutoAuth: (callback: (id: number) => void) => () => void;
+        onSecretState: (callback: (cached: boolean) => void) => () => void;
       };
       window: {
         minimize: () => void;

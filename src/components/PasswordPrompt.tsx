@@ -7,30 +7,39 @@ interface PasswordPromptProps {
 
 export function PasswordPrompt({ ptyId, onDone }: PasswordPromptProps) {
   const [dots, setDots] = useState(0);
+  const [remember, setRemember] = useState(false);
+  const secretRef = useRef('');
+  const rememberRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    containerRef.current?.focus();
-  }, []);
+  useEffect(() => { rememberRef.current = remember; }, [remember]);
+  useEffect(() => { containerRef.current?.focus(); }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (e.key === 'Enter') {
+      if (rememberRef.current && secretRef.current.length > 0) {
+        window.tai?.pty?.rememberSecret?.(secretRef.current);
+      }
+      secretRef.current = '';
       window.tai?.pty?.write(ptyId, '\n');
       setDots(0);
       onDone();
     } else if (e.key === 'Backspace') {
       if (dots > 0) {
         setDots(d => d - 1);
+        secretRef.current = secretRef.current.slice(0, -1);
         window.tai?.pty?.write(ptyId, '\x7f');
       }
     } else if (e.key === 'c' && e.ctrlKey) {
+      secretRef.current = '';
       window.tai?.pty?.write(ptyId, '\x03');
       setDots(0);
       onDone();
     } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
       setDots(d => d + 1);
+      secretRef.current += e.key;
       window.tai?.pty?.write(ptyId, e.key);
     }
   };
@@ -61,6 +70,19 @@ export function PasswordPrompt({ ptyId, onDone }: PasswordPromptProps) {
         {'•'.repeat(dots)}
         <span style={{ opacity: 0.5, animation: 'pulse 1s ease-in-out infinite' }}>|</span>
       </span>
+      <label
+        onKeyDown={(e) => e.stopPropagation()}
+        style={{ color: 'var(--text-muted)', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0, cursor: 'pointer' }}
+      >
+        <input
+          type="checkbox"
+          checked={remember}
+          onChange={(e) => setRemember(e.target.checked)}
+          tabIndex={-1}
+          style={{ cursor: 'pointer' }}
+        />
+        Remember for this session
+      </label>
       <span style={{ color: 'var(--text-muted)', fontSize: '10px', flexShrink: 0 }}>Enter to submit</span>
     </div>
   );
