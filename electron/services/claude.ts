@@ -34,6 +34,7 @@ interface ClaudeState {
   daemonProxy: RemoteDaemonProxy | null;
   daemonEnabled: boolean;
   historyFilePath: string | null;
+  tempFiles: string[];
 }
 
 const claudeStates = new Map<string, ClaudeState>();
@@ -45,7 +46,7 @@ function getState(key: string): ClaudeState {
       pushInput: null, endInput: null, sessionId: null, busy: false,
       permMode: null, cwd: null, remoteTarget: null, remoteExecMode: 'auto',
       approvals: new ApprovalBridge(), abort: null,
-      daemonProxy: null, daemonEnabled: false, historyFilePath: null,
+      daemonProxy: null, daemonEnabled: false, historyFilePath: null, tempFiles: [],
     };
     claudeStates.set(key, state);
   }
@@ -77,21 +78,28 @@ function toolCommandString(input: Record<string, any>): string {
 // Build an MCP server map for the SDK from the temp .cjs server scripts.
 // (Same scripts the CLI path used; only the wiring changes.)
 function buildMcpServers(state: ClaudeState, key: string): Record<string, any> {
+  state.tempFiles = [];
   const tmp = os.tmpdir();
   const safeKey = key.replace(/[^a-z0-9]/gi, '_');
   const historyFilePath = path.join(tmp, `tai-history-${safeKey}.json`);
   state.historyFilePath = historyFilePath;
-  if (!fs.existsSync(historyFilePath)) fs.writeFileSync(historyFilePath, '[]', { mode: 0o600 });
+  if (!fs.existsSync(historyFilePath)) {
+    fs.writeFileSync(historyFilePath, '[]', { mode: 0o600 });
+    state.tempFiles.push(historyFilePath);
+  }
   const historyServerPath = path.join(tmp, `tai-mcp-history-${safeKey}.cjs`);
   fs.writeFileSync(historyServerPath, generateHistoryServerScript(historyFilePath), { mode: 0o755 });
+  state.tempFiles.push(historyServerPath);
   const servers: Record<string, any> = { ...(generateHistoryMcpConfig(historyServerPath) as any).mcpServers };
 
   const isRemoteExec = state.remoteTarget && state.remoteExecMode === 'auto';
   if (isRemoteExec && state.daemonEnabled) {
     const sshConfigPath = path.join(tmp, `tai-ssh-config-${safeKey}`);
     fs.writeFileSync(sshConfigPath, `Include ~/.ssh/config\nBatchMode yes\nStrictHostKeyChecking accept-new\n`, { mode: 0o600 });
+    state.tempFiles.push(sshConfigPath);
     const mcpServerPath = path.join(tmp, `tai-mcp-server-${safeKey}.cjs`);
     fs.writeFileSync(mcpServerPath, generateMcpServerScript(state.remoteTarget!, sshConfigPath), { mode: 0o755 });
+    state.tempFiles.push(mcpServerPath);
     Object.assign(servers, (generateMcpConfig(mcpServerPath) as any).mcpServers);
   }
   return servers;
@@ -249,6 +257,7 @@ export function setupClaudeService(getWindow: () => BrowserWindow | null) {
     }
     if (state.busy && state.abort) {
       // Permission mode changed mid-flight — end the old query and start fresh.
+      state.approvals.clear();
       try { state.abort.abort(); } catch {}
     }
     startQuery(win, key, message, model);
@@ -297,6 +306,7 @@ export function setupClaudeService(getWindow: () => BrowserWindow | null) {
     const isRemote = state.remoteTarget && state.remoteExecMode === 'auto';
 
     if (wasRemote !== isRemote && state.abort) {
+      state.approvals.clear();
       try { state.abort.abort(); } catch {}
       state.abort = null;
       state.sessionId = null;
@@ -319,6 +329,7 @@ export function destroyAllClaude() {
     try { state.abort?.abort(); } catch {}
     state.busy = false;
     state.daemonProxy?.disconnect();
+    for (const f of state.tempFiles) { try { fs.unlinkSync(f); } catch {} }
   }
   claudeStates.clear();
   sshManager.destroyAll();

@@ -22,7 +22,7 @@ export function translateSdkMessage(msg: any): RendererMsg[] {
         const { category } = classifyProviderError(text);
         return [{ type: 'error', text, category }, { type: 'done' }];
       }
-      return [{ type: 'result', content: msg }, { type: 'done' }];
+      return [{ type: 'result', content: msg, result: (msg as any).result ?? '' }, { type: 'done' }];
     }
     default:
       return [];

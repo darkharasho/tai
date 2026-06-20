@@ -14,7 +14,7 @@ describe('translateSdkMessage', () => {
 
   it('successful result → {type:result} then {type:done}', () => {
     const m = { type: 'result', subtype: 'success', result: 'done', total_cost_usd: 0.01 };
-    expect(translateSdkMessage(m)).toEqual([{ type: 'result', content: m }, { type: 'done' }]);
+    expect(translateSdkMessage(m)).toEqual([{ type: 'result', content: m, result: 'done' }, { type: 'done' }]);
   });
 
   it('error result → {type:error} then {type:done}', () => {
