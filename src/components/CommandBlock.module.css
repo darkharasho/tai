@@ -531,15 +531,62 @@
   opacity: 1;
 }
 
-.exitTag {
+/* Finished-command status glyph in the gutter: a quiet ✓ on success, a loud
+   ✗ on failure, a muted ⊘ for interrupts/signals. Anchors otherwise-bare rows. */
+.statusGlyph {
   font-family: var(--font-mono);
   font-size: 11px;
+  width: 12px;
+  text-align: center;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.statusOk {
+  color: color-mix(in srgb, var(--color-shell) 80%, transparent);
+  opacity: 0.6;
+}
+
+.statusFail {
+  color: var(--color-error);
+}
+
+.statusNeutral {
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.exitTag {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
   flex-shrink: 0;
   color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  padding: 1px 7px;
+  border-radius: 20px;
+  line-height: 1.55;
 }
 
 .exitFailure {
-  color: #f08a7a;
+  color: var(--color-error);
+  background: color-mix(in srgb, var(--color-error) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-error) 28%, transparent);
+}
+
+/* Duration as a subtle pill so the right-edge meta reads as a tag, not floating
+   text. (Distinct from .meta, which the live ElapsedChip still uses plain.) */
+.durChip {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  opacity: 0.8;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.07));
+  padding: 1px 7px;
+  border-radius: 20px;
+  line-height: 1.55;
 }
 
 .contextMenu {

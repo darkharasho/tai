@@ -312,6 +312,21 @@ export const CommandBlock = memo(function CommandBlock({
     : exitClass === 'neutral'
       ? (block.signal ? block.signal : block.exitCode === 130 ? '^C' : `exit ${block.exitCode}`)
       : null;
+  // Gutter status glyph for finished commands: anchors otherwise-bare rows
+  // (✓ success, ✗ failure, ⊘ interrupt/signal). Never shown while running.
+  const statusGlyph = !active && exitClass !== 'unknown' ? (
+    <span
+      className={`${styles.statusGlyph} ${
+        exitClass === 'failure' ? styles.statusFail
+        : exitClass === 'neutral' ? styles.statusNeutral
+        : styles.statusOk
+      }`}
+      aria-hidden
+    >
+      {exitClass === 'failure' ? '✗' : exitClass === 'neutral' ? '⊘' : '✓'}
+    </span>
+  ) : null;
+
   const exitTag = exitLabel ? (
     <span className={`${styles.exitTag}${exitClass === 'failure' ? ` ${styles.exitFailure}` : ''}`}>
       {exitLabel}
@@ -352,6 +367,7 @@ export const CommandBlock = memo(function CommandBlock({
   if (collapsed) {
     return (
       <div className={styles.collapsed} onClick={() => onToggleCollapse?.()} onContextMenu={openMenu}>
+        {statusGlyph}
         {(isRemote || !path) && user && (
           <span className={styles.promptUser} style={{ color: modeColor }}>{user}</span>
         )}
@@ -435,6 +451,7 @@ export const CommandBlock = memo(function CommandBlock({
          expand on click. */
       <div className={styles.promptLine} ref={headerRef}>
         <div className={styles.promptLeft}>
+          {statusGlyph}
           {(isRemote || !path) && user && (
             <span className={styles.promptUser} style={{ color: modeColor }}>{user}</span>
           )}
@@ -511,7 +528,7 @@ export const CommandBlock = memo(function CommandBlock({
               </span>
               {exitTag}
               {block.duration >= DURATION_VISIBLE_MS && (
-                <span className={styles.meta}>{formatDuration(block.duration)}</span>
+                <span className={styles.durChip}>{formatDuration(block.duration)}</span>
               )}
             </>
           )}
