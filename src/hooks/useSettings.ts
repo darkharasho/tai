@@ -9,6 +9,7 @@ const DEFAULTS = {
   'ai.model': 'sonnet',
   'claude.model': 'sonnet',
   'claude.effort': 'auto',
+  'claude.showReasoning': true,
   'trust.default': 'ask',
   'ai.expandToolCalls': false,
   'appearance.theme': 'default',

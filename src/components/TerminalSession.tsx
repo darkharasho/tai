@@ -92,6 +92,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const { config } = useSettings();
   const claudeModel = config['claude.model'] || 'sonnet';
   const claudeEffort = config['claude.effort'] || 'auto';
+  const claudeShowReasoning = config['claude.showReasoning'] !== false;
   const aiNextCommandRefine = !!config['aiNextCommandRefine'];
   // Seed with the previous session's finished blocks (rendered collapsed);
   // best-effort, so a corrupt payload just yields an empty session.
@@ -829,6 +830,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     let entries: AIEntry[] = [];
     let knownToolIds = new Set<string>();
     let lastTextEntry = '';
+    let lastThinkingEntry = '';
     let currentAiId = aiId;
     let needsNewBlock = false;
 
@@ -939,6 +941,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           entries = [];
           knownToolIds = new Set<string>();
           lastTextEntry = '';
+          lastThinkingEntry = '';
           setDisplayItems(prev => capDisplayItems([...prev, {
             type: 'ai' as const,
             id: currentAiId,
@@ -953,6 +956,34 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
 
         const contentBlocks = Array.isArray(msg.message.content) ? msg.message.content : [];
         let hasNewData = false;
+
+        // Reasoning ("thinking") blocks arrive before the text in their own
+        // assistant message when summaries are enabled. Surface them as their
+        // own entry, ordered ahead of the answer text. Merge deltas the way
+        // text does; the SDK marks streamed fragments with block.delta.
+        const thinkingParts: string[] = [];
+        let thinkingIsDelta = false;
+        for (const block of contentBlocks) {
+          if (block.type === 'thinking' && block.thinking) {
+            thinkingParts.push(block.thinking);
+            if (block.delta) thinkingIsDelta = true;
+          }
+        }
+        const thinking = thinkingParts.join('');
+        if (thinking && (thinkingIsDelta || thinking !== lastThinkingEntry)) {
+          gotContent = true;
+          const lastIdx = entries.length - 1;
+          const lastEntry = lastIdx >= 0 ? entries[lastIdx] : null;
+          if (lastEntry && lastEntry.kind === 'thinking') {
+            const updated = thinkingIsDelta ? (lastEntry.text || '') + thinking : thinking;
+            lastEntry.text = updated;
+            lastThinkingEntry = updated;
+          } else {
+            entries.push({ kind: 'thinking', text: thinking });
+            lastThinkingEntry = thinking;
+          }
+          hasNewData = true;
+        }
 
         const textParts: string[] = [];
         let isDelta = false;
@@ -1103,8 +1134,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     aiCleanupRef.current = cleanup;
     aiBlockIdRef.current = aiId;
 
-    providerRef.current.send(fullPrompt, cwd, trustLevel, claudeModel, claudeEffort);
-  }, [cwd, trustLevel, handleInputModeChange, promptInfo, eff, claudeModel, claudeEffort, displayItems]);
+    providerRef.current.send(fullPrompt, cwd, trustLevel, claudeModel, claudeEffort, claudeShowReasoning);
+  }, [cwd, trustLevel, handleInputModeChange, promptInfo, eff, claudeModel, claudeEffort, claudeShowReasoning, displayItems]);
 
   const handleAIRequestRef = useRef(handleAIRequest);
   useEffect(() => {

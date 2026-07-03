@@ -56,8 +56,8 @@ contextBridge.exposeInMainWorld('tai', {
     },
   },
   ai: {
-    send: (key: string, cwd: string, message: string, permMode: string, model: string, effort?: string) =>
-      ipcRenderer.invoke('ai:send', key, cwd, message, permMode, model, effort),
+    send: (key: string, cwd: string, message: string, permMode: string, model: string, effort?: string, showReasoning?: boolean) =>
+      ipcRenderer.invoke('ai:send', key, cwd, message, permMode, model, effort, showReasoning),
     cancel: (key: string) => ipcRenderer.send('ai:cancel', key),
     stop: (key: string) => ipcRenderer.send('ai:stop', key),
     updateHistory: (key: string, entries: Array<{ command: string; output: string; exitCode?: number; cwd?: string; gitBranch?: string | null; durationMs?: number; timestamp?: number }>) =>

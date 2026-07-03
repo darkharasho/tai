@@ -30,7 +30,7 @@ declare global {
         onMaximizedChange: (callback: (maximized: boolean) => void) => () => void;
       };
       ai: {
-        send: (key: string, cwd: string, message: string, permMode: string, model: string, effort?: string) => Promise<boolean>;
+        send: (key: string, cwd: string, message: string, permMode: string, model: string, effort?: string, showReasoning?: boolean) => Promise<boolean>;
         cancel: (key: string) => void;
         stop: (key: string) => void;
         updateHistory: (key: string, entries: Array<{ command: string; output: string; exitCode?: number; cwd?: string; gitBranch?: string | null; durationMs?: number; timestamp?: number }>) => void;

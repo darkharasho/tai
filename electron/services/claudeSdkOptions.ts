@@ -1,5 +1,9 @@
+import type { EffortLevel, ThinkingConfig } from '@anthropic-ai/claude-agent-sdk';
+
 /** The read-only terminal-history MCP tool is always auto-approved. */
 export const HISTORY_TOOL = 'mcp__tai-history__TerminalHistory';
+
+const EFFORT_LEVELS: readonly EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 'max'];
 
 /** Built-in tools disallowed on the remote-exec path so the model uses the
  *  remote MCP toolset (whose calls run on the remote host) instead. */
@@ -12,6 +16,10 @@ export interface SdkOptionsInput {
   sessionId: string | null;
   remoteExec: boolean;
   mcpServers: Record<string, unknown>;
+  /** Reasoning effort selector from settings ('auto' → let the model decide). */
+  effort?: string;
+  /** When false, request thinking summaries be omitted (reasoning text hidden). */
+  showReasoning?: boolean;
 }
 
 export interface SdkOptionsResult {
@@ -23,6 +31,8 @@ export interface SdkOptionsResult {
   resume?: string;
   cwd: string;
   mcpServers: Record<string, unknown>;
+  thinking?: ThinkingConfig;
+  effort?: EffortLevel;
 }
 
 /**
@@ -33,7 +43,7 @@ export interface SdkOptionsResult {
  * - remoteExec  → bypassPermissions + built-ins disallowed (routed via MCP)
  */
 export function sdkOptions(input: SdkOptionsInput): SdkOptionsResult {
-  const { permMode, model, cwd, sessionId, remoteExec, mcpServers } = input;
+  const { permMode, model, cwd, sessionId, remoteExec, mcpServers, effort, showReasoning } = input;
 
   let permissionMode: SdkOptionsResult['permissionMode'];
   if (remoteExec || permMode === 'bypass') permissionMode = 'bypassPermissions';
@@ -50,5 +60,15 @@ export function sdkOptions(input: SdkOptionsInput): SdkOptionsResult {
   if (remoteExec) result.disallowedTools = REMOTE_DISALLOWED;
   if (model && model !== 'default') result.model = model;
   if (sessionId) result.resume = sessionId;
+
+  // Adaptive thinking lets the model decide when/how much to reason. `display`
+  // controls whether the reasoning summary is streamed back: 'summarized'
+  // surfaces the reasoning text in the UI, 'omitted' hides it (the default the
+  // API would otherwise use). Reasoning still happens either way — only its
+  // visibility changes — so the toggle disables the *text*, not the thinking.
+  result.thinking = { type: 'adaptive', display: showReasoning === false ? 'omitted' : 'summarized' };
+  if (effort && effort !== 'auto' && (EFFORT_LEVELS as readonly string[]).includes(effort)) {
+    result.effort = effort as EffortLevel;
+  }
   return result;
 }

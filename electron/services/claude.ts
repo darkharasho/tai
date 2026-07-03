@@ -106,7 +106,7 @@ function buildMcpServers(state: ClaudeState, key: string): Record<string, any> {
   return servers;
 }
 
-function startQuery(win: BrowserWindow | null, key: string, firstMessage: string, model: string) {
+function startQuery(win: BrowserWindow | null, key: string, firstMessage: string, model: string, effort?: string, showReasoning?: boolean) {
   const state = getState(key);
   const cwd = state.cwd || process.cwd();
   const abort = new AbortController();
@@ -135,6 +135,7 @@ function startQuery(win: BrowserWindow | null, key: string, firstMessage: string
   const opts = sdkOptions({
     permMode: state.permMode || 'acceptEdits',
     model, cwd, sessionId: state.sessionId, remoteExec: isRemoteExec, mcpServers,
+    effort, showReasoning,
   });
 
   const watchdog = createIdleWatchdog({
@@ -243,7 +244,7 @@ export function setupClaudeService(getWindow: () => BrowserWindow | null) {
   // rather than hardcoded. Falls back to the built-in set when not logged in.
   ipcMain.handle('ai:models', () => getAvailableClaudeModels());
 
-  ipcMain.handle('ai:send', (_event, key: string, cwd: string, message: string, permMode: string, model: string, _effort?: string) => {
+  ipcMain.handle('ai:send', (_event, key: string, cwd: string, message: string, permMode: string, model: string, effort?: string, showReasoning?: boolean) => {
     const win = getWindow();
     const state = getState(key);
     state.cwd = cwd;
@@ -267,7 +268,7 @@ export function setupClaudeService(getWindow: () => BrowserWindow | null) {
       state.approvals.clear();
       try { state.abort.abort(); } catch {}
     }
-    startQuery(win, key, safeMessage, model);
+    startQuery(win, key, safeMessage, model, effort, showReasoning);
   });
 
   ipcMain.on('ai:cancel', (_event, key: string) => {

@@ -1,8 +1,8 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
-import { Terminal, Copy, Square, Check, X, Circle, FileText, Pencil, FolderSearch, Search, Globe, ChevronRight, ChevronDown, CornerDownRight, type LucideIcon } from 'lucide-react';
+import { Terminal, Copy, Square, Check, X, Circle, FileText, Pencil, FolderSearch, Search, Globe, ChevronRight, ChevronDown, CornerDownRight, Brain, type LucideIcon } from 'lucide-react';
 import type { AIEntry, AIProvider } from '@/types';
 import styles from './InlineAIBlock.module.css';
 import ToolCallBody, { formatToolLabel } from './ToolCallBody';
@@ -61,6 +61,40 @@ function ToolIcon({ name }: { name: string }) {
   return <Icon size={10} />;
 }
 
+/** Collapsible reasoning ("thinking") section. Auto-expands while the model is
+ *  actively reasoning and collapses once the answer arrives; the user can still
+ *  toggle it manually in between. The summarized chain of thought is dimmed and
+ *  rendered as markdown when open. */
+function ThinkingBlock({ text, streaming, components }: { text: string; streaming?: boolean; components: Record<string, any> }) {
+  const [open, setOpen] = useState(!!streaming);
+  // Follow the active→done transition, but leave manual toggles alone between
+  // transitions: only re-sync open state when `streaming` actually flips.
+  const prevStreaming = useRef(!!streaming);
+  useEffect(() => {
+    if (streaming !== prevStreaming.current) {
+      setOpen(!!streaming);
+      prevStreaming.current = !!streaming;
+    }
+  }, [streaming]);
+  return (
+    <div className={styles.thinking}>
+      <div className={styles.thinkingHeader} onClick={() => setOpen(v => !v)}>
+        <span className={styles.toolChevron}>
+          {open ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+        </span>
+        <span className={styles.thinkingIcon}><Brain size={11} /></span>
+        <span className={`${styles.thinkingName}${streaming ? ` ${styles.shimmer}` : ''}`}>Reasoning</span>
+      </div>
+      {open && (
+        <div className={styles.thinkingContent}>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+            {text}
+          </ReactMarkdown>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function InlineAIBlock({
   question,
@@ -186,9 +220,25 @@ export function InlineAIBlock({
             <div className={styles.body}>
               {entries && entries.length > 0 ? (
                 entries.map((entry, i) => {
-                  if (entry.kind === 'text') {
+                  if (entry.kind === 'thinking') {
+                    if (!entry.text) return null;
+                    const isLast = i === entries.length - 1;
                     return (
-                      <div key={`text-${i}`} className="ai-content">
+                      <ThinkingBlock
+                        key={`thinking-${i}`}
+                        text={entry.text}
+                        streaming={streaming && isLast}
+                        components={markdownComponents}
+                      />
+                    );
+                  }
+                  if (entry.kind === 'text') {
+                    // Shimmer the answer's prose while it's the actively-
+                    // streaming entry; settles to normal once done or superseded.
+                    const isLast = i === entries.length - 1;
+                    const live = streaming && isLast;
+                    return (
+                      <div key={`text-${i}`} className={`ai-content${live ? ` ${styles.answerShimmer}` : ''}`}>
                         <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
                           {entry.text}
                         </ReactMarkdown>

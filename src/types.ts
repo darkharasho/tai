@@ -26,7 +26,7 @@ export interface SegmentedBlock {
 }
 
 export interface AIEntry {
-  kind: 'text' | 'tool';
+  kind: 'text' | 'tool' | 'thinking';
   text?: string;
   call?: AIToolCall;
 }

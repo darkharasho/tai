@@ -425,6 +425,97 @@
   border-radius: 4px;
 }
 
+/* Reasoning ("thinking") section — dimmed, collapsible, sits above the answer. */
+.thinking {
+  margin-bottom: 4px;
+}
+.thinkingHeader {
+  font-size: 12px;
+  padding: 2px 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+.thinkingHeader:hover {
+  background: var(--bg-hover, rgba(127, 127, 127, 0.08));
+}
+.thinkingIcon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--color-ai);
+}
+.thinkingName {
+  font-family: var(--font-sans);
+  font-weight: 500;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+/* Live "working" signal — a purple shimmer sweeps the label while the model is
+   actively reasoning (ported from sai's .sai-shimmer, tinted to --color-ai).
+   Applied only while streaming; the settled label stays quiet. */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--text-muted) 20%,
+    color-mix(in srgb, var(--color-ai) 78%, #fff) 50%,
+    var(--text-muted) 80%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 2.2s linear infinite;
+}
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shimmer {
+    animation: none;
+    background: none;
+    color: var(--color-ai);
+  }
+}
+
+/* Same shimmer, extended to the answer prose while it streams. background-clip
+   must sit on the text-bearing elements (not the wrapper), so target them
+   directly; every element shares the keyframes so the sweep stays in phase.
+   code/pre are excluded so they keep their own styling. */
+.answerShimmer :is(p, li, h1, h2, h3, h4, h5, h6, strong, em, blockquote, a) {
+  background: linear-gradient(
+    90deg,
+    var(--text-muted) 20%,
+    color-mix(in srgb, var(--color-ai) 78%, #fff) 50%,
+    var(--text-muted) 80%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 2.2s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .answerShimmer :is(p, li, h1, h2, h3, h4, h5, h6, strong, em, blockquote, a) {
+    animation: none;
+    background: none;
+    color: var(--text-primary);
+  }
+}
+.thinkingContent {
+  margin: 2px 0 4px;
+  padding: 4px 8px 4px 10px;
+  border-left: 2px solid var(--border, rgba(127, 127, 127, 0.25));
+  color: var(--text-muted);
+  font-size: 12.5px;
+  opacity: 0.85;
+}
+
 .toolClickable {
   cursor: pointer;
 }

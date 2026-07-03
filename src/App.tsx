@@ -288,6 +288,8 @@ export default function App() {
         availableModels={claudeModels}
         claudeEffort={config['claude.effort'] || 'auto'}
         onClaudeEffortChange={(effort) => setSetting('claude.effort', effort)}
+        claudeShowReasoning={config['claude.showReasoning'] !== false}
+        onClaudeShowReasoningChange={(value) => setSetting('claude.showReasoning', value)}
         expandToolCalls={!!config['ai.expandToolCalls']}
         onExpandToolCallsChange={(value) => setSetting('ai.expandToolCalls', value)}
         systemNotifications={!!config['systemNotifications']}

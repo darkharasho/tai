@@ -39,4 +39,17 @@ describe('sdkOptions', () => {
     expect(sdkOptions({ ...base, permMode: 'ask', sessionId: 'sess-1' }).resume).toBe('sess-1');
     expect(sdkOptions({ ...base, permMode: 'ask', sessionId: null }).resume).toBeUndefined();
   });
+
+  it('requests summarized reasoning by default and omits it when disabled', () => {
+    expect(sdkOptions({ ...base, permMode: 'ask' }).thinking).toEqual({ type: 'adaptive', display: 'summarized' });
+    expect(sdkOptions({ ...base, permMode: 'ask', showReasoning: true }).thinking).toEqual({ type: 'adaptive', display: 'summarized' });
+    expect(sdkOptions({ ...base, permMode: 'ask', showReasoning: false }).thinking).toEqual({ type: 'adaptive', display: 'omitted' });
+  });
+
+  it('passes a valid effort through and ignores "auto"/unknown values', () => {
+    expect(sdkOptions({ ...base, permMode: 'ask', effort: 'high' }).effort).toBe('high');
+    expect(sdkOptions({ ...base, permMode: 'ask', effort: 'auto' }).effort).toBeUndefined();
+    expect(sdkOptions({ ...base, permMode: 'ask', effort: 'bogus' }).effort).toBeUndefined();
+    expect(sdkOptions({ ...base, permMode: 'ask' }).effort).toBeUndefined();
+  });
 });

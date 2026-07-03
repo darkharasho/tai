@@ -25,6 +25,8 @@ interface QuickSettingsProps {
   availableModels?: { value: string; label: string; description?: string; recommended?: boolean }[];
   claudeEffort: string;
   onClaudeEffortChange: (effort: string) => void;
+  claudeShowReasoning: boolean;
+  onClaudeShowReasoningChange: (value: boolean) => void;
   expandToolCalls: boolean;
   onExpandToolCallsChange: (value: boolean) => void;
   systemNotifications: boolean;
@@ -126,7 +128,7 @@ function CustomDropdown({ value, options, onChange }: {
   );
 }
 
-export function QuickSettings({ visible, onClose, theme, onThemeChange, colorMode, onColorModeChange, cardAccent, onCardAccentChange, noise, onNoiseChange, trustLevel, onTrustLevelChange, aiProvider, onAIProviderChange, claudeModel, onClaudeModelChange, availableModels, claudeEffort, onClaudeEffortChange, expandToolCalls, onExpandToolCallsChange, systemNotifications, onSystemNotificationsChange }: QuickSettingsProps) {
+export function QuickSettings({ visible, onClose, theme, onThemeChange, colorMode, onColorModeChange, cardAccent, onCardAccentChange, noise, onNoiseChange, trustLevel, onTrustLevelChange, aiProvider, onAIProviderChange, claudeModel, onClaudeModelChange, availableModels, claudeEffort, onClaudeEffortChange, claudeShowReasoning, onClaudeShowReasoningChange, expandToolCalls, onExpandToolCallsChange, systemNotifications, onSystemNotificationsChange }: QuickSettingsProps) {
   const [category, setCategory] = useState<Category>('general');
   const [version, setVersion] = useState('');
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'up-to-date' | 'available' | 'error'>('idle');
@@ -279,6 +281,10 @@ export function QuickSettings({ visible, onClose, theme, onThemeChange, colorMod
                     options={CLAUDE_EFFORT_OPTIONS}
                     onChange={onClaudeEffortChange}
                   />
+                </div>
+                <div className={styles.settingRow}>
+                  <span className={styles.settingLabel}>Show Reasoning</span>
+                  <Toggle checked={claudeShowReasoning} onChange={onClaudeShowReasoningChange} ariaLabel="Show reasoning" />
                 </div>
               </>
             )}
