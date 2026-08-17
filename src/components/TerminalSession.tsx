@@ -37,6 +37,7 @@ import { buildRecentContext } from '@/utils/aiContext';
 import { redactHistoryEntries, redactSecrets } from '@/utils/redactSecrets';
 import { detectSshError } from '@/utils/sshDetect';
 import { capDisplayItems } from '@/utils/blockCap';
+import { withAnswers } from '@/utils/askUserQuestion';
 import { clampStoredOutput } from '@/utils/clampStoredOutput';
 import {
   initialRemoteAi, pillView, onSshChange, enableWatch, setMode,
@@ -1045,6 +1046,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
             toolName: msg.toolName,
             toolUseId: msg.toolUseId,
             command: msg.command || '',
+            input: msg.input,
             status: 'pending' as const,
           }];
         });
@@ -1311,15 +1313,17 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     }
   }, [tabId, remoteAi, rememberRemoteAi]);
 
-  const handleToolApprove = useCallback((item: DisplayItem & { type: 'approval' }) => {
+  const handleToolApprove = useCallback((item: DisplayItem & { type: 'approval' }, answers?: Record<string, string>) => {
     if (providerRef.current.id === 'gemini') {
       window.tai.gemini.approve(tabId, item.toolUseId, true);
     } else {
-      window.tai?.ai?.approve(tabId, item.toolUseId, true);
+      // AskUserQuestion reads the user's reply back off its own input, so the
+      // picks ride along as updatedInput rather than needing a tool result.
+      window.tai?.ai?.approve(tabId, item.toolUseId, true, answers ? withAnswers(item.input ?? item.command, answers) : null);
     }
     setDisplayItems(prev => prev.map(di =>
       di.type === 'approval' && di.id === item.id
-        ? { ...di, status: 'approved' as const }
+        ? { ...di, status: 'approved' as const, ...(answers ? { answers } : {}) }
         : di
     ));
   }, [tabId]);

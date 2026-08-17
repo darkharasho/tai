@@ -83,6 +83,12 @@ function enrichedEnv(): Record<string, string> {
 
 /** Extract a human-readable command string from tool input. */
 function toolCommandString(input: Record<string, any>): string {
+  // AskUserQuestion nests everything under `questions`, so the generic
+  // first-string search below would fall through to the raw JSON blob.
+  const question = Array.isArray(input.questions)
+    ? input.questions.map((q: any) => q?.question).filter((q: any) => typeof q === 'string' && q).join('\n')
+    : '';
+  if (question) return question;
   return input.command
     || input.file_path
     || input.path
@@ -360,9 +366,15 @@ export function setupClaudeService(getWindow: () => BrowserWindow | null) {
     }
   });
 
-  ipcMain.handle('ai:approve', async (_event, key: string, toolUseId: string, approved: boolean) => {
+  ipcMain.handle('ai:approve', async (
+    _event,
+    key: string,
+    toolUseId: string,
+    approved: boolean,
+    updatedInput?: Record<string, unknown> | null,
+  ) => {
     const state = getState(key);
-    return state.approvals.resolve(toolUseId, approved);
+    return state.approvals.resolve(toolUseId, approved, updatedInput);
   });
 
   ipcMain.handle('ai:setRemoteTarget', (_event, key: string, target: string | null, mode: string) => {

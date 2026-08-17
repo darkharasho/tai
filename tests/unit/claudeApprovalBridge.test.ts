@@ -18,6 +18,28 @@ describe('ApprovalBridge', () => {
     expect((r as any).message).toBeTruthy();
   });
 
+  it('carries updatedInput back so an answered tool sees the reply', async () => {
+    const b = new ApprovalBridge();
+    const p = b.request('t4');
+    const updatedInput = { questions: [{ question: 'Tabs?' }], answers: { 'Tabs?': 'Spaces' } };
+    b.resolve('t4', true, updatedInput);
+    expect(await p).toEqual({ behavior: 'allow', updatedInput });
+  });
+
+  it('omits updatedInput entirely when there is nothing to send back', async () => {
+    const b = new ApprovalBridge();
+    const p = b.request('t5');
+    b.resolve('t5', true, null);
+    expect(await p).toEqual({ behavior: 'allow' });
+  });
+
+  it('never sends updatedInput on a denial', async () => {
+    const b = new ApprovalBridge();
+    const p = b.request('t6');
+    b.resolve('t6', false, { answers: { q: 'a' } });
+    expect(await p).toEqual({ behavior: 'deny', message: expect.any(String) });
+  });
+
   it('resolve on an unknown id returns false', () => {
     const b = new ApprovalBridge();
     expect(b.resolve('nope', true)).toBe(false);

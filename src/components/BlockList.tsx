@@ -4,6 +4,8 @@ import { CommandBlock } from './CommandBlock';
 import { InlineAIBlock } from './InlineAIBlock';
 import { AIConversation } from './AIConversation';
 import { ApprovalPrompt } from './ApprovalPrompt';
+import { AskUserQuestionView } from './AskUserQuestionView';
+import { parseAskUserQuestion } from '@/utils/askUserQuestion';
 import type { SegmentedBlock, AIEntry, AIProvider, BlockBodyMode } from '@/types';
 import type { SessionKind } from '@/utils/sessionKind';
 import type { ReactNode } from 'react';
@@ -14,7 +16,7 @@ import styles from './BlockList.module.css';
 export type DisplayItem =
   | { type: 'command'; block: SegmentedBlock; aiSuggested?: boolean; active?: boolean; awaitingInput?: boolean; restored?: boolean; defaultCollapsed?: boolean }
   | { type: 'ai'; id: string; question: string; content: string; suggestedCommands: string[]; streaming: boolean; duration?: number; entries?: AIEntry[]; remote?: boolean }
-  | { type: 'approval'; id: string; command: string; toolUseId: string; toolName: string; status: 'pending' | 'approved' | 'rejected' };
+  | { type: 'approval'; id: string; command: string; toolUseId: string; toolName: string; status: 'pending' | 'approved' | 'rejected'; input?: unknown; answers?: Record<string, string> };
 
 interface BlockListProps {
   items: DisplayItem[];
@@ -25,7 +27,8 @@ interface BlockListProps {
   onAskAI: (block: SegmentedBlock) => void;
   onRerun: (command: string) => void;
   onRunSuggested: (command: string) => void;
-  onToolApprove: (item: DisplayItem & { type: 'approval' }) => void;
+  /** `answers` is set only for AskUserQuestion, and is sent back as the tool's input. */
+  onToolApprove: (item: DisplayItem & { type: 'approval' }, answers?: Record<string, string>) => void;
   onToolReject: (item: DisplayItem & { type: 'approval' }) => void;
   onStopAI?: () => void;
   onSendInput?: (data: string) => void;
@@ -208,6 +211,11 @@ export function BlockList({
     }
 
     if (item.type === 'approval') {
+      // `command` is the JSON blob when the input has no obvious string to show,
+      // so it is the fallback source for sessions restored without `input`.
+      const questions = item.toolName === 'AskUserQuestion'
+        ? parseAskUserQuestion(item.input ?? item.command)
+        : null;
       return (
         <div key={item.id}>
           <div className={`${styles.toolApproval}${item.status !== 'pending' ? ` ${styles.toolResolved}` : ''}`}>
@@ -218,11 +226,24 @@ export function BlockList({
                 </span>
                 {item.toolName}
               </span>
-              {item.status === 'approved' && <span className={`${styles.toolStatus} ${styles.toolApproved}`}><Check size={12} /> allowed</span>}
+              {item.status === 'approved' && <span className={`${styles.toolStatus} ${styles.toolApproved}`}><Check size={12} /> {questions ? 'answered' : 'allowed'}</span>}
               {item.status === 'rejected' && <span className={`${styles.toolStatus} ${styles.toolRejected}`}><X size={12} /> denied</span>}
             </div>
-            <div className={styles.toolApprovalCommand}>{item.command}</div>
-            {item.status === 'pending' && (
+            {questions
+              ? <AskUserQuestionView
+                  questions={questions}
+                  answers={item.status === 'pending' ? undefined : (item.answers ?? {})}
+                  onSubmit={item.status === 'pending'
+                    ? (answers) => onToolApprove(item as DisplayItem & { type: 'approval' }, answers)
+                    : undefined}
+                  onSkip={item.status === 'pending'
+                    ? () => onToolReject(item as DisplayItem & { type: 'approval' })
+                    : undefined}
+                />
+              : <div className={styles.toolApprovalCommand}>{item.command}</div>}
+            {/* Answering a question IS allowing it, so for AskUserQuestion the
+                picker carries its own Send/Skip and this row is suppressed. */}
+            {item.status === 'pending' && !questions && (
               <div className={styles.toolApprovalActions}>
                 <button className={`${styles.toolBtn} ${styles.toolBtnApprove}`} onClick={() => onToolApprove(item as DisplayItem & { type: 'approval' })}>Allow</button>
                 <button className={`${styles.toolBtn} ${styles.toolBtnDeny}`} onClick={() => onToolReject(item as DisplayItem & { type: 'approval' })}>Deny</button>

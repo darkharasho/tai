@@ -1,0 +1,227 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 2px 0 6px;
+}
+
+.question {
+  min-width: 0;
+}
+
+.header {
+  display: inline-block;
+  font-family: var(--font-sans);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ai);
+  background: rgba(139, 92, 246, 0.12);
+  border: 1px solid rgba(139, 92, 246, 0.22);
+  border-radius: 3px;
+  padding: 1px 6px;
+  margin-bottom: 5px;
+}
+
+.text {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+  word-break: break-word;
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.option {
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  padding: 5px 8px;
+  border: 1px solid var(--border-subtle);
+  border-left: 2px solid rgba(139, 92, 246, 0.35);
+  border-radius: 3px;
+  background: var(--bg-surface);
+  text-align: left;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+}
+
+button.option {
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+button.option:hover {
+  border-color: rgba(139, 92, 246, 0.45);
+  background: rgba(139, 92, 246, 0.07);
+}
+
+button.option:focus-visible {
+  outline: 1px solid var(--color-ai);
+  outline-offset: 1px;
+}
+
+.optionChosen {
+  border-color: rgba(139, 92, 246, 0.55);
+  border-left-color: var(--color-ai);
+  background: rgba(139, 92, 246, 0.11);
+}
+
+.marker,
+.markerBox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 11px;
+  height: 11px;
+  margin-top: 2px;
+  border: 1px solid rgba(139, 92, 246, 0.5);
+}
+
+.optionChosen .marker,
+.optionChosen .markerBox {
+  border-color: var(--color-ai);
+}
+
+.markerFill {
+  width: 5px;
+  height: 5px;
+  border-radius: 1px;
+  background: var(--color-ai);
+}
+
+.marker .markerFill {
+  border-radius: 50%;
+}
+
+.marker {
+  border-radius: 50%;
+}
+
+.markerBox {
+  border-radius: 2px;
+}
+
+.optionText {
+  min-width: 0;
+}
+
+.optionLabel {
+  display: block;
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.optionDesc {
+  display: block;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-muted);
+  margin-top: 1px;
+  word-break: break-word;
+}
+
+.hint {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--text-muted);
+  margin-top: 5px;
+}
+
+.otherRow {
+  margin-top: 4px;
+}
+
+.otherBtn {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-muted);
+  background: none;
+  border: 1px dashed var(--border-subtle);
+  border-radius: 3px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.otherBtn:hover {
+  color: var(--color-ai);
+  border-color: rgba(139, 92, 246, 0.45);
+}
+
+.otherInput {
+  width: 100%;
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  border-radius: 3px;
+  padding: 5px 8px;
+  outline: none;
+}
+
+.otherInput:focus {
+  border-color: var(--color-ai);
+}
+
+.freeAnswer {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  color: var(--color-ai);
+  margin-top: 4px;
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.submit {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  color: #fff;
+  background: var(--color-ai);
+  border: 1px solid var(--color-ai);
+  border-radius: 3px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.submit:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.skip {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.skip:hover {
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}

@@ -1,4 +1,6 @@
-export type PermissionResult = { behavior: 'allow' } | { behavior: 'deny'; message: string };
+export type PermissionResult =
+  | { behavior: 'allow'; updatedInput?: Record<string, unknown> }
+  | { behavior: 'deny'; message: string };
 
 const DENY: PermissionResult = { behavior: 'deny', message: 'User denied the tool use.' };
 
@@ -6,6 +8,10 @@ const DENY: PermissionResult = { behavior: 'deny', message: 'User denied the too
  * Bridges the SDK's canUseTool callback to the renderer's ai:approve IPC.
  * canUseTool calls `request(toolUseId)` and awaits the returned promise; the
  * renderer's Approve/Deny button drives `resolve(toolUseId, approved)`.
+ *
+ * `updatedInput` is how an answer gets back to a tool: the CLI re-reads the
+ * input we hand back, so AskUserQuestion picks up the user's choice from an
+ * `answers` map rather than reporting that nobody answered.
  */
 export class ApprovalBridge {
   private _pending = new Map<string, (r: PermissionResult) => void>();
@@ -16,11 +22,11 @@ export class ApprovalBridge {
     });
   }
 
-  resolve(toolUseId: string, approved: boolean): boolean {
+  resolve(toolUseId: string, approved: boolean, updatedInput?: Record<string, unknown> | null): boolean {
     const fn = this._pending.get(toolUseId);
     if (!fn) return false;
     this._pending.delete(toolUseId);
-    fn(approved ? { behavior: 'allow' } : DENY);
+    fn(approved ? { behavior: 'allow', ...(updatedInput ? { updatedInput } : {}) } : DENY);
     return true;
   }
 
