@@ -29,4 +29,57 @@ describe('translateSdkMessage', () => {
     expect(translateSdkMessage({ type: 'system', subtype: 'init' })).toEqual([]);
     expect(translateSdkMessage({ type: 'tool_progress' })).toEqual([]);
   });
+
+  it('thinking_delta stream_event → delta-flagged thinking block', () => {
+    const m = {
+      type: 'stream_event',
+      parent_tool_use_id: null,
+      event: {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'thinking_delta', thinking: 'let me ' },
+      },
+    };
+    expect(translateSdkMessage(m)).toEqual([
+      { type: 'assistant', message: { role: 'assistant', content: [{ type: 'thinking', thinking: 'let me ', delta: true }] } },
+    ]);
+  });
+
+  it('text_delta stream_event → delta-flagged text block', () => {
+    const m = {
+      type: 'stream_event',
+      parent_tool_use_id: null,
+      event: {
+        type: 'content_block_delta',
+        index: 1,
+        delta: { type: 'text_delta', text: 'Hel' },
+      },
+    };
+    expect(translateSdkMessage(m)).toEqual([
+      { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Hel', delta: true }] } },
+    ]);
+  });
+
+  it('drops sub-agent stream_events and non-delta stream events', () => {
+    expect(translateSdkMessage({
+      type: 'stream_event',
+      parent_tool_use_id: 'toolu_1',
+      event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'sub' } },
+    })).toEqual([]);
+    expect(translateSdkMessage({
+      type: 'stream_event',
+      parent_tool_use_id: null,
+      event: { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+    })).toEqual([]);
+    expect(translateSdkMessage({
+      type: 'stream_event',
+      parent_tool_use_id: null,
+      event: { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '{"a"' } },
+    })).toEqual([]);
+    expect(translateSdkMessage({
+      type: 'stream_event',
+      parent_tool_use_id: null,
+      event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '' } },
+    })).toEqual([]);
+  });
 });

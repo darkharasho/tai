@@ -46,6 +46,10 @@ describe('sdkOptions', () => {
     expect(sdkOptions({ ...base, permMode: 'ask', showReasoning: false }).thinking).toEqual({ type: 'adaptive', display: 'omitted' });
   });
 
+  it('opts into partial messages so reasoning and text stream incrementally', () => {
+    expect(sdkOptions({ ...base, permMode: 'ask' }).includePartialMessages).toBe(true);
+  });
+
   it('passes a valid effort through and ignores "auto"/unknown values', () => {
     expect(sdkOptions({ ...base, permMode: 'ask', effort: 'high' }).effort).toBe('high');
     expect(sdkOptions({ ...base, permMode: 'ask', effort: 'auto' }).effort).toBeUndefined();

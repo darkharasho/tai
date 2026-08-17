@@ -972,7 +972,13 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         const thinking = thinkingParts.join('');
         if (thinking && (thinkingIsDelta || thinking !== lastThinkingEntry)) {
           gotContent = true;
-          const lastIdx = entries.length - 1;
+          // Deltas extend the entry they are streaming into (the last one);
+          // a complete message instead replaces the thinking entry of the
+          // current turn, which the answer text may already sit after.
+          let lastIdx = entries.length - 1;
+          if (!thinkingIsDelta) {
+            while (lastIdx >= 0 && entries[lastIdx].kind === 'text') lastIdx--;
+          }
           const lastEntry = lastIdx >= 0 ? entries[lastIdx] : null;
           if (lastEntry && lastEntry.kind === 'thinking') {
             const updated = thinkingIsDelta ? (lastEntry.text || '') + thinking : thinking;

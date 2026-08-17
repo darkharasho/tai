@@ -33,6 +33,7 @@ export interface SdkOptionsResult {
   mcpServers: Record<string, unknown>;
   thinking?: ThinkingConfig;
   effort?: EffortLevel;
+  includePartialMessages: boolean;
 }
 
 /**
@@ -55,6 +56,10 @@ export function sdkOptions(input: SdkOptionsInput): SdkOptionsResult {
     allowedTools: [HISTORY_TOOL],
     cwd,
     mcpServers,
+    // Without this the SDK only yields whole assistant messages, so reasoning
+    // and answer text land in one lump when the turn is already over. Partial
+    // messages give us the token-level deltas the UI streams.
+    includePartialMessages: true,
   };
   if (permissionMode === 'bypassPermissions') result.allowDangerouslySkipPermissions = true;
   if (remoteExec) result.disallowedTools = REMOTE_DISALLOWED;
