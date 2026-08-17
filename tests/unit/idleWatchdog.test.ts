@@ -40,6 +40,62 @@ describe('createIdleWatchdog', () => {
     expect(onIdle).toHaveBeenCalledOnce();
   });
 
+  it('does not fire while paused, however long the wait', () => {
+    const onIdle = vi.fn();
+    const wd = createIdleWatchdog({ idleMs: 1000, onIdle });
+    wd.kick();
+    wd.pause();
+    vi.advanceTimersByTime(10_000);
+    expect(onIdle).not.toHaveBeenCalled();
+  });
+
+  it('restarts a full interval on resume()', () => {
+    const onIdle = vi.fn();
+    const wd = createIdleWatchdog({ idleMs: 1000, onIdle });
+    wd.kick();
+    wd.pause();
+    vi.advanceTimersByTime(10_000);
+    wd.resume();
+    vi.advanceTimersByTime(900);
+    expect(onIdle).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(200);
+    expect(onIdle).toHaveBeenCalledOnce();
+  });
+
+  it('stays paused until every nested pause is resumed', () => {
+    const onIdle = vi.fn();
+    const wd = createIdleWatchdog({ idleMs: 1000, onIdle });
+    wd.kick();
+    wd.pause();
+    wd.pause();
+    wd.resume();
+    vi.advanceTimersByTime(5000);
+    expect(onIdle).not.toHaveBeenCalled();
+    wd.resume();
+    vi.advanceTimersByTime(1001);
+    expect(onIdle).toHaveBeenCalledOnce();
+  });
+
+  it('ignores kick() while paused', () => {
+    const onIdle = vi.fn();
+    const wd = createIdleWatchdog({ idleMs: 1000, onIdle });
+    wd.pause();
+    wd.kick();
+    vi.advanceTimersByTime(5000);
+    expect(onIdle).not.toHaveBeenCalled();
+  });
+
+  it('cancel() wins over a pending resume()', () => {
+    const onIdle = vi.fn();
+    const wd = createIdleWatchdog({ idleMs: 1000, onIdle });
+    wd.kick();
+    wd.pause();
+    wd.cancel();
+    wd.resume();
+    vi.advanceTimersByTime(5000);
+    expect(onIdle).not.toHaveBeenCalled();
+  });
+
   it('does not re-arm after cancel()', () => {
     const onIdle = vi.fn();
     const wd = createIdleWatchdog({ idleMs: 1000, onIdle });

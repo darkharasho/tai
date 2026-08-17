@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow } from 'electron';
+import { ipcMain, BrowserWindow, app } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -15,9 +15,26 @@ import { generateHistoryServerScript, generateHistoryMcpConfig } from './mcpHist
 import { enrichEnv } from './platform';
 import { getAvailableClaudeModels } from './claudeModels';
 import { createIdleWatchdog } from './idleWatchdog';
+import { resolveClaudeExecutable } from './claudeExecutable';
 import { classifyProviderError } from '../../src/utils/classifyProviderError';
 
 const sshManager = new RemoteSshManager();
+
+// Resolved once: the CLI binary the SDK should spawn. Left null when we can't
+// find it, so the SDK falls back to its own lookup.
+let cachedExecutable: string | null | undefined;
+function claudeExecutable(): string | null {
+  if (cachedExecutable === undefined) {
+    let appPath: string | null = null;
+    try { appPath = app.getAppPath(); } catch { appPath = null; }
+    cachedExecutable = resolveClaudeExecutable({
+      exists: fs.existsSync,
+      appPath,
+      resolve: typeof require !== 'undefined' ? (s) => require.resolve(s) : null,
+    });
+  }
+  return cachedExecutable;
+}
 
 interface ClaudeState {
   /** Pushes the next queued user turn into the live query; null when idle. */
@@ -149,27 +166,62 @@ function startQuery(win: BrowserWindow | null, key: string, firstMessage: string
     },
   });
 
-  const q = query({
-    prompt: inputStream(),
-    options: {
-      ...opts,
-      abortController: abort,
-      env: enrichedEnv(),
-      canUseTool: async (toolName: string, input: Record<string, unknown>, o: { toolUseID: string }) => {
-        // History tool is auto-allowed via allowedTools and never reaches here;
-        // bypass modes also skip canUseTool. Anything that arrives needs a decision.
-        const p = state.approvals.request(o.toolUseID);
-        safeSend(win, 'ai:message', key, {
-          type: 'approval_needed',
-          toolUseId: o.toolUseID,
-          toolName,
-          command: toolCommandString(input as Record<string, any>),
-          input,
-        });
-        return p;
+  const exe = claudeExecutable();
+
+  // Arm before the query exists: a provider that hangs before its first message
+  // would otherwise never start the clock, since only the read loop kicks it.
+  watchdog.kick();
+
+  let q: ReturnType<typeof query>;
+  try {
+    q = query({
+      prompt: inputStream(),
+      options: {
+        ...opts,
+        ...(exe ? { pathToClaudeCodeExecutable: exe } : {}),
+        abortController: abort,
+        env: enrichedEnv(),
+        canUseTool: async (toolName: string, input: Record<string, unknown>, o: { toolUseID: string }) => {
+          // History tool is auto-allowed via allowedTools and never reaches here;
+          // bypass modes also skip canUseTool. Anything that arrives needs a decision.
+          const p = state.approvals.request(o.toolUseID);
+          safeSend(win, 'ai:message', key, {
+            type: 'approval_needed',
+            toolUseId: o.toolUseID,
+            toolName,
+            command: toolCommandString(input as Record<string, any>),
+            input,
+          });
+          // No SDK output flows while the user reads the approval card, so hold
+          // the idle clock rather than time out a perfectly healthy query.
+          watchdog.pause();
+          try {
+            return await p;
+          } finally {
+            watchdog.resume();
+          }
+        },
       },
-    },
-  });
+    });
+  } catch (err: any) {
+    // query() constructs (and spawns) its transport synchronously, so a failure
+    // to launch the CLI lands here. Without this the throw escapes the ai:send
+    // handler with state.busy still true and no `done` ever reaching the
+    // renderer, leaving the block spinning forever.
+    watchdog.cancel();
+    if (state.abort === abort) {
+      state.busy = false;
+      state.pushInput = null;
+      state.endInput = null;
+      state.abort = null;
+      state.approvals.clear();
+    }
+    const text = err?.message || String(err);
+    const { category } = classifyProviderError(text);
+    safeSend(win, 'ai:error', key, text, category);
+    safeSend(win, 'ai:message', key, { type: 'done' });
+    return;
+  }
 
   (async () => {
     try {
