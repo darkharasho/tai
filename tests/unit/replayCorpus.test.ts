@@ -103,10 +103,17 @@ describe('PTY replay corpus (baseline)', () => {
     // FIXED (Task 9): the block used to end at the banner. Everything the user
     // actually did in the REPL — `2 + 2`, its answer, `exit()` — arrived after
     // the cursor-back redraws tripped the false alt-screen latch, and
-    // `_routeChunk` discarded it. Retention now holds those bytes on the guess
-    // and, since no authoritative signal ever confirms it, the block replays
-    // them as it ends. This is the whole point of the task, and it is the one
-    // fixture in the corpus that can show it: the two below end mid-command.
+    // `_routeChunk` discarded it. Retention now holds those bytes on the guess,
+    // and the replay happens on the CONTRADICTION path in setModeState — the
+    // next OSC 133 `A` resolves `shell:authoritative`, whose inputOwner differs
+    // from the guessed `program`, so the buffer is flushed back into the block.
+    // Verified by instrumentation: exactly one _replayRetained call, notify:true,
+    // 812 bytes. NOT the block-end replay in _finalizeIntegratedBlock — deleting
+    // that branch leaves this fixture green, while deleting the setModeState
+    // replay fails it. The `mode:shell:authoritative` entry in the transitions
+    // snapshot above is the signal doing the work. This is the whole point of
+    // the task, and the one fixture in the corpus that can show it: the two
+    // below end mid-command, so their blocks are never finalized at all.
     expect(blocks[1].output).toMatchInlineSnapshot(`
       "Python 3.14.6 (main, Jun 10 2026, 10:03:53) [GCC 13.3.0] on linux
       Type "help", "copyright", "credits" or "license" for more information.
