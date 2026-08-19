@@ -90,6 +90,27 @@ describe('replayRecording', () => {
     expect(result.transitions).toEqual(['altScreen:true', 'termios:raw']);
   });
 
+  // The resolver's own transitions live in `modeTransitions`, not `transitions`:
+  // the corpus snapshots pin the legacy labels as the pre-migration baseline and
+  // must stay byte-identical through this refactor.
+  it('reports resolver mode transitions in the timeline', () => {
+    const rec = new PtyRecorder(() => 0);
+    rec.data(osc133('A'));
+    rec.data('$ ');
+    rec.data(osc133('B'));
+    rec.data('claude\n');
+    rec.data(osc133('C'));
+    rec.data('\x1b[2A');       // inferred flip
+    rec.termios(false, true);  // authoritative confirmation
+
+    const { modeTransitions } = replayRecording(parseRecording(rec.serialize()));
+
+    expect(modeTransitions).toContain('mode:program:inferred');
+    expect(modeTransitions).toContain('mode:program:authoritative');
+    expect(modeTransitions.indexOf('mode:program:inferred'))
+      .toBeLessThan(modeTransitions.indexOf('mode:program:authoritative'));
+  });
+
   it('returns an empty result for an empty recording', () => {
     const result = replayRecording({ entries: [] });
     expect(result.blocks).toEqual([]);

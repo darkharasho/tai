@@ -39,6 +39,7 @@ import { detectSshError } from '@/utils/sshDetect';
 import { capDisplayItems } from '@/utils/blockCap';
 import { withAnswers } from '@/utils/askUserQuestion';
 import { clampStoredOutput } from '@/utils/clampStoredOutput';
+import { createModeResolver, type ModeState } from '@/utils/terminalMode';
 import { PtyRecorder } from '@/utils/ptyRecording';
 import {
   initialRemoteAi, pillView, onSshChange, enableWatch, setMode,
@@ -143,6 +144,19 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const [interactivePortalTarget, setInteractivePortalTarget] = useState<HTMLDivElement | null>(null);
   const [xtermFallbackEl, setXtermFallbackEl] = useState<HTMLDivElement | null>(null);
   const [interactiveFullscreen, setInteractiveFullscreen] = useState(false);
+  const modeResolverRef = useRef(createModeResolver());
+  const [modeState, setModeState] = useState<ModeState>(() => modeResolverRef.current.state);
+  // Behaviour-neutral bridge: the resolver is now the single decider, but the
+  // three legacy flags keep their exact current meaning so this step changes no
+  // decisions. deriveInputSurface reads 'fullscreen' as
+  // `altScreenVisible || (interactiveMode && interactiveFullscreen)` and
+  // 'docked' as `interactiveMode`, so this mapping reproduces both branches.
+  // The flags collapse into modeState in the next commit.
+  useEffect(() => {
+    setAltScreenVisible(modeState.inputOwner === 'fullscreen');
+    setInteractiveMode(modeState.inputOwner === 'program' || modeState.inputOwner === 'fullscreen');
+    setInteractiveFullscreen(modeState.inputOwner === 'fullscreen');
+  }, [modeState]);
   const [inputMode, setInputMode] = useState<'shell' | 'ai'>('shell');
   const handleInputModeChange = useCallback((mode: 'shell' | 'ai') => {
     setInputMode(mode);
@@ -610,6 +624,11 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       });
     });
 
+    segmenter.onModeSignal((signal) => {
+      if (cancelled) return;
+      setModeState(modeResolverRef.current.apply(signal));
+    });
+
     segmenter.onAltScreen((entered) => {
       if (cancelled) return;
       setAltScreenVisible(entered);
@@ -682,6 +701,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       if (cancelled) return;
       if (evtId !== ptyId) return;
       recorderRef.current.termios(e.icanon, e.echo);
+      setModeState(modeResolverRef.current.apply({ kind: 'termios', icanon: e.icanon, echo: e.echo }));
       setPasswordPrompt(e.passwordPrompt);
       // Raw-mode tty (REPLs like python/node/psql, plus full TUIs) — route
       // the card through xterm so the user sees keystrokes echo and can
@@ -750,6 +770,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       }
       if (outputRafId !== null) cancelAnimationFrame(outputRafId);
       segmenter.reset();
+      modeResolverRef.current.reset();
       recorderRef.current.clear();
       setShellIntegrated(false);
       setSshSessionActive(false);

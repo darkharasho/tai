@@ -5,6 +5,7 @@ import { parseOsc6973 } from '@/utils/osc6973';
 import { parseInteractiveSshCommand, checkSshLoginState } from '@/utils/sshDetect';
 import { isBootstrapEchoLine } from '@/utils/bootstrapEcho';
 import type { SegmentedBlock } from '@/types';
+import type { ModeSignal } from '@/utils/terminalMode';
 
 // Prompt-final glyphs. Beyond the classic `$#%>` we include theme glyphs
 // (❯ → ➜ λ » ⟫) used by Starship/p10k/fish. Deliberately excludes box-drawing
@@ -39,6 +40,7 @@ type PromptChangeCallback = (prompt: string, isRemote: boolean, sshTarget: strin
 type ShellIntegrationCallback = (active: boolean) => void;
 type SshSessionCallback = (active: boolean, target: string | null) => void;
 type BlockActiveCallback = (active: boolean) => void;
+type ModeSignalCallback = (signal: ModeSignal) => void;
 
 // Maximum bytes accumulated per OSC/DCS payload buffer. Sequences beyond this
 // limit are silently truncated (head-preserving); marker semantics live at the
@@ -75,6 +77,7 @@ export class BlockSegmenter {
   private _integrationCallbacks: ShellIntegrationCallback[] = [];
   private _sshSessionCallbacks: SshSessionCallback[] = [];
   private _blockActiveCallbacks: BlockActiveCallback[] = [];
+  private _modeSignalCallbacks: ModeSignalCallback[] = [];
   private _inSshSession = false;
   // OSC 133 command-nesting depth (incremented on C, decremented on D). Used to
   // tell a nested integrated-remote command's A/D markers apart from a genuine
@@ -138,6 +141,11 @@ export class BlockSegmenter {
   onShellIntegration(cb: ShellIntegrationCallback): void { this._integrationCallbacks.push(cb); }
   onSshSession(cb: SshSessionCallback): void { this._sshSessionCallbacks.push(cb); }
   onBlockActive(cb: BlockActiveCallback): void { this._blockActiveCallbacks.push(cb); }
+  onModeSignal(cb: ModeSignalCallback): void { this._modeSignalCallbacks.push(cb); }
+
+  private _emitModeSignal(signal: ModeSignal): void {
+    this._modeSignalCallbacks.forEach(cb => cb(signal));
+  }
 
   private _setCommandActive(active: boolean): void {
     if (this._commandActive === active) return;
@@ -201,11 +209,13 @@ export class BlockSegmenter {
         this._interactiveCallbacks.forEach(cb => cb(false));
       }
       this._altScreenCallbacks.forEach(cb => cb(true));
+      this._emitModeSignal({ kind: 'altScreen', entered: true });
     }
     if (altExitSeq) {
       this._inAltScreen = false;
       this._emu.reset();
       this._altScreenCallbacks.forEach(cb => cb(false));
+      this._emitModeSignal({ kind: 'altScreen', entered: false });
       const exitIdx = rawData.indexOf(altExitSeq) + altExitSeq.length;
       rawData = rawData.substring(exitIdx);
       if (!rawData) return;
@@ -481,6 +491,7 @@ export class BlockSegmenter {
       if (parsed) {
         if (parsed.hook === 'preexec') {
           this._pendingPreexec = { command: parsed.command };
+          this._emitModeSignal({ kind: 'hook', hook: parsed });
         } else if (parsed.hook === 'precmd') {
           this._pendingPrecmd = {
             exit: parsed.exit,
@@ -489,6 +500,7 @@ export class BlockSegmenter {
             command: parsed.command,
             cwd: parsed.cwd,
           };
+          this._emitModeSignal({ kind: 'hook', hook: parsed });
         }
       }
       lastIndex = OSC6973_RE.lastIndex;
@@ -559,10 +571,12 @@ export class BlockSegmenter {
         this._osc133ExitCode = null;
         this._osc133BlockStart = Date.now();
         this._passwordPromptFired = false;
+        this._emitModeSignal({ kind: 'osc133', phase: 'prompt' });
         break;
       }
       case 'B': {
         this._osc133Phase = 'command';
+        this._emitModeSignal({ kind: 'osc133', phase: 'command' });
         const promptEmu = new TermEmulator();
         promptEmu.feed(this._osc133RawPrompt);
         const promptText = promptEmu.textUntrimmed();
@@ -588,6 +602,7 @@ export class BlockSegmenter {
         // it there prevents the prompt characters from leaking into outputBuf.
         if (this._osc133Phase !== 'command') break;
         this._osc133Phase = 'output';
+        this._emitModeSignal({ kind: 'osc133', phase: 'output' });
         this._cmdDepth++;
         this._setCommandActive(true);
         const ssh = parseInteractiveSshCommand(this._commandText(this._osc133RawCommand).trim());
@@ -682,10 +697,12 @@ export class BlockSegmenter {
     if (hasAltEnter && !this._inAltScreen) {
       this._inAltScreen = true;
       this._altScreenCallbacks.forEach(cb => cb(true));
+      this._emitModeSignal({ kind: 'altScreen', entered: true });
     }
     if (altExitSeq && this._inAltScreen) {
       this._inAltScreen = false;
       this._altScreenCallbacks.forEach(cb => cb(false));
+      this._emitModeSignal({ kind: 'altScreen', entered: false });
     }
     // Keep the last 7 bytes (max-altSeq-length - 1) for next chunk's scan.
     this._altScreenTail = rawData.slice(-7);
@@ -697,6 +714,10 @@ export class BlockSegmenter {
     if (!this._inAltScreen && this._osc133Phase === 'output' && TUI_REPOSITION_RE.test(rawData)) {
       this._inAltScreen = true;
       this._altScreenCallbacks.forEach(cb => cb(true));
+      // A cursor-reposition redraw is an inference, not an observation. It is
+      // labelled as such so the resolver can let an authoritative signal
+      // overrule it and so retention can refuse to drop bytes on a guess.
+      this._emitModeSignal({ kind: 'tuiHint' });
     }
 
     if (!this._passwordPromptFired && /(?:password|passphrase).*:\s*$/i.test(stripAnsi(rawData))) {
@@ -838,6 +859,7 @@ export class BlockSegmenter {
     this._integrationCallbacks = [];
     this._sshSessionCallbacks = [];
     this._blockActiveCallbacks = [];
+    this._modeSignalCallbacks = [];
     this._inSshSession = false;
     this._cmdDepth = 0;
     this._sshDepth = 0;

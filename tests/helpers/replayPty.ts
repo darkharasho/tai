@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BlockSegmenter } from '@/components/BlockSegmenter';
 import { parseRecording, type PtyRecording } from '@/utils/ptyRecording';
+import { createModeResolver } from '@/utils/terminalMode';
 import type { SegmentedBlock } from '@/types';
 
 export interface ReplayEvent {
@@ -15,6 +16,16 @@ export interface ReplayResult {
   timeline: ReplayEvent[];
   /** Labels only. The ergonomic form for assertions; flapping shows up here. */
   transitions: string[];
+  /**
+   * Resolver transitions, kept in their own array rather than merged into
+   * `timeline`. The corpus snapshots pin the legacy labels and their order as
+   * the pre-migration baseline; folding a new label class into the same array
+   * would rewrite every one of those snapshots and destroy the only evidence
+   * that this refactor changed no decisions. Interleaving is still recoverable
+   * from the shared `t` values.
+   */
+  modeTimeline: ReplayEvent[];
+  modeTransitions: string[];
 }
 
 /**
@@ -30,9 +41,22 @@ export function replayRecording(rec: PtyRecording): ReplayResult {
   const seg = new BlockSegmenter();
   const blocks: SegmentedBlock[] = [];
   const timeline: ReplayEvent[] = [];
+  const modeTimeline: ReplayEvent[] = [];
   let now = 0;
 
+  const resolver = createModeResolver();
+  let lastMode = `${resolver.state.inputOwner}:${resolver.state.provenance}`;
+
+  const pushMode = () => {
+    const label = `${resolver.state.inputOwner}:${resolver.state.provenance}`;
+    if (label !== lastMode) {
+      lastMode = label;
+      modeTimeline.push({ t: now, label: `mode:${label}` });
+    }
+  };
+
   seg.onBlock(b => blocks.push(b));
+  seg.onModeSignal(signal => { resolver.apply(signal); pushMode(); });
   seg.onAltScreen(entered => timeline.push({ t: now, label: `altScreen:${entered}` }));
   seg.onInteractiveMode((entered, fullscreen) => timeline.push({
     t: now,
@@ -54,6 +78,8 @@ export function replayRecording(rec: PtyRecording): ReplayResult {
             : !entry.echo ? 'termios:password'
             : 'termios:cooked',
         });
+        resolver.apply({ kind: 'termios', icanon: entry.icanon, echo: entry.echo });
+        pushMode();
         break;
       case 'resize':
         seg.onResize(entry.cols, entry.rows);
@@ -64,7 +90,13 @@ export function replayRecording(rec: PtyRecording): ReplayResult {
     }
   }
 
-  return { blocks, timeline, transitions: timeline.map(e => e.label) };
+  return {
+    blocks,
+    timeline,
+    transitions: timeline.map(e => e.label),
+    modeTimeline,
+    modeTransitions: modeTimeline.map(e => e.label),
+  };
 }
 
 export function replayFixture(name: string): ReplayResult {
