@@ -329,22 +329,33 @@ describe('degraded mode', () => {
     r.apply({ kind: 'sourceUnavailable', source: 'termios' });
     const st = r.apply({ kind: 'altScreen', entered: true });
     expect(st.inputOwner).toBe('fullscreen');
+    // Per-source-ness lives in the PROVENANCE: this decision needed no termios,
+    // so it is authoritative. `degradedReason` is a read of the session's open
+    // gaps, not of this decision, so it keeps reporting the missing termios —
+    // clearing it here is what used to make the field flap.
     expect(st.provenance).toBe('authoritative');
-    expect(st.degradedReason).toBeUndefined();
+    expect(st.degradedReason).toBe('no-termios');
   });
 
-  it('marks state degraded when hooks are unavailable', () => {
+  it('marks the decisions hooks answer degraded when hooks are unavailable', () => {
     const r = createModeResolver();
     r.apply({ kind: 'sourceUnavailable', source: 'hooks' });
-    const st = r.apply({ kind: 'tuiHint' });
+    // The synthesized boundary is the decision a real marker would have made:
+    // without hooks it is a heuristic wearing a marker's clothes.
+    const st = r.apply({ kind: 'osc133', phase: 'idle' });
     expect(st.provenance).toBe('degraded');
     expect(st.degradedReason).toBe('no-hooks');
+    // A raw-mode guess is termios's question. A missing hooks source says
+    // nothing about it and used to degrade it anyway.
+    const hint = r.apply({ kind: 'tuiHint' });
+    expect(hint.provenance).toBe('inferred');
+    expect(hint.degradedReason).toBe('no-hooks');
   });
 
   it('self-heals when the missing source starts reporting', () => {
     const r = createModeResolver();
     r.apply({ kind: 'sourceUnavailable', source: 'hooks' });
-    expect(r.apply({ kind: 'tuiHint' }).provenance).toBe('degraded');
+    expect(r.apply({ kind: 'osc133', phase: 'idle' }).provenance).toBe('degraded');
 
     // A remote host that gains integration starts emitting hooks. No resolver
     // change is needed for this to promote — that is what makes a future
@@ -361,8 +372,9 @@ describe('degraded mode', () => {
     // The gap is only observable on the NEXT decision that consults it, and a
     // boundary is exactly what re-arms the hint path — so this is the line
     // that distinguishes a healed session from one that merely looks healed
-    // for a single frame.
-    expect(r.apply({ kind: 'tuiHint' }).provenance).toBe('inferred');
+    // for a single frame. It has to be a decision hooks are the authority for —
+    // a tuiHint is termios's question and would read 'inferred' either way.
+    expect(r.apply({ kind: 'osc133', phase: 'idle' }).provenance).toBe('authoritative');
   });
 
   // Each real marker heals independently — asserted one at a time, because a
@@ -371,7 +383,9 @@ describe('degraded mode', () => {
     const r = createModeResolver();
     r.apply({ kind: 'sourceUnavailable', source: 'hooks' });
     r.apply({ kind: 'osc133', phase: 'command' });
-    expect(r.apply({ kind: 'tuiHint' }).provenance).toBe('inferred');
+    const healed = r.apply({ kind: 'osc133', phase: 'idle' });
+    expect(healed.provenance).toBe('authoritative');
+    expect(healed.degradedReason).toBeUndefined();
   });
 
   it('a termios reading clears a termios degradation', () => {
@@ -380,11 +394,12 @@ describe('degraded mode', () => {
     const st = r.apply({ kind: 'termios', icanon: false, echo: true });
     expect(st.provenance).toBe('authoritative');
     expect(st.degradedReason).toBeUndefined();
-    // Both assertions above hold even with the heal deleted: the termios branch
-    // hardcodes both fields, so it is not the heal they observe. The gap is only
-    // visible on the NEXT decision that consults it — take one. The boundary
-    // releases the command's authoritative latch so the hint is live again, and
-    // the hint routes through degrade(); 'inferred' means the gap really closed.
+    // `degradedReason` is now derived from the open-gap set rather than
+    // hardcoded by this branch, so the assertion above observes the heal
+    // directly. The provenance one still does not — take a decision that
+    // consults the gap. The boundary releases the command's authoritative latch
+    // so the hint is live again, and the hint routes through degrade();
+    // 'inferred' means the gap really closed.
     r.apply({ kind: 'osc133', phase: 'idle' });
     expect(r.apply({ kind: 'tuiHint' }).provenance).toBe('inferred');
   });
@@ -405,14 +420,22 @@ describe('degraded mode', () => {
     const r = createModeResolver();
     r.apply({ kind: 'sourceUnavailable', source: 'hooks' });
     // A cooked reading leaves the owner on 'shell' and says nothing about hooks.
-    r.apply({ kind: 'termios', icanon: true, echo: true });
+    // Asserted ON the reading rather than stepped around: this intermediate
+    // state is where the field used to blank itself, and it is live for however
+    // long it takes the next signal to arrive.
+    const st = r.apply({ kind: 'termios', icanon: true, echo: true });
+    // The line-discipline question is answered, and answering it is what lets
+    // retention resolve its buffer — that property must survive the gap.
+    expect(st.provenance).toBe('authoritative');
+    // ...and the hooks gap is still open, because nothing closed it.
+    expect(st.degradedReason).toBe('no-hooks');
     // The reading latched authoritativeThisCommand, so a boundary is needed
     // before a hint is listened to again. The SYNTHETIC boundary, which is the
-    // only kind a session with no hooks can ever produce.
-    r.apply({ kind: 'osc133', phase: 'idle' });
-    const st = r.apply({ kind: 'tuiHint' });
-    expect(st.provenance).toBe('degraded');
-    expect(st.degradedReason).toBe('no-hooks');
+    // only kind a session with no hooks can ever produce — and it is the
+    // decision the gap actually bears on.
+    const boundary = r.apply({ kind: 'osc133', phase: 'idle' });
+    expect(boundary.provenance).toBe('degraded');
+    expect(boundary.degradedReason).toBe('no-hooks');
   });
 
   // The one that decides whether this feature works at all for its headline
@@ -428,7 +451,9 @@ describe('degraded mode', () => {
     expect(boundary.commandRunning).toBe(false);
     expect(boundary.provenance).toBe('degraded');
     expect(boundary.degradedReason).toBe('no-hooks');
-    expect(r.apply({ kind: 'tuiHint' }).provenance).toBe('degraded');
+    // And it did not heal itself on the way through: the next one is degraded
+    // too, for the same reason.
+    expect(r.apply({ kind: 'osc133', phase: 'idle' }).provenance).toBe('degraded');
   });
 
   // Windows quits vim. The alt-screen escape is authoritative about the screen
@@ -472,9 +497,9 @@ describe('degraded mode', () => {
     const st = r.apply({ kind: 'osc133', phase: 'prompt' });
     expect(st.provenance).toBe('authoritative');
     expect(st.degradedReason).toBeUndefined();
-    // Same masking as the precmd branch: the two assertions above are hardcoded
-    // by that branch and hold even with the heal deleted. This one observes it.
-    expect(r.apply({ kind: 'tuiHint' }).provenance).toBe('inferred');
+    // Same masking as the precmd branch: the provenance above is hardcoded by
+    // that branch and holds even with the heal deleted. This one observes it.
+    expect(r.apply({ kind: 'osc133', phase: 'idle' }).provenance).toBe('authoritative');
   });
 
   it('drops every declared gap on pty exit and on reset', () => {
@@ -485,10 +510,29 @@ describe('degraded mode', () => {
     r.apply({ kind: 'ptyExit' });
     expect(r.apply({ kind: 'tuiHint' }).provenance).toBe('inferred');
 
+    // The hooks gap is probed on a decision hooks answer, which is the only
+    // place it is visible in the provenance.
     r.apply({ kind: 'sourceUnavailable', source: 'hooks' });
-    expect(r.apply({ kind: 'tuiHint' }).provenance).toBe('degraded');
+    expect(r.apply({ kind: 'osc133', phase: 'idle' }).provenance).toBe('degraded');
     r.reset();
-    expect(r.apply({ kind: 'tuiHint' }).provenance).toBe('inferred');
+    expect(r.apply({ kind: 'osc133', phase: 'idle' }).provenance).toBe('authoritative');
+  });
+
+  // ...but only against the question the current state answered. The state a
+  // termios reading resolved is authoritative because termios spoke; learning
+  // that hooks are missing is news about a different question and must not
+  // retroactively turn that reading into a guess (retention would then refuse
+  // to drop a confirmed TUI's frames for the rest of the command).
+  it('does not re-judge a resolved state against an irrelevant gap', () => {
+    const r = createModeResolver();
+    r.apply({ kind: 'osc133', phase: 'output' });
+    expect(r.apply({ kind: 'termios', icanon: false, echo: true }).provenance)
+      .toBe('authoritative');
+    const st = r.apply({ kind: 'sourceUnavailable', source: 'hooks' });
+    expect(st.provenance).toBe('authoritative');
+    expect(st.degradedReason).toBe('no-hooks');
+    // The same declaration DOES land on the next decision hooks bear on.
+    expect(r.apply({ kind: 'osc133', phase: 'idle' }).provenance).toBe('degraded');
   });
 
   // Declaring a gap must mark the CURRENT state degraded too, not only the

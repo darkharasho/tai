@@ -265,9 +265,9 @@ describe('useTerminalMode', () => {
     // Boundary semantics intact...
     expect(t.mode().modeState.inputOwner).toBe('shell');
     expect(t.mode().modeState.commandRunning).toBe(false);
-    // ...and the gap is still open.
+    // ...and the gap is still open, on the field the chip reads and on the
+    // provenance of the very decision hooks would have made authoritatively.
     expect(t.mode().modeState.degradedReason).toBe('no-hooks');
-    act(() => t.mode().onModeSignal({ kind: 'tuiHint' }));
     expect(t.mode().modeState.provenance).toBe('degraded');
   });
 

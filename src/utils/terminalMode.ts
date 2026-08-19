@@ -49,6 +49,9 @@ export type Provenance = 'authoritative' | 'inferred' | 'degraded';
 /** Which authoritative source is missing. Degradation is per-source, never global. */
 export type DegradedReason = 'no-hooks' | 'no-termios';
 
+/** The authoritative sources a decision can depend on. */
+type ModeSourceName = 'termios' | 'hooks';
+
 export interface ModeState {
   inputOwner: InputOwner;
   provenance: Provenance;
@@ -94,22 +97,53 @@ export function createModeResolver(): ModeResolver {
   // the current foreground context. That is what collapses three special cases
   // into one path, and what lets a session self-heal the moment a remote host
   // starts emitting hooks.
-  const unavailable = new Set<'termios' | 'hooks'>();
+  const unavailable = new Set<ModeSourceName>();
+
+  // Which sources could authoritatively answer the question the CURRENT state
+  // answers. Relevance is per-DECISION, not per-session: "who owns the input"
+  // is termios's question and a missing hooks source says nothing about it,
+  // while "is a command running / are we back at a prompt" is a question hooks
+  // answer and a synthesized boundary is a guess without them. Tracked as state
+  // because `sourceUnavailable` has to re-judge the state already resolved, and
+  // the question that state answered is not recoverable from the state itself.
+  const OWNERSHIP: readonly ModeSourceName[] = ['termios'];
+  const BOUNDARY: readonly ModeSourceName[] = ['termios', 'hooks'];
+  // The initial state is a boundary claim: a prompt, nothing running.
+  let deciders: readonly ModeSourceName[] = BOUNDARY;
 
   /**
    * Per-source, never global. A missing termios does not make an alt-screen
    * escape any less of an observation, so a fullscreen decision stays
-   * authoritative on Windows while a raw-mode decision does not.
+   * authoritative on Windows while a raw-mode decision does not — and a missing
+   * hooks source does not make a termios reading any less of an observation,
+   * which is why this consults only the sources relevant to `sources`.
    */
-  function degrade(next: ModeState): ModeState {
+  function degrade(next: ModeState, sources: readonly ModeSourceName[]): ModeState {
+    deciders = sources;
     if (next.provenance === 'authoritative' && next.inputOwner === 'fullscreen') return next;
-    if (unavailable.has('termios')) return { ...next, provenance: 'degraded', degradedReason: 'no-termios' };
-    if (unavailable.has('hooks')) return { ...next, provenance: 'degraded', degradedReason: 'no-hooks' };
-    return next;
+    if (!sources.some(s => unavailable.has(s))) return next;
+    return { ...next, provenance: 'degraded' };
+  }
+
+  /**
+   * The open gap, if any. DERIVED on every write rather than stored and cleared
+   * by whichever branch happened to run: a termios reading used to blank a
+   * still-open 'hooks' gap, so the field flapped to undefined and back on the
+   * next signal while the `unavailable` set never changed. Both live consumers
+   * read it directly, and both silently turned off for that interval.
+   *
+   * It is deliberately independent of `provenance`. `provenance` is about the
+   * decision just made; this is about the session, and a state can truthfully
+   * be authoritative about raw mode while shell integration is still missing.
+   */
+  function openGap(): DegradedReason | undefined {
+    if (unavailable.has('termios')) return 'no-termios';
+    if (unavailable.has('hooks')) return 'no-hooks';
+    return undefined;
   }
 
   function set(next: Partial<ModeState>): ModeState {
-    state = { ...state, ...next };
+    state = { ...state, ...next, degradedReason: openGap() };
     return state;
   }
 
@@ -117,6 +151,8 @@ export function createModeResolver(): ModeResolver {
     switch (signal.kind) {
       case 'termios': {
         authoritativeThisCommand = true;
+        // A line-discipline reading. Only termios could contradict it.
+        deciders = OWNERSHIP;
         // A reading arrived, so termios is not missing after all — however it
         // came to be declared missing. Per-source: this says nothing about
         // hooks, so a 'no-hooks' degradation survives it.
@@ -133,13 +169,12 @@ export function createModeResolver(): ModeResolver {
         // reading is authoritative about the line discipline, not about who
         // owns the screen, and retention must not drop bytes on a guess.
         if (state.inputOwner === 'fullscreen' && fullscreenRevocable) {
-          if (!signal.icanon) return set({ passwordPrompt: password, degradedReason: undefined });
+          if (!signal.icanon) return set({ passwordPrompt: password });
           fullscreenRevocable = false;
           return set({
             inputOwner: 'shell',
             provenance: 'authoritative',
             passwordPrompt: password,
-            degradedReason: undefined,
           });
         }
         const owner: InputOwner = state.inputOwner === 'fullscreen'
@@ -149,7 +184,6 @@ export function createModeResolver(): ModeResolver {
           inputOwner: owner,
           provenance: 'authoritative',
           passwordPrompt: password,
-          degradedReason: undefined,
         });
       }
 
@@ -166,8 +200,7 @@ export function createModeResolver(): ModeResolver {
           ...state,
           inputOwner: signal.entered ? 'fullscreen' : 'shell',
           provenance: 'authoritative',
-          degradedReason: undefined,
-        }));
+        }, OWNERSHIP));
       }
 
       case 'fullscreenHint': {
@@ -175,10 +208,12 @@ export function createModeResolver(): ModeResolver {
           // Never downgrade an authoritative alt screen into a revocable claim.
           if (state.inputOwner === 'fullscreen' && !fullscreenRevocable) return state;
           fullscreenRevocable = true;
+          deciders = OWNERSHIP;
           return set({ inputOwner: 'fullscreen', provenance: 'inferred' });
         }
         if (state.inputOwner !== 'fullscreen' || !fullscreenRevocable) return state;
         fullscreenRevocable = false;
+        deciders = OWNERSHIP;
         return set({ inputOwner: 'shell', provenance: 'inferred' });
       }
 
@@ -187,7 +222,9 @@ export function createModeResolver(): ModeResolver {
         // spoken for this command.
         if (authoritativeThisCommand) return state;
         if (state.inputOwner !== 'shell') return state;
-        return set(degrade({ ...state, inputOwner: 'program', provenance: 'inferred' }));
+        // A raw-mode claim. termios is the source that settles it; a missing
+        // hooks source is irrelevant to it and used to degrade it anyway.
+        return set(degrade({ ...state, inputOwner: 'program', provenance: 'inferred' }, OWNERSHIP));
       }
 
       case 'osc133': {
@@ -196,7 +233,7 @@ export function createModeResolver(): ModeResolver {
           // A command is starting. Who owns the input from here is exactly the
           // question termios answers, so if termios cannot report, this state
           // is a guess however trustworthy the marker that produced it.
-          return set(degrade({ ...state, commandRunning: signal.phase === 'output' }));
+          return set(degrade({ ...state, commandRunning: signal.phase === 'output' }, OWNERSHIP));
         }
         if (signal.phase === 'idle') {
           // Synthetic boundary (the segmenter finished a block). Same shell-is-
@@ -207,14 +244,16 @@ export function createModeResolver(): ModeResolver {
           // the case it exists for.
           authoritativeThisCommand = false;
           fullscreenRevocable = false;
+          // The one decision hooks are the authority for: a real boundary
+          // marker is exactly what this is standing in for, so without hooks
+          // this claim is a guess — however good the heuristic behind it.
           return set(degrade({
             ...state,
             inputOwner: 'shell',
             provenance: 'authoritative',
-            degradedReason: undefined,
             commandRunning: false,
             passwordPrompt: false,
-          }));
+          }, BOUNDARY));
         }
         // Rule 4: a prompt is proof the foreground is the shell again — and a
         // real OSC 133 marker is itself proof that hooks are working, so it
@@ -223,12 +262,10 @@ export function createModeResolver(): ModeResolver {
         unavailable.delete('hooks');
         authoritativeThisCommand = false;
         fullscreenRevocable = false;
-        // `set` spreads over the previous state, so an earlier degradedReason
-        // would survive unless it is explicitly cleared here.
+        deciders = BOUNDARY;
         return set({
           inputOwner: 'shell',
           provenance: 'authoritative',
-          degradedReason: undefined,
           commandRunning: false,
           passwordPrompt: false,
         });
@@ -240,15 +277,15 @@ export function createModeResolver(): ModeResolver {
         unavailable.delete('hooks');
         if (signal.hook.hook === 'preexec') {
           // Same reasoning as the OSC 133 command-start branch above.
-          return set(degrade({ ...state, commandRunning: true }));
+          return set(degrade({ ...state, commandRunning: true }, OWNERSHIP));
         }
         // precmd — same boundary semantics as an OSC 133 prompt.
         authoritativeThisCommand = false;
         fullscreenRevocable = false;
+        deciders = BOUNDARY;
         return set({
           inputOwner: 'shell',
           provenance: 'authoritative',
-          degradedReason: undefined,
           commandRunning: false,
           passwordPrompt: false,
         });
@@ -257,6 +294,7 @@ export function createModeResolver(): ModeResolver {
       case 'ptyExit': {
         authoritativeThisCommand = false;
         fullscreenRevocable = false;
+        deciders = BOUNDARY;
         unavailable.clear();
         state = { ...INITIAL_MODE_STATE };
         return state;
@@ -266,7 +304,9 @@ export function createModeResolver(): ModeResolver {
         unavailable.add(signal.source);
         // Degrade the state that is already resolved, not only the next
         // decision: the input surface reads provenance the moment this lands.
-        return set(degrade(state));
+        // Judged against the question the current state answered — declaring
+        // hooks missing does not retroactively make a termios reading a guess.
+        return set(degrade(state, deciders));
       }
     }
   }
@@ -278,6 +318,7 @@ export function createModeResolver(): ModeResolver {
       state = { ...INITIAL_MODE_STATE };
       authoritativeThisCommand = false;
       fullscreenRevocable = false;
+      deciders = BOUNDARY;
       unavailable.clear();
     },
   };
