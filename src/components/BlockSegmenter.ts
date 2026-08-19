@@ -229,6 +229,7 @@ export class BlockSegmenter {
         this._interactiveFullscreen = false;
         this._truncateToCommandEcho();
         this._interactiveCallbacks.forEach(cb => cb(false));
+        this._emitModeSignal({ kind: 'altScreen', entered: false });
         const showIdx = rawData.indexOf(CURSOR_SHOW) + CURSOR_SHOW.length;
         rawData = rawData.substring(showIdx);
         if (!rawData) return;
@@ -240,6 +241,15 @@ export class BlockSegmenter {
       this._interactiveFullscreen = true;
       this._truncateToCommandEcho();
       this._interactiveCallbacks.forEach(cb => cb(true, true));
+      // Deliberately no mode signal on entry. This path means "fullscreen until
+      // something says otherwise", and a cooked termios reading IS that
+      // something today (the echo poll clears interactiveMode and the surface
+      // returns to the composer). An `altScreen` signal would instead make it
+      // survive that reading by rule 3, exactly as a real [?1049h does — a
+      // different rendered surface for the same bytes. The resolver has no
+      // signal for a revocable fullscreen, and adding one is a rule change, so
+      // it belongs to Task 8 along with the removal of onInteractiveMode. Until
+      // then the exit signals keep the resolver from being stranded.
     }
 
     this._emu.feed(rawData);
@@ -337,6 +347,7 @@ export class BlockSegmenter {
       this._inInteractiveMode = false;
       this._interactiveFullscreen = false;
       this._interactiveCallbacks.forEach(cb => cb(false));
+      this._emitModeSignal({ kind: 'altScreen', entered: false });
     }
   }
 
@@ -563,6 +574,7 @@ export class BlockSegmenter {
         if (this._inAltScreen) {
           this._inAltScreen = false;
           this._altScreenCallbacks.forEach(cb => cb(false));
+          this._emitModeSignal({ kind: 'altScreen', entered: false });
         }
         this._osc133Phase = 'prompt';
         this._osc133RawPrompt = '';

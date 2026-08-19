@@ -40,6 +40,8 @@ import { capDisplayItems } from '@/utils/blockCap';
 import { withAnswers } from '@/utils/askUserQuestion';
 import { clampStoredOutput } from '@/utils/clampStoredOutput';
 import { createModeResolver, type ModeState } from '@/utils/terminalMode';
+import { legacyFlagsFromMode, sameModeState } from '@/utils/modeFlags';
+import { createRawModeGate, type RawModeGate } from '@/utils/rawModeGate';
 import { PtyRecorder } from '@/utils/ptyRecording';
 import {
   initialRemoteAi, pillView, onSshChange, enableWatch, setMode,
@@ -117,11 +119,12 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const rerunRef = useRef<((command: string, displayCommand?: string) => void) | null>(null);
   useEffect(() => () => {
     // Clear ALL timer refs on unmount so they cannot fire setState on a dead component.
-    // daemonToastTimerRef and echoInteractiveTimerRef are declared further below in the
-    // same component; refs are stable objects so the closure captures them correctly.
-    for (const r of [sessionPromoteTimerRef, daemonToastTimerRef, echoInteractiveTimerRef, findFlashTimerRef] as Array<React.MutableRefObject<ReturnType<typeof setTimeout> | number | null>>) {
+    // daemonToastTimerRef is declared further below in the same component;
+    // refs are stable objects so the closure captures them correctly.
+    for (const r of [sessionPromoteTimerRef, daemonToastTimerRef, findFlashTimerRef] as Array<React.MutableRefObject<ReturnType<typeof setTimeout> | number | null>>) {
       if (r.current != null) { clearTimeout(r.current as ReturnType<typeof setTimeout>); r.current = null; }
     }
+    rawModeGateRef.current?.cancel();
   }, []);
 
   const beginSession = useCallback((command: string) => {
@@ -146,16 +149,24 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const [interactiveFullscreen, setInteractiveFullscreen] = useState(false);
   const modeResolverRef = useRef(createModeResolver());
   const [modeState, setModeState] = useState<ModeState>(() => modeResolverRef.current.state);
-  // Behaviour-neutral bridge: the resolver is now the single decider, but the
-  // three legacy flags keep their exact current meaning so this step changes no
-  // decisions. deriveInputSurface reads 'fullscreen' as
-  // `altScreenVisible || (interactiveMode && interactiveFullscreen)` and
-  // 'docked' as `interactiveMode`, so this mapping reproduces both branches.
-  // The flags collapse into modeState in the next commit.
+  // Only real transitions may re-derive: the resolver returns a fresh object for
+  // every signal, including ones that change nothing, and re-running the effect
+  // on those would overwrite flags the legacy callbacks had just set.
+  const commitMode = useCallback((next: ModeState) => {
+    setModeState(prev => (sameModeState(prev, next) ? prev : next));
+  }, []);
+  // The resolver decides; the three legacy flags are its projection, mapped so
+  // that every surface deriveInputSurface can produce is unchanged (see
+  // legacyFlagsFromMode, and tests/unit/modeWiring.test.ts for the sequences
+  // this preserves). What it is NOT is a claim that the resolver has seen
+  // everything: the legacy cursor-hide takeover deliberately emits no signal,
+  // because the resolver cannot yet express a fullscreen that a cooked termios
+  // reading revokes. The flags collapse into modeState in the next commit.
   useEffect(() => {
-    setAltScreenVisible(modeState.inputOwner === 'fullscreen');
-    setInteractiveMode(modeState.inputOwner === 'program' || modeState.inputOwner === 'fullscreen');
-    setInteractiveFullscreen(modeState.inputOwner === 'fullscreen');
+    const flags = legacyFlagsFromMode(modeState);
+    setAltScreenVisible(flags.altScreenVisible);
+    setInteractiveMode(flags.interactiveMode);
+    setInteractiveFullscreen(flags.interactiveFullscreen);
   }, [modeState]);
   const [inputMode, setInputMode] = useState<'shell' | 'ai'>('shell');
   const handleInputModeChange = useCallback((mode: 'shell' | 'ai') => {
@@ -258,11 +269,28 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const lastContextBlockIdRef = useRef<string | null>(null);
   const gitBranchRef = useRef<string | null>(null);
   const capturedOutputRef = useRef<string | null>(null);
-  // Debounce timer for echo-poller interactiveMode activation. Commands like
-  // `brew` briefly disable ICANON for progress bars; without debouncing, the
-  // surface flips to `docked` and the card pops out of the scroll list instead
-  // of morphing in-place from the pending block.
-  const echoInteractiveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Debounce for echo-poller interactiveMode activation. Commands like `brew`
+  // briefly disable ICANON for progress bars; without debouncing, the surface
+  // flips to `docked` and the card pops out of the scroll list instead of
+  // morphing in-place from the pending block. The gate is also the single
+  // commit point for a raw-mode reading — the resolver learns about raw mode
+  // here and nowhere else, so it never sees a transient the surface already
+  // filtered out. Task 8 removes the debounce.
+  const rawModeGateRef = useRef<RawModeGate | null>(null);
+  if (!rawModeGateRef.current) {
+    rawModeGateRef.current = createRawModeGate({
+      isActive: () => interactiveModeRef.current,
+      onActivate: (r) => {
+        setInteractiveMode(true);
+        setInteractiveFullscreen(false);
+        commitMode(modeResolverRef.current.apply({ kind: 'termios', icanon: r.icanon, echo: r.echo }));
+      },
+      onDeactivate: (r) => {
+        setInteractiveMode(false);
+        commitMode(modeResolverRef.current.apply({ kind: 'termios', icanon: r.icanon, echo: r.echo }));
+      },
+    });
+  }
   altScreenRef.current = altScreenVisible;
   interactiveModeRef.current = interactiveMode;
 
@@ -626,7 +654,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
 
     segmenter.onModeSignal((signal) => {
       if (cancelled) return;
-      setModeState(modeResolverRef.current.apply(signal));
+      commitMode(modeResolverRef.current.apply(signal));
     });
 
     segmenter.onAltScreen((entered) => {
@@ -689,10 +717,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         // A completed block means the foreground is the shell again, so no
         // raw-mode program can be running — clear interactiveMode so a stale
         // value can never strand the surface off `composer`.
-        if (echoInteractiveTimerRef.current) {
-          clearTimeout(echoInteractiveTimerRef.current);
-          echoInteractiveTimerRef.current = null;
-        }
+        rawModeGateRef.current?.cancel();
         setInteractiveMode(false);
       }
     });
@@ -701,7 +726,6 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       if (cancelled) return;
       if (evtId !== ptyId) return;
       recorderRef.current.termios(e.icanon, e.echo);
-      setModeState(modeResolverRef.current.apply({ kind: 'termios', icanon: e.icanon, echo: e.echo }));
       setPasswordPrompt(e.passwordPrompt);
       // Raw-mode tty (REPLs like python/node/psql, plus full TUIs) — route
       // the card through xterm so the user sees keystrokes echo and can
@@ -714,21 +738,11 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       // enough to filter the transient toggles while keeping the input surface
       // snappy. Deactivation is immediate so the surface snaps back to
       // `composer` the moment the child restores canonical mode or exits.
-      if (e.interactiveProgram) {
-        if (!interactiveModeRef.current && !echoInteractiveTimerRef.current) {
-          echoInteractiveTimerRef.current = setTimeout(() => {
-            echoInteractiveTimerRef.current = null;
-            setInteractiveMode(true);
-            setInteractiveFullscreen(false);
-          }, 500);
-        }
-      } else {
-        if (echoInteractiveTimerRef.current) {
-          clearTimeout(echoInteractiveTimerRef.current);
-          echoInteractiveTimerRef.current = null;
-        }
-        setInteractiveMode(false);
-      }
+      rawModeGateRef.current?.update({
+        icanon: e.icanon,
+        echo: e.echo,
+        interactiveProgram: e.interactiveProgram,
+      });
     });
 
     const cleanupAutoAuth = window.tai?.pty?.onAutoAuth?.((id: number) => {
@@ -764,10 +778,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       cleanupResized?.();
       cleanupEcho?.();
       cleanupAutoAuth?.();
-      if (echoInteractiveTimerRef.current) {
-        clearTimeout(echoInteractiveTimerRef.current);
-        echoInteractiveTimerRef.current = null;
-      }
+      rawModeGateRef.current?.cancel();
       if (outputRafId !== null) cancelAnimationFrame(outputRafId);
       segmenter.reset();
       modeResolverRef.current.reset();
