@@ -49,6 +49,18 @@ describe('rule 1: termios and altScreen are authoritative', () => {
     const st = r.apply({ kind: 'termios', icanon: true, echo: true });
     expect(st.inputOwner).toBe('shell');
   });
+
+  it('a later termios reading does not revoke a fullscreen takeover, in either icanon state', () => {
+    const raw = createModeResolver();
+    raw.apply({ kind: 'altScreen', entered: true });
+    const rawSt = raw.apply({ kind: 'termios', icanon: false, echo: true });
+    expect(rawSt.inputOwner).toBe('fullscreen');
+
+    const cooked = createModeResolver();
+    cooked.apply({ kind: 'altScreen', entered: true });
+    const cookedSt = cooked.apply({ kind: 'termios', icanon: true, echo: true });
+    expect(cookedSt.inputOwner).toBe('fullscreen');
+  });
 });
 
 describe('rule 2: tuiHint may only promote', () => {
