@@ -163,10 +163,22 @@ export class BlockSegmenter {
     this._modeState = state;
 
     if (prev.provenance !== 'authoritative' && state.provenance === 'authoritative') {
-      // A different owner than the guess claimed means the guess was wrong.
-      // The same owner is a confirmation: those bytes really were TUI frames
-      // the line model can only mangle, so they stay dropped.
-      if (state.inputOwner !== prev.inputOwner) this._replayRetained();
+      // Confirmation is an ESCALATION to 'fullscreen', and nothing else. An
+      // alt-screen escape is retroactive proof: the program really was drawing
+      // frames, including the ones we withheld, and those are the bytes the
+      // line model can only mangle. Every other authoritative outcome replays.
+      //
+      // Owner INEQUALITY was the wrong predicate in both directions at once.
+      // It replayed on 'program' → 'fullscreen', which is the hinted TUI
+      // turning out to be a real one (the `claude`-then-alt-screen shape) — so
+      // the frames landed in the block. And it DROPPED whenever the owner
+      // happened to match across the promotion: a program that was cooked when
+      // the hint fired and raw a moment later reads as "same owner", yet a raw
+      // termios reading is authoritative about the line discipline NOW, not
+      // about bytes already emitted. Those were ordinary output and were
+      // thrown away. Retention is not a rendering decision: when the evidence
+      // is not retroactive, the bytes go back.
+      if (state.inputOwner !== 'fullscreen') this._replayRetained();
       this._retained = '';
     }
   }
@@ -716,7 +728,17 @@ export class BlockSegmenter {
     // xterm.js renders and the line emulator can only mangle — dropping them is
     // correct. But only when we KNOW. Under a guess we still route rendering to
     // xterm, and keep a bounded copy so the guess is recoverable.
-    if (this._inAltScreen) {
+    //
+    // `_inAltScreen` is a LATCH, and one of the two things that set it is a
+    // guess (the cursor-reposition regex). Nothing in the resolver can clear
+    // it, so once an authoritative signal says the shell owns the input — the
+    // guess was wrong — the latch and the provenance together used to read
+    // "we authoritatively know there is a TUI" and discarded every remaining
+    // byte of the command. The resolved state is the authority on who owns the
+    // input, so it decides this drop: while the state says 'shell', there is no
+    // program whose frames could need dropping, and the bytes take the ordinary
+    // path into the block. Mode decides rendering, never retention.
+    if (this._inAltScreen && this._modeState.inputOwner !== 'shell') {
       if (this._modeState.provenance === 'authoritative') return;
       if (this._retained.length < MAX_RETAINED_BYTES) {
         this._retained += chunk.slice(0, MAX_RETAINED_BYTES - this._retained.length);

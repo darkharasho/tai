@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { BlockSegmenter } from '@/components/BlockSegmenter';
+import { createModeResolver } from '@/utils/terminalMode';
 
 describe('BlockSegmenter', () => {
   it('detects a prompt and fires onBlock after command completes', () => {
@@ -453,6 +454,13 @@ describe('BlockSegmenter', () => {
       const segmenter = new BlockSegmenter();
       const blockCb = vi.fn();
       segmenter.onBlock(blockCb);
+      // Dropping bytes needs an authority, and the segmenter is not one: the
+      // alt-screen latch is set by a guess as often as by a real escape. It
+      // emits the signal and reads back the resolved state, which is the
+      // wiring TerminalSession installs. Unwired, the resolver never hears the
+      // [?1049h and the bytes take the retaining path.
+      const resolver = createModeResolver();
+      segmenter.onModeSignal(s => segmenter.setModeState(resolver.apply(s)));
 
       segmenter.feed(`${A}$ ${B}vim\n${C}`);
       // Simulate alt-screen on + tons of TUI bytes + alt-screen off.

@@ -13,7 +13,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { BlockSegmenter, MAX_RETAINED_BYTES } from '@/components/BlockSegmenter';
-import type { ModeState } from '@/utils/terminalMode';
+import { createModeResolver, type ModeState } from '@/utils/terminalMode';
 
 function osc133(letter: string) {
   return `\x1b]133;${letter}\x07`;
@@ -105,7 +105,12 @@ describe('provenance-gated retention', () => {
     expect(blocks[0]?.output ?? '').not.toContain('redraw noise');
   });
 
-  it('discards the side buffer when an authoritative signal confirms the guess', () => {
+  it('discards the side buffer when the guess escalates to a real alt screen', () => {
+    // The `claude`-then-alt-screen shape: a cursor-up hint guesses a TUI, then
+    // a genuine [?1049h proves it. That escape is RETROACTIVE proof — the
+    // program was drawing frames all along, including the ones we withheld —
+    // so this is the one authoritative outcome that confirms rather than
+    // contradicts, and the frames stay dropped.
     const seg = new BlockSegmenter();
     const blocks: any[] = [];
     seg.onBlock(b => blocks.push(b));
@@ -114,11 +119,80 @@ describe('provenance-gated retention', () => {
     seg.setModeState(INFERRED);
     seg.feed(TUI_REDRAW);
     seg.feed('TUI frame redraw\n');
-    seg.setModeState({ ...INFERRED, provenance: 'authoritative' }); // confirmed program
+    seg.setModeState(AUTHORITATIVE_FULLSCREEN); // the hint was right
     finishBlock(seg);
 
-    // Confirmed: the retained frames are not replayed back into the block.
     expect(blocks[0]?.output ?? '').not.toContain('TUI frame redraw');
+  });
+
+  it('keeps output when the guess is promoted to an authoritative program', () => {
+    // Mid-command promotion. A raw termios reading is authoritative about the
+    // line discipline NOW, not about bytes already emitted: a program that was
+    // still cooked when the hint fired emitted ordinary output first and went
+    // raw a moment later. Reading that as "same owner, therefore confirmed"
+    // threw the cooked output away.
+    const seg = new BlockSegmenter();
+    const blocks: any[] = [];
+    seg.onBlock(b => blocks.push(b));
+
+    startBlock(seg, 'npm install');
+    seg.setModeState(INFERRED);
+    seg.feed(TUI_REDRAW);
+    seg.feed('added 214 packages\n');
+    seg.setModeState({ ...INFERRED, provenance: 'authoritative' }); // raw, now
+    finishBlock(seg);
+
+    expect(blocks[0].output).toContain('added 214 packages');
+  });
+
+  it('keeps feeding the block after an authoritative correction, not only before it', () => {
+    // C1. The latch that the cursor-up regex sets is never cleared by the
+    // resolver, so once an authoritative signal said 'shell' the drop guard
+    // read "we authoritatively know there is a TUI" and discarded every
+    // remaining byte of the command. Every earlier case here applied the
+    // correction AFTER the last byte of the block and so missed it by one feed.
+    const seg = new BlockSegmenter();
+    const blocks: any[] = [];
+    seg.onBlock(b => blocks.push(b));
+
+    startBlock(seg, 'brew install foo');
+    seg.setModeState(INFERRED);
+    seg.feed(TUI_REDRAW);
+    seg.feed('early line\n');
+    seg.setModeState(AUTHORITATIVE_SHELL); // termios: the guess was wrong
+    seg.feed('LATE LINE\n');
+    finishBlock(seg);
+
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].output).toContain('early line');
+    expect(blocks[0].output).toContain('LATE LINE');
+  });
+
+  it('survives the real resolver driving the correction, not a hand-built state', () => {
+    // Every other case here calls setModeState directly, which is how the
+    // resolver's own confirm/contradict semantics went unexercised against the
+    // latch. This is the whole loop: segmenter signals in, resolver decides,
+    // resolved state back into the segmenter — the wiring TerminalSession
+    // installs. The termios readings are the authoritative source arriving
+    // mid-command, which is exactly when the latch and the state disagree.
+    const seg = new BlockSegmenter();
+    const resolver = createModeResolver();
+    const blocks: any[] = [];
+    seg.onBlock(b => blocks.push(b));
+    seg.onModeSignal(s => seg.setModeState(resolver.apply(s)));
+
+    startBlock(seg, 'brew install foo');
+    seg.feed(TUI_REDRAW);                                          // tuiHint
+    seg.feed('early line\n');
+    seg.setModeState(resolver.apply({ kind: 'termios', icanon: false, echo: true }));
+    seg.setModeState(resolver.apply({ kind: 'termios', icanon: true, echo: true }));
+    seg.feed('LATE LINE\n');
+    finishBlock(seg);
+
+    expect(resolver.state.inputOwner).toBe('shell');
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].output).toContain('early line');
+    expect(blocks[0].output).toContain('LATE LINE');
   });
 
   it('retains under degraded provenance, since nothing is safe to drop', () => {
@@ -211,7 +285,11 @@ describe('provenance-gated retention', () => {
     seg.setModeState(AUTHORITATIVE_SHELL);
     finishBlock(seg);
 
+    // Upper bound alone passes against an implementation that retains nothing
+    // — which is the failure this whole file exists to catch. The lower bound
+    // is what proves the cap is a cap and not a discard.
     expect(blocks[0].output.length).toBeLessThanOrEqual(MAX_RETAINED_BYTES + 1024);
+    expect(blocks[0].output.length).toBeGreaterThanOrEqual(MAX_RETAINED_BYTES - 1024);
   });
 
   it('caps retention at 256KB', () => {
