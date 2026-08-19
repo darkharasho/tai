@@ -800,10 +800,22 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   // No menu host exists at this component level to attach a "Save PTY
   // recording" action to, so it is exposed as a debug hook on `window`
   // instead of designing new UI chrome for it.
+  //
+  // Only the visible session claims the hook. Every mounted tab holds its own
+  // recorder, so an unconditional assignment is last-writer-wins: with more
+  // than one tab open the hook reached an arbitrary session — in practice a
+  // background one whose ring buffer is empty, which made the save silently
+  // do nothing. The teardown checks identity before deleting, because tab
+  // switches mount the incoming session before unmounting the outgoing one
+  // and a blind delete would drop the new claim.
   useEffect(() => {
-    (window as unknown as Record<string, unknown>).__taiSaveRecording = handleSaveRecording;
-    return () => { delete (window as unknown as Record<string, unknown>).__taiSaveRecording; };
-  }, [handleSaveRecording]);
+    if (!visible) return;
+    const w = window as unknown as Record<string, unknown>;
+    w.__taiSaveRecording = handleSaveRecording;
+    return () => {
+      if (w.__taiSaveRecording === handleSaveRecording) delete w.__taiSaveRecording;
+    };
+  }, [handleSaveRecording, visible]);
 
   const executeCommand = useCallback((command: string) => {
     if (ptyId === null) return;

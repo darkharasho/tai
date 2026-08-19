@@ -100,3 +100,27 @@ describe('parseRecording', () => {
     expect(() => parseRecording('{"t":0,"kind":"nope"}')).toThrow(/malformed recording line/);
   });
 });
+
+describe('PtyRecorder without Node globals', () => {
+  // The recorder runs in the renderer, where `Buffer` is undefined. Vitest runs
+  // under `node`, so a Buffer-based implementation passes every other test in
+  // this file while throwing on the first PTY chunk in the real app — which
+  // took the whole terminal data path down with it, since the throw happened
+  // before `segmenter.feed()`.
+  it('records and evicts using only web APIs', () => {
+    const realBuffer = globalThis.Buffer;
+    // @ts-expect-error deliberately simulating the renderer's global scope
+    delete globalThis.Buffer;
+    try {
+      const rec = new PtyRecorder(() => 0, 16);
+      rec.data('héllo');
+      expect(rec.byteLength).toBe(6); // é is two bytes in UTF-8
+      rec.data('x'.repeat(20));
+      const entries = parseRecording(rec.serialize()).entries;
+      expect(entries).toHaveLength(1);
+      expect(entries[0]).toMatchObject({ kind: 'data' });
+    } finally {
+      globalThis.Buffer = realBuffer;
+    }
+  });
+});

@@ -14,7 +14,33 @@
  *
  * Payloads are base64 because PTY output is not guaranteed valid UTF-8 (the
  * same reason `sanitizeSurrogates.ts` exists).
+ *
+ * This module runs in the RENDERER, where `Buffer` does not exist: the preload
+ * bridge exposes no Node globals. Everything here must stick to web APIs —
+ * TextEncoder and btoa/atob — which are also present under Node, so the tests
+ * exercise the same code path the app does.
  */
+
+/** Base64 for a byte array, chunked to stay clear of argument-count limits. */
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
+/**
+ * Decoded byte length of a base64 payload, computed from the encoding rather
+ * than by decoding it: eviction runs on every chunk, and the ring only needs
+ * the size back.
+ */
+function base64ByteLength(b64: string): number {
+  if (!b64) return 0;
+  const pad = b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0;
+  return (b64.length / 4) * 3 - pad;
+}
 
 export type PtyRecordingEntry =
   | { t: number; kind: 'data'; d: string }
@@ -44,8 +70,8 @@ export class PtyRecorder {
   get byteLength(): number { return this._bytes; }
 
   data(chunk: string): void {
-    const size = Buffer.byteLength(chunk, 'utf8');
-    this._push({ t: this._t(), kind: 'data', d: Buffer.from(chunk, 'utf8').toString('base64') }, size);
+    const bytes = new TextEncoder().encode(chunk);
+    this._push({ t: this._t(), kind: 'data', d: bytesToBase64(bytes) }, bytes.length);
   }
 
   termios(icanon: boolean, echo: boolean): void {
@@ -82,7 +108,7 @@ export class PtyRecorder {
     while (this._bytes > this._maxBytes && this._entries.length > 1) {
       const dropped = this._entries.shift()!;
       if (dropped.kind === 'data') {
-        this._bytes -= Buffer.from(dropped.d, 'base64').length;
+        this._bytes -= base64ByteLength(dropped.d);
       }
     }
   }
