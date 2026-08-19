@@ -1,6 +1,7 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
 import path from 'path';
 import * as fs from 'fs';
+import { writeFile } from 'node:fs/promises';
 import * as os from 'os';
 import { spawn } from 'child_process';
 import { setupPtyService, destroyAllTerminals } from './services/pty';
@@ -14,6 +15,7 @@ import { registerUpdater } from './services/updater';
 import { purgeStaleTempFiles } from './services/tempCleanup';
 import { registerCommandIndexIpc } from './services/commandIndexStore';
 import { registerWorkflowIpc } from './services/workflowStore';
+import { registerRecordingSave } from './services/recordingSave';
 
 if (process.env.VITE_DEV_SERVER_URL) {
   app.commandLine.appendSwitch('remote-debugging-port', '9222');
@@ -111,6 +113,11 @@ app.whenReady().then(() => {
   purgeStaleTempFiles(os.tmpdir());
   registerCommandIndexIpc();
   registerWorkflowIpc();
+  registerRecordingSave(ipcMain, {
+    showSaveDialog: (opts) => dialog.showSaveDialog(opts),
+    writeFile: (p, data) => writeFile(p, data, 'utf8'),
+    defaultDir: () => app.getPath('documents'),
+  });
   createWindow();
   if (mainWindow) initFocusTracking(mainWindow);
   registerUpdater(mainWindow!);

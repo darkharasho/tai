@@ -23,6 +23,9 @@ declare global {
         onAutoAuth: (callback: (id: number) => void) => () => void;
         onSecretState: (callback: (cached: boolean) => void) => () => void;
       };
+      debug?: {
+        saveRecording?: (jsonl: string, filename: string) => Promise<string | null>;
+      };
       window: {
         minimize: () => void;
         maximize: () => void;

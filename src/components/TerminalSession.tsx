@@ -39,6 +39,7 @@ import { detectSshError } from '@/utils/sshDetect';
 import { capDisplayItems } from '@/utils/blockCap';
 import { withAnswers } from '@/utils/askUserQuestion';
 import { clampStoredOutput } from '@/utils/clampStoredOutput';
+import { PtyRecorder } from '@/utils/ptyRecording';
 import {
   initialRemoteAi, pillView, onSshChange, enableWatch, setMode,
   setInstalling, setHelperInstalled, dismissOffer, setError,
@@ -216,6 +217,10 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   tabLabelRef.current = tabLabel;
 
   const segmenterRef = useRef(new BlockSegmenter());
+  // Always-on, memory-only PTY recording. Capture is worthless if you have to
+  // turn it on before the bug happens, so it runs unconditionally and the user
+  // saves it after the fact. Nothing reaches disk without an explicit save.
+  const recorderRef = useRef<PtyRecorder>(new PtyRecorder());
   const hiddenXtermRef = useRef<HiddenXtermHandle>(null);
   const inputRef = useRef<TerminalInputHandle>(null);
   const providerRef = useRef(createProvider(aiProvider, tabId));
@@ -676,6 +681,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     const cleanupEcho = window.tai?.pty?.onEchoChange?.((evtId: number, e: { echo: boolean; icanon: boolean; passwordPrompt: boolean; interactiveProgram: boolean }) => {
       if (cancelled) return;
       if (evtId !== ptyId) return;
+      recorderRef.current.termios(e.icanon, e.echo);
       setPasswordPrompt(e.passwordPrompt);
       // Raw-mode tty (REPLs like python/node/psql, plus full TUIs) — route
       // the card through xterm so the user sees keystrokes echo and can
@@ -717,6 +723,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     const cleanupData = window.tai?.pty?.onData((id: number, data: string) => {
       if (cancelled) return;
       if (id !== ptyId) return;
+      recorderRef.current.data(data);
       if (hiddenXtermRef.current) {
         hiddenXtermRef.current.write(data);
       } else {
@@ -727,6 +734,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     const cleanupResized = window.tai?.pty?.onResized?.((id: number, cols: number, rows: number) => {
       if (cancelled) return;
       if (id !== ptyId) return;
+      recorderRef.current.resize(cols, rows);
       segmenterRef.current.onResize(cols, rows);
     });
 
@@ -742,6 +750,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       }
       if (outputRafId !== null) cancelAnimationFrame(outputRafId);
       segmenter.reset();
+      recorderRef.current.clear();
       setShellIntegrated(false);
       setSshSessionActive(false);
       setSshSessionTarget(null);
@@ -774,6 +783,27 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     }, 2500);
     return () => { cancelled = true; clearTimeout(t); };
   }, [sshSessionActive, sshSessionTarget]);
+
+  const handleSaveRecording = useCallback(async () => {
+    const jsonl = recorderRef.current.serialize();
+    if (!jsonl) return;
+    const ok = window.confirm(
+      'Save PTY recording?\n\n' +
+      'This file contains the raw terminal output of this session verbatim, ' +
+      'including anything secret that appeared on screen. It is written only ' +
+      'to the location you choose and is never uploaded.',
+    );
+    if (!ok) return;
+    await window.tai?.debug?.saveRecording?.(jsonl, `tai-pty-${ptyId ?? 0}.jsonl`);
+  }, [ptyId]);
+
+  // No menu host exists at this component level to attach a "Save PTY
+  // recording" action to, so it is exposed as a debug hook on `window`
+  // instead of designing new UI chrome for it.
+  useEffect(() => {
+    (window as unknown as Record<string, unknown>).__taiSaveRecording = handleSaveRecording;
+    return () => { delete (window as unknown as Record<string, unknown>).__taiSaveRecording; };
+  }, [handleSaveRecording]);
 
   const executeCommand = useCallback((command: string) => {
     if (ptyId === null) return;

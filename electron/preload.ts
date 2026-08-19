@@ -45,6 +45,10 @@ contextBridge.exposeInMainWorld('tai', {
       return () => ipcRenderer.removeListener('pty:secret-state', listener);
     },
   },
+  debug: {
+    saveRecording: (jsonl: string, filename: string) =>
+      ipcRenderer.invoke('debug:save-recording', jsonl, filename),
+  },
   window: {
     minimize: () => ipcRenderer.send('window:minimize'),
     maximize: () => ipcRenderer.send('window:maximize'),
