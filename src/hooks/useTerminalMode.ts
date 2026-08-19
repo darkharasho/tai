@@ -64,6 +64,12 @@ export function useTerminalMode(): TerminalModeApi {
       isActive: () => interactiveModeRef.current,
       onActivate: (r) => {
         setInteractiveMode(true);
+        // A faithful port of master's debounce timer, which cleared this flag
+        // alongside setting interactiveMode. No test pins it because nothing
+        // can observe it: onActivate only runs when isActive() was false, and
+        // interactiveFullscreen is never true while interactiveMode is false —
+        // every path sets the two together. Kept rather than dropped so this
+        // step stays a move of master's code, not a rewrite of it.
         setInteractiveFullscreen(false);
         commitMode(resolverRef.current.apply({ kind: 'termios', icanon: r.icanon, echo: r.echo }));
       },
