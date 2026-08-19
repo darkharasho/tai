@@ -106,9 +106,15 @@ describe('BlockSegmenter command from hooks', () => {
     expect(blocks).toHaveLength(1);
     expect(blocks[0].command).toBe('git status');
     expect(blocks[0].commandFromShell).toBe('git status');
+    expect(blocks[0].hooksAvailable).toBe(true);
   });
 
-  it('falls back to the precmd command when preexec is absent', () => {
+  it('does not source command from precmd alone — precmd can leak across a nesting boundary', () => {
+    // precmd fires at command END, so under shell nesting it can belong to a
+    // different (often outer) shell than the block it reaches. preexec fires
+    // at command START from the shell that owns the block and cannot leak
+    // this way, so it is the only hook used as a command source; precmd is
+    // corroboration/metadata (commandFromShell, cwd, signal) only.
     const seg = new BlockSegmenter();
     const blocks: any[] = [];
     seg.onBlock(b => blocks.push(b));
@@ -128,7 +134,9 @@ describe('BlockSegmenter command from hooks', () => {
     seg.feed('$ ');
     seg.feed(osc133('B'));
 
-    expect(blocks[0].command).toBe('ls -la');
+    expect(blocks[0].command).toBe('garbled');
+    expect(blocks[0].commandFromShell).toBe('ls -la');
+    expect(blocks[0].hooksAvailable).toBe(true);
   });
 
   it('falls back to echo reconstruction when no hooks arrive', () => {
@@ -148,6 +156,29 @@ describe('BlockSegmenter command from hooks', () => {
     seg.feed(osc133('B'));
 
     expect(blocks[0].command).toBe('echo hi');
+    expect(blocks[0].hooksAvailable).toBe(false);
+  });
+
+  it('strips PS2 prefixes from continuation lines in the echo-reconstruction fallback', () => {
+    // No preexec/precmd at all — this is now the ONLY path for a
+    // non-integrated shell, and its multi-line branch (stripPs2 applied to
+    // every line after the first) needs direct coverage.
+    const seg = new BlockSegmenter();
+    const blocks: any[] = [];
+    seg.onBlock(b => blocks.push(b));
+
+    seg.feed(osc133('A'));
+    seg.feed('$ ');
+    seg.feed(osc133('B'));
+    seg.feed('for i in 1 2\n> do echo $i\n> done');
+    seg.feed(osc133('C'));
+    seg.feed('1\n2\n');
+    seg.feed(osc133('D;0'));
+    seg.feed(osc133('A'));
+    seg.feed('$ ');
+    seg.feed(osc133('B'));
+
+    expect(blocks[0].command).toBe('for i in 1 2\ndo echo $i\ndone');
     expect(blocks[0].hooksAvailable).toBe(false);
   });
 

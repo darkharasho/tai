@@ -137,7 +137,13 @@ describe('PTY replay corpus (baseline)', () => {
     `);
   });
 
-  // Fixed by Task 5: command now comes from the preexec hook verbatim.
+  // KNOWN-BAD: block 5's `commandFromShell` ("fish") leaks across a shell
+  // nesting boundary. The block itself is fish's own `exit` (fish's C..D;0
+  // bounds it), but the outer bash's precmd for its own `fish` command
+  // fires after fish's D marker and is attributed to this block's
+  // `commandFromShell` metadata. `command` is correct (sourced from
+  // fish's own preexec); fixing the cross-shell `commandFromShell` leak is
+  // out of Task 5's scope.
   it('prompt-redraw: command reconstruction under redraws', () => {
     const { blocks } = replayFixture('prompt-redraw');
     expect(blocks.map(b => ({ command: b.command, fromShell: b.commandFromShell }))).toMatchInlineSnapshot(`
@@ -159,7 +165,7 @@ describe('PTY replay corpus (baseline)', () => {
           "fromShell": undefined,
         },
         {
-          "command": "fish",
+          "command": "exit",
           "fromShell": "fish",
         },
       ]

@@ -715,12 +715,21 @@ export class BlockSegmenter {
    * prefixes, prompt redraws and line wrapping. Prefer the hook and keep the
    * reconstruction only for shells with no integration.
    *
-   * preexec beats precmd because it is captured before the command produced
-   * any output that could interfere; in practice the two agree.
+   * precmd is deliberately excluded from this chain. precmd fires at command
+   * END, so under shell nesting (e.g. an outer bash spawning an inner fish,
+   * or an ssh session) it can arrive after the inner block's own D marker
+   * and get attributed to the wrong shell's block entirely — it belongs to
+   * whichever shell is on top of the stack when it fires, not necessarily
+   * the shell that owns this block. preexec fires at command START from the
+   * shell that owns the block and is cleared per-block, so it cannot leak
+   * across a nesting boundary the way precmd can. All three integrations
+   * emit preexec, so precmd adds no coverage where preexec exists and only
+   * adds risk (cross-shell leakage) where it doesn't. precmd keeps its
+   * existing role as `commandFromShell` / metadata, just not as a command
+   * source.
    */
   private _commandText(rawCommand: string): string {
-    const hooked = this._pendingPreexec?.command || this._pendingPrecmd?.command;
-    if (hooked) return hooked;
+    if (this._pendingPreexec?.command) return this._pendingPreexec.command;
     return renderTermText(rawCommand)
       .trim()
       .split('\n')
@@ -784,7 +793,7 @@ export class BlockSegmenter {
         : Date.now() - (this._osc133BlockStart || Date.now()),
       isRemote: this._isRemotePrompt(promptText),
       ...(this._osc133ExitCode !== null && !sshTeardown ? { exitCode: this._osc133ExitCode } : {}),
-      hooksAvailable: !!this._pendingPrecmd,
+      hooksAvailable: !!(this._pendingPrecmd || this._pendingPreexec),
       ...(this._pendingPrecmd ? {
         signal: this._pendingPrecmd.signal,
         cwd: this._pendingPrecmd.cwd,
