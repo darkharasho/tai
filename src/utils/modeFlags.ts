@@ -38,11 +38,19 @@ export function inputSignalsFromMode(mode: ModeState): {
   altScreenVisible: boolean;
   interactiveMode: boolean;
   interactiveFullscreen: boolean;
+  degraded: boolean;
 } {
   const fullscreen = mode.inputOwner === 'fullscreen';
   return {
     altScreenVisible: fullscreen,
     interactiveMode: fullscreen || mode.inputOwner === 'program',
     interactiveFullscreen: fullscreen,
+    // Task 10. Lives here rather than inline at the call site for the same
+    // reason as the three above: it is a projection of ModeState onto the
+    // surface's inputs, and inline in a component with no test file it could be
+    // replaced by `false` — stranding every Windows user on the composer with
+    // no way to type — with tsc clean and the whole suite green. It was, and
+    // the mutation went unnoticed until this moved.
+    degraded: mode.provenance === 'degraded',
   };
 }

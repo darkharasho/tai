@@ -21,9 +21,19 @@ export type ModeSignal =
   | { kind: 'altScreen';  entered: boolean }                 // authoritative
   | { kind: 'tuiHint' }                                      // inferred
   | { kind: 'fullscreenHint'; entered: boolean }             // inferred, revocable
+  // 'prompt' | 'command' | 'output' are real OSC 133 A/B/C-D markers and are
+  // therefore proof that shell integration is alive. 'idle' is SYNTHETIC: it is
+  // how a call site reports a command boundary it worked out for itself (the
+  // segmenter finishing a block). It carries the same boundary semantics and
+  // deliberately none of the proof — see the osc133 case.
   | { kind: 'osc133';     phase: 'prompt' | 'command' | 'output' | 'idle' }
   | { kind: 'hook';       hook: ShellHook }
-  | { kind: 'ptyExit' };
+  | { kind: 'ptyExit' }
+  // Degraded is OBSERVED, not assumed. This is the only way a gap enters the
+  // resolver: a call site that KNOWS a source cannot report for this context
+  // says so once, rather than every downstream consumer re-deriving "are we on
+  // Windows / in SSH / without integration?" for itself.
+  | { kind: 'sourceUnavailable'; source: 'termios' | 'hooks' };
 
 export type InputOwner = 'shell' | 'program' | 'fullscreen';
 
@@ -79,6 +89,24 @@ export function createModeResolver(): ModeResolver {
   // 'fullscreen' without writing it would turn an unreachable bug into a live
   // one. Do not read their survival as coverage.
   let fullscreenRevocable = false;
+  // Degraded is OBSERVED, not assumed. We never ask "are we on Windows?" or
+  // "are we in SSH?" — we ask whether an authoritative source has reported for
+  // the current foreground context. That is what collapses three special cases
+  // into one path, and what lets a session self-heal the moment a remote host
+  // starts emitting hooks.
+  const unavailable = new Set<'termios' | 'hooks'>();
+
+  /**
+   * Per-source, never global. A missing termios does not make an alt-screen
+   * escape any less of an observation, so a fullscreen decision stays
+   * authoritative on Windows while a raw-mode decision does not.
+   */
+  function degrade(next: ModeState): ModeState {
+    if (next.provenance === 'authoritative' && next.inputOwner === 'fullscreen') return next;
+    if (unavailable.has('termios')) return { ...next, provenance: 'degraded', degradedReason: 'no-termios' };
+    if (unavailable.has('hooks')) return { ...next, provenance: 'degraded', degradedReason: 'no-hooks' };
+    return next;
+  }
 
   function set(next: Partial<ModeState>): ModeState {
     state = { ...state, ...next };
@@ -89,6 +117,10 @@ export function createModeResolver(): ModeResolver {
     switch (signal.kind) {
       case 'termios': {
         authoritativeThisCommand = true;
+        // A reading arrived, so termios is not missing after all — however it
+        // came to be declared missing. Per-source: this says nothing about
+        // hooks, so a 'no-hooks' degradation survives it.
+        unavailable.delete('termios');
         // Same mapping the kernel-side poller performs: !ICANON is a raw-mode
         // program, !ECHO with ICANON is the classic password-prompt shape.
         const password = !signal.echo && signal.icanon;
@@ -125,11 +157,17 @@ export function createModeResolver(): ModeResolver {
         authoritativeThisCommand = true;
         // An observed alt screen upgrades a revocable claim into a real one.
         fullscreenRevocable = false;
-        return set({
+        // Leaving the alt screen is authoritative about the SCREEN and about
+        // nothing else: a raw-mode program can still own the input, and only
+        // termios can say. Without the degrade() a Windows user who quit vim
+        // would sit at 'shell:authoritative' for the rest of the session and
+        // lose the fallback entirely. Entering is exempted inside degrade().
+        return set(degrade({
+          ...state,
           inputOwner: signal.entered ? 'fullscreen' : 'shell',
           provenance: 'authoritative',
           degradedReason: undefined,
-        });
+        }));
       }
 
       case 'fullscreenHint': {
@@ -149,27 +187,60 @@ export function createModeResolver(): ModeResolver {
         // spoken for this command.
         if (authoritativeThisCommand) return state;
         if (state.inputOwner !== 'shell') return state;
-        return set({ inputOwner: 'program', provenance: 'inferred' });
+        return set(degrade({ ...state, inputOwner: 'program', provenance: 'inferred' }));
       }
 
       case 'osc133': {
         if (signal.phase === 'output' || signal.phase === 'command') {
-          return set({ commandRunning: signal.phase === 'output' });
+          unavailable.delete('hooks');
+          // A command is starting. Who owns the input from here is exactly the
+          // question termios answers, so if termios cannot report, this state
+          // is a guess however trustworthy the marker that produced it.
+          return set(degrade({ ...state, commandRunning: signal.phase === 'output' }));
         }
-        // Rule 4: a prompt is proof the foreground is the shell again.
+        if (signal.phase === 'idle') {
+          // Synthetic boundary (the segmenter finished a block). Same shell-is-
+          // foreground semantics, but it is NOT evidence that hooks work —
+          // treating it as such would let a degraded remote session silently
+          // promote itself on the first heuristic prompt match and never
+          // degrade again, which would quietly disable this whole feature for
+          // the case it exists for.
+          authoritativeThisCommand = false;
+          fullscreenRevocable = false;
+          return set(degrade({
+            ...state,
+            inputOwner: 'shell',
+            provenance: 'authoritative',
+            degradedReason: undefined,
+            commandRunning: false,
+            passwordPrompt: false,
+          }));
+        }
+        // Rule 4: a prompt is proof the foreground is the shell again — and a
+        // real OSC 133 marker is itself proof that hooks are working, so it
+        // clears a hooks degradation. (A tuiHint proves nothing, which is why
+        // that case is routed through degrade() instead.)
+        unavailable.delete('hooks');
         authoritativeThisCommand = false;
         fullscreenRevocable = false;
+        // `set` spreads over the previous state, so an earlier degradedReason
+        // would survive unless it is explicitly cleared here.
         return set({
           inputOwner: 'shell',
           provenance: 'authoritative',
+          degradedReason: undefined,
           commandRunning: false,
           passwordPrompt: false,
         });
       }
 
       case 'hook': {
+        // A hook fired, so hooks work. This is the self-heal: a remote host
+        // that gains shell integration promotes with no resolver change.
+        unavailable.delete('hooks');
         if (signal.hook.hook === 'preexec') {
-          return set({ commandRunning: true });
+          // Same reasoning as the OSC 133 command-start branch above.
+          return set(degrade({ ...state, commandRunning: true }));
         }
         // precmd — same boundary semantics as an OSC 133 prompt.
         authoritativeThisCommand = false;
@@ -177,6 +248,7 @@ export function createModeResolver(): ModeResolver {
         return set({
           inputOwner: 'shell',
           provenance: 'authoritative',
+          degradedReason: undefined,
           commandRunning: false,
           passwordPrompt: false,
         });
@@ -185,8 +257,16 @@ export function createModeResolver(): ModeResolver {
       case 'ptyExit': {
         authoritativeThisCommand = false;
         fullscreenRevocable = false;
+        unavailable.clear();
         state = { ...INITIAL_MODE_STATE };
         return state;
+      }
+
+      case 'sourceUnavailable': {
+        unavailable.add(signal.source);
+        // Degrade the state that is already resolved, not only the next
+        // decision: the input surface reads provenance the moment this lands.
+        return set(degrade(state));
       }
     }
   }
@@ -198,6 +278,7 @@ export function createModeResolver(): ModeResolver {
       state = { ...INITIAL_MODE_STATE };
       authoritativeThisCommand = false;
       fullscreenRevocable = false;
+      unavailable.clear();
     },
   };
 }

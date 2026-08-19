@@ -349,6 +349,17 @@ export class BlockSegmenter {
       return;
     }
     if (row > 0 && partial === '') {
+      // Under-segment rather than mis-segment. Matching a prompt on a completed
+      // line is speculation: `widget costs 5$` looks exactly like a prompt to
+      // PROMPT_RE. When nothing authoritative is reporting we have no way to
+      // check, and a merged block is a cosmetic annoyance while output
+      // attributed to the wrong command is a lie that propagates into AI
+      // context, re-run and session restore.
+      //
+      // The branch above — a prompt match on the PARTIAL line, with the cursor
+      // sitting right after it — is untouched, so a degraded session still
+      // produces blocks. Fewer of them, not none.
+      if (this._modeState.provenance === 'degraded') return;
       const lastLine = this._emu.textLines(false)[row - 1];
       if (PROMPT_RE.test(lastLine) && (!this._seenFirstPrompt || row > 1)) {
         this._handlePromptDetected(

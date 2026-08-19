@@ -117,6 +117,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     segmenterRef.current.setModeState(state);
   }, []));
   const { modeState } = mode;
+  // Stable across renders (useCallback in the hook), unlike `mode` itself —
+  // which is why effects below depend on this rather than on the object.
+  const applyModeSignal = mode.onModeSignal;
   // Long-running session state: drives the rooted surface and the morphed
   // card header. Mirrored into a ref for the segmenter callbacks (registered
   // once on mount, so they can't see fresh state).
@@ -611,6 +614,17 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       });
     });
 
+    // ConPTY exposes no termios and no /proc (electron/services/pty.ts only
+    // constructs the TermiosPoller when process.platform !== 'win32'), so the
+    // authoritative raw-mode signal will never arrive on this platform. Say so
+    // once rather than special-casing the platform downstream. Renderer-side
+    // platform detection goes through the preload bridge: this file runs with
+    // contextIsolation on and no Node integration, so `process` does not exist
+    // here even though vitest's node environment would happily resolve it.
+    if (window.tai?.system?.platform === 'win32') {
+      applyModeSignal({ kind: 'sourceUnavailable', source: 'termios' });
+    }
+
     segmenter.onModeSignal((signal) => {
       if (cancelled) return;
       // The hidden-xterm capture used to hang off the legacy interactive callback;
@@ -751,11 +765,16 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       const result = await window.tai.shellIntegration.checkRemote(sshSessionTarget);
       if (cancelled) return;
       if (!result.installed) {
+        // No remote hooks, so no OSC 133 will ever arrive from this host: every
+        // command-boundary and foreground fact for the rest of the session is a
+        // guess. Declared as an observation, not as "we are in SSH" — if the
+        // host later gains integration the first hook self-heals it.
+        applyModeSignal({ kind: 'sourceUnavailable', source: 'hooks' });
         setShellIntegrationCard({ target: sshSessionTarget });
       }
     }, 2500);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [sshSessionActive, sshSessionTarget]);
+  }, [sshSessionActive, sshSessionTarget, applyModeSignal]);
 
   const handleSaveRecording = useCallback(async () => {
     const jsonl = recorderRef.current.serialize();
@@ -1447,14 +1466,19 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     awaitingInput,
     passwordPrompt,
     rootedSession: !!(activeSession?.rooted && hasActiveBlock),
-    // Windows (ConPTY) has no termios / /proc, so the signals above never fire;
-    // fall back to the live terminal whenever a command is running so the user
-    // can type into a program that's waiting for input.
-    isWindows: window.tai?.system?.platform === 'win32',
+    // `degraded` arrives with the spread above (inputSignalsFromMode). It was
+    // the Windows special case: nothing authoritative is reporting for this
+    // context, so fall back to the live terminal whenever a command is running
+    // rather than stranding the user on the composer. Windows still reaches it
+    // — no TermiosPoller is created on win32 (electron/services/pty.ts guards
+    // on process.platform), so the 'termios' gap declared in the wiring effect
+    // is never cleared and provenance stays 'degraded' for the session.
+    //
     // Deliberately hasActiveBlock, not modeState.commandRunning: commandRunning
-    // is fed by OSC 133 / shell hooks, and Windows ships no shell integration,
-    // so the resolver's value is always false exactly where this fallback is
-    // the only thing keeping a ConPTY user able to type.
+    // is fed by OSC 133 / shell hooks, and the sessions that reach this line are
+    // exactly the ones with no hooks, so the resolver's value is always false
+    // precisely where this fallback is the only thing keeping the user able to
+    // type.
     commandRunning: hasActiveBlock,
   });
 
@@ -1690,7 +1714,18 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           onDismiss={handleDaemonDismiss}
         />
       )}
-      {!showXterm && shellIntegrationCard && (
+      {/* The quiet chip for degraded mode. It is deliberately gated on the
+          RESOLVER's observation as well as on the SSH timer that raised it:
+          the card is the affordance for "no hooks here", so the moment a hook
+          proves otherwise the resolver clears the reason and the card goes
+          away on its own. Not extended to local no-integration shells — the
+          card's only action is shellIntegration.installRemote(target) and a
+          local shell has no target, so it would offer a button that cannot
+          work. A local shell with no integration is deliberately not declared
+          as a gap either: with no hooks locally EVERY command would be
+          degraded, which would dock the input for all of them and coarsen
+          every block. That needs its own design, not a reused remote card. */}
+      {!showXterm && shellIntegrationCard && modeState.degradedReason === 'no-hooks' && (
         <ShellIntegrationInstallCard
           target={shellIntegrationCard.target}
           onInstalled={() => { /* Will activate on the user's next reconnect. */ }}

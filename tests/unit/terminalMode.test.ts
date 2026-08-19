@@ -310,3 +310,186 @@ describe('revocable fullscreen (Task 8)', () => {
     expect(st.inputOwner).toBe('shell');
   });
 });
+
+describe('degraded mode', () => {
+  it('marks raw-mode decisions degraded when termios is unavailable', () => {
+    const r = createModeResolver();
+    r.apply({ kind: 'sourceUnavailable', source: 'termios' });
+    r.apply({ kind: 'osc133', phase: 'output' });
+    const st = r.apply({ kind: 'tuiHint' });
+    expect(st.inputOwner).toBe('program');
+    expect(st.provenance).toBe('degraded');
+    expect(st.degradedReason).toBe('no-termios');
+  });
+
+  it('keeps alt-screen decisions authoritative when only termios is missing', () => {
+    // Degradation is per-source, never global: Windows has no termios but
+    // alt-screen escapes still arrive.
+    const r = createModeResolver();
+    r.apply({ kind: 'sourceUnavailable', source: 'termios' });
+    const st = r.apply({ kind: 'altScreen', entered: true });
+    expect(st.inputOwner).toBe('fullscreen');
+    expect(st.provenance).toBe('authoritative');
+    expect(st.degradedReason).toBeUndefined();
+  });
+
+  it('marks state degraded when hooks are unavailable', () => {
+    const r = createModeResolver();
+    r.apply({ kind: 'sourceUnavailable', source: 'hooks' });
+    const st = r.apply({ kind: 'tuiHint' });
+    expect(st.provenance).toBe('degraded');
+    expect(st.degradedReason).toBe('no-hooks');
+  });
+
+  it('self-heals when the missing source starts reporting', () => {
+    const r = createModeResolver();
+    r.apply({ kind: 'sourceUnavailable', source: 'hooks' });
+    expect(r.apply({ kind: 'tuiHint' }).provenance).toBe('degraded');
+
+    // A remote host that gains integration starts emitting hooks. No resolver
+    // change is needed for this to promote — that is what makes a future
+    // Warpify push a drop-in.
+    const st = r.apply({
+      kind: 'hook',
+      hook: { hook: 'precmd', exit: 0, signal: null, duration_ms: 1, command: 'x', cwd: '/' },
+    });
+    expect(st.provenance).toBe('authoritative');
+    expect(st.degradedReason).toBeUndefined();
+    // The two assertions above survive deleting the self-heal outright: the
+    // precmd branch hardcodes provenance 'authoritative' and degradedReason
+    // undefined, so they hold whether or not the gap was actually closed.
+    // The gap is only observable on the NEXT decision that consults it, and a
+    // boundary is exactly what re-arms the hint path — so this is the line
+    // that distinguishes a healed session from one that merely looks healed
+    // for a single frame.
+    expect(r.apply({ kind: 'tuiHint' }).provenance).toBe('inferred');
+  });
+
+  // Each real marker heals independently — asserted one at a time, because a
+  // test that fires several of them cannot tell which one did the work.
+  it('a real OSC 133 command marker heals the hooks gap on its own', () => {
+    const r = createModeResolver();
+    r.apply({ kind: 'sourceUnavailable', source: 'hooks' });
+    r.apply({ kind: 'osc133', phase: 'command' });
+    expect(r.apply({ kind: 'tuiHint' }).provenance).toBe('inferred');
+  });
+
+  it('a termios reading clears a termios degradation', () => {
+    const r = createModeResolver();
+    r.apply({ kind: 'sourceUnavailable', source: 'termios' });
+    const st = r.apply({ kind: 'termios', icanon: false, echo: true });
+    expect(st.provenance).toBe('authoritative');
+    expect(st.degradedReason).toBeUndefined();
+  });
+
+  // The brief's five cases above all clear the degradation with the SAME source
+  // they declared missing, so none of them can tell a per-source `unavailable`
+  // set from a single global boolean. These do.
+  it('a hook does not clear a termios degradation', () => {
+    const r = createModeResolver();
+    r.apply({ kind: 'sourceUnavailable', source: 'termios' });
+    r.apply({ kind: 'hook', hook: { hook: 'preexec', command: 'x' } });
+    const st = r.apply({ kind: 'tuiHint' });
+    expect(st.provenance).toBe('degraded');
+    expect(st.degradedReason).toBe('no-termios');
+  });
+
+  it('a termios reading does not clear a hooks degradation', () => {
+    const r = createModeResolver();
+    r.apply({ kind: 'sourceUnavailable', source: 'hooks' });
+    // A cooked reading leaves the owner on 'shell' and says nothing about hooks.
+    r.apply({ kind: 'termios', icanon: true, echo: true });
+    // The reading latched authoritativeThisCommand, so a boundary is needed
+    // before a hint is listened to again. The SYNTHETIC boundary, which is the
+    // only kind a session with no hooks can ever produce.
+    r.apply({ kind: 'osc133', phase: 'idle' });
+    const st = r.apply({ kind: 'tuiHint' });
+    expect(st.provenance).toBe('degraded');
+    expect(st.degradedReason).toBe('no-hooks');
+  });
+
+  // The one that decides whether this feature works at all for its headline
+  // case. TerminalSession synthesizes a boundary from the segmenter's own
+  // prompt heuristics every time a block ends; if that counted as proof of
+  // shell integration, a remote session would clear its own degradation on the
+  // first remote prompt and nothing would ever re-declare it.
+  it('a synthesized block boundary is not proof that hooks work', () => {
+    const r = createModeResolver();
+    r.apply({ kind: 'sourceUnavailable', source: 'hooks' });
+    const boundary = r.apply({ kind: 'osc133', phase: 'idle' });
+    expect(boundary.inputOwner).toBe('shell');
+    expect(boundary.commandRunning).toBe(false);
+    expect(boundary.provenance).toBe('degraded');
+    expect(boundary.degradedReason).toBe('no-hooks');
+    expect(r.apply({ kind: 'tuiHint' }).provenance).toBe('degraded');
+  });
+
+  // Windows quits vim. The alt-screen escape is authoritative about the screen
+  // and about nothing else; without re-degrading here the session would sit on
+  // 'shell:authoritative' forever and the ConPTY fallback would be gone for
+  // every command after the first TUI.
+  it('re-degrades on leaving the alt screen when termios is missing', () => {
+    const r = createModeResolver();
+    r.apply({ kind: 'sourceUnavailable', source: 'termios' });
+    expect(r.apply({ kind: 'altScreen', entered: true }).provenance).toBe('authoritative');
+    const st = r.apply({ kind: 'altScreen', entered: false });
+    expect(st.inputOwner).toBe('shell');
+    expect(st.provenance).toBe('degraded');
+    expect(st.degradedReason).toBe('no-termios');
+  });
+
+  // A marker proves hooks work; it proves nothing about the line discipline,
+  // which is the question that matters once a command is actually running.
+  it('re-degrades when a command starts and termios cannot report', () => {
+    const r = createModeResolver();
+    r.apply({ kind: 'sourceUnavailable', source: 'termios' });
+    expect(r.apply({ kind: 'osc133', phase: 'prompt' }).provenance).toBe('authoritative');
+    const st = r.apply({ kind: 'osc133', phase: 'output' });
+    expect(st.commandRunning).toBe(true);
+    expect(st.provenance).toBe('degraded');
+    expect(st.degradedReason).toBe('no-termios');
+
+    const viaHook = createModeResolver();
+    viaHook.apply({ kind: 'sourceUnavailable', source: 'termios' });
+    const hk = viaHook.apply({ kind: 'hook', hook: { hook: 'preexec', command: 'x' } });
+    expect(hk.commandRunning).toBe(true);
+    expect(hk.provenance).toBe('degraded');
+  });
+
+  // An OSC 133 prompt marker IS proof hooks work, so unlike a tuiHint it clears
+  // the degradation rather than being routed through degrade().
+  it('an OSC 133 prompt clears a hooks degradation', () => {
+    const r = createModeResolver();
+    r.apply({ kind: 'sourceUnavailable', source: 'hooks' });
+    expect(r.apply({ kind: 'tuiHint' }).degradedReason).toBe('no-hooks');
+    const st = r.apply({ kind: 'osc133', phase: 'prompt' });
+    expect(st.provenance).toBe('authoritative');
+    expect(st.degradedReason).toBeUndefined();
+    // Same masking as the precmd branch: the two assertions above are hardcoded
+    // by that branch and hold even with the heal deleted. This one observes it.
+    expect(r.apply({ kind: 'tuiHint' }).provenance).toBe('inferred');
+  });
+
+  it('drops every declared gap on pty exit and on reset', () => {
+    const r = createModeResolver();
+    r.apply({ kind: 'sourceUnavailable', source: 'termios' });
+    r.apply({ kind: 'sourceUnavailable', source: 'hooks' });
+    expect(r.apply({ kind: 'tuiHint' }).provenance).toBe('degraded');
+    r.apply({ kind: 'ptyExit' });
+    expect(r.apply({ kind: 'tuiHint' }).provenance).toBe('inferred');
+
+    r.apply({ kind: 'sourceUnavailable', source: 'hooks' });
+    expect(r.apply({ kind: 'tuiHint' }).provenance).toBe('degraded');
+    r.reset();
+    expect(r.apply({ kind: 'tuiHint' }).provenance).toBe('inferred');
+  });
+
+  // Declaring a gap must mark the CURRENT state degraded too, not only the
+  // next hint: the surface reads provenance the moment the declaration lands.
+  it('degrades the state that is already resolved, not just later ones', () => {
+    const r = createModeResolver();
+    const st = r.apply({ kind: 'sourceUnavailable', source: 'hooks' });
+    expect(st.provenance).toBe('degraded');
+    expect(st.degradedReason).toBe('no-hooks');
+  });
+});

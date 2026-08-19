@@ -248,6 +248,58 @@ describe('useTerminalMode', () => {
     expect(blocks[0].output).toContain('Downloading foo');
   });
 
+  // Task 10. TerminalSession synthesizes onCommandEnd from the segmenter's own
+  // prompt heuristics — not from an OSC 133 marker — so it must carry the
+  // boundary semantics without the proof-of-integration. Wiring it as a real
+  // 'prompt' (as the resolver's other boundary callers do) leaves every
+  // resolver unit test green while silently letting a degraded remote session
+  // clear its own degradation on the first heuristic prompt match, after which
+  // nothing re-declares it and the whole feature is off for the session.
+  it('a block boundary is a boundary, not evidence that shell integration exists', () => {
+    const t = setup();
+    act(() => t.mode().onModeSignal({ kind: 'sourceUnavailable', source: 'hooks' }));
+    expect(t.mode().modeState.degradedReason).toBe('no-hooks');
+
+    act(() => t.mode().onCommandEnd());
+
+    // Boundary semantics intact...
+    expect(t.mode().modeState.inputOwner).toBe('shell');
+    expect(t.mode().modeState.commandRunning).toBe(false);
+    // ...and the gap is still open.
+    expect(t.mode().modeState.degradedReason).toBe('no-hooks');
+    act(() => t.mode().onModeSignal({ kind: 'tuiHint' }));
+    expect(t.mode().modeState.provenance).toBe('degraded');
+  });
+
+  // The end-to-end shape of the ConPTY fallback, through the same projection
+  // the component uses. On win32 no TermiosPoller is ever constructed
+  // (electron/services/pty.ts guards on process.platform), so onTermios is
+  // never called, the gap is never healed, and this is the only thing that
+  // gets the user a surface they can type into.
+  it('a declared gap reaches the input surface as the live terminal', () => {
+    const t = setup();
+    const surfaceWhileRunning = () => deriveInputSurface({
+      ...inputSignalsFromMode(t.mode().modeState),
+      awaitingInput: false,
+      passwordPrompt: false,
+      degraded: t.mode().modeState.provenance === 'degraded',
+      commandRunning: true,
+    });
+
+    // No gap declared: the composer, because the real signals are trusted.
+    expect(surfaceWhileRunning()).toBe('composer');
+
+    act(() => t.mode().onModeSignal({ kind: 'sourceUnavailable', source: 'termios' }));
+    expect(surfaceWhileRunning()).toBe('docked');
+
+    // Alt-screen programs still get their own surface, and leaving one returns
+    // to the fallback rather than to a false claim of authority.
+    act(() => t.mode().onModeSignal({ kind: 'altScreen', entered: true }));
+    expect(surfaceWhileRunning()).toBe('fullscreen');
+    act(() => t.mode().onModeSignal({ kind: 'altScreen', entered: false }));
+    expect(surfaceWhileRunning()).toBe('docked');
+  });
+
   it('reset() publishes the initial state, not just the resolver internals', () => {
     const t = setup();
     act(() => t.mode().onTermios(raw));

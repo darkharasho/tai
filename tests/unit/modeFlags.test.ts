@@ -26,6 +26,7 @@ describe('inputSignalsFromMode', () => {
       altScreenVisible: false,
       interactiveMode: false,
       interactiveFullscreen: false,
+      degraded: false,
     });
     expect(surfaceFor(state({ inputOwner: 'shell' }))).toBe('composer');
   });
@@ -35,6 +36,7 @@ describe('inputSignalsFromMode', () => {
       altScreenVisible: false,
       interactiveMode: true,
       interactiveFullscreen: false,
+      degraded: false,
     });
     expect(surfaceFor(state({ inputOwner: 'program' }))).toBe('docked');
   });
@@ -48,17 +50,44 @@ describe('inputSignalsFromMode', () => {
       altScreenVisible: true,
       interactiveMode: true,
       interactiveFullscreen: true,
+      degraded: false,
     });
     expect(surfaceFor(state({ inputOwner: 'fullscreen' }))).toBe('fullscreen');
   });
 
-  it('ignores provenance — how we know does not change what is rendered', () => {
+  it('ignores the inferred/authoritative split — how we know does not change what is rendered', () => {
     // A revocable fullscreenHint renders identically to a real alt screen. The
-    // difference is what may DROP bytes (Task 9), not what is shown.
+    // difference is what may DROP bytes (Task 9), not what is shown. 'degraded'
+    // is the one exception and is asserted separately below: there the surface
+    // has to change, because there is nothing left to render honestly from.
     expect(inputSignalsFromMode(state({ inputOwner: 'fullscreen', provenance: 'inferred' })))
       .toEqual(inputSignalsFromMode(state({ inputOwner: 'fullscreen', provenance: 'authoritative' })));
     expect(inputSignalsFromMode(state({ inputOwner: 'program', provenance: 'inferred' })))
       .toEqual(inputSignalsFromMode(state({ inputOwner: 'program', provenance: 'authoritative' })));
+  });
+
+  // Task 10. The fallback that replaced the isWindows special case. Nulling
+  // this field is invisible on this host and fatal on Windows, so it is pinned
+  // both as a field and through the surface it produces.
+  it('reports a degraded provenance so the surface can fall back', () => {
+    expect(inputSignalsFromMode(state({ provenance: 'degraded', degradedReason: 'no-termios' })).degraded)
+      .toBe(true);
+    expect(inputSignalsFromMode(state({ provenance: 'inferred' })).degraded).toBe(false);
+    expect(inputSignalsFromMode(state({ provenance: 'authoritative' })).degraded).toBe(false);
+
+    // Through deriveInputSurface, with a command running — which is the whole
+    // point: a ConPTY user with a foreground program needs somewhere to type.
+    const withCommand = (mode: ModeState) => deriveInputSurface({
+      ...inputSignalsFromMode(mode),
+      awaitingInput: false,
+      passwordPrompt: false,
+      commandRunning: true,
+    });
+    expect(withCommand(state({ provenance: 'degraded' }))).toBe('docked');
+    expect(withCommand(state({ provenance: 'authoritative' }))).toBe('composer');
+    // Still per-source: a degraded session that is genuinely in an alt screen
+    // gets its own surface, not the fallback.
+    expect(withCommand(state({ inputOwner: 'fullscreen', provenance: 'degraded' }))).toBe('fullscreen');
   });
 
   it('maps every owner to a distinct surface', () => {

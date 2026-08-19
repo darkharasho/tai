@@ -150,9 +150,22 @@ describe('PTY replay corpus (baseline)', () => {
     expect(blocks[1].output).toBe('');
   });
 
-  // KNOWN-BAD (Task 10 fixes): `ls` runs on the remote host inside the ssh
-  // session, but every block reports isRemote:false — the remote boundary is
-  // invisible, so AI context and re-run treat these as local commands.
+  // NOT a bug, and NOT fixed by Task 10 — the earlier KNOWN-BAD diagnosis was
+  // wrong. Decoding the fixture shows the `ssh taidev` command FAILED: its
+  // output is "Bad owner or permissions on
+  // /etc/ssh/ssh_config.d/20-systemd-ssh-proxy.conf" and its OSC 133 D marker
+  // carries exit 255. No remote session was ever established, so the following
+  // `ls` ran on the LOCAL shell and `isRemote: false` is the correct answer for
+  // all three blocks. The recording does not exercise a remote boundary at all;
+  // making it do so needs a re-capture (fixtures are immutable), not a code
+  // change.
+  //
+  // Task 10's under-segmentation cannot move this fixture either, for a second
+  // independent reason: the recording is fully OSC 133 / OSC 6973 driven from
+  // end to end, so hooks are present, no gap is ever declared, and the mode
+  // never leaves 'authoritative'. That the block list here is byte-identical
+  // after Task 10 is the assertion that the degraded path does not touch
+  // sessions that have working shell integration.
   it('ssh-interactive: interactive session', () => {
     const { blocks, transitions } = replayFixture('ssh-interactive');
     expect(transitions).toMatchInlineSnapshot(`[]`);

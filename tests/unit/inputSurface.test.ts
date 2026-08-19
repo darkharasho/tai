@@ -55,27 +55,36 @@ describe('deriveInputSurface', () => {
     expect(deriveInputSurface({ ...base, rootedSession: true, altScreenVisible: true })).toBe('fullscreen');
   });
 
-  // Windows has no termios / /proc, so the interactivity signals
-  // (awaitingInput, interactiveMode, passwordPrompt, altScreenVisible) never
-  // fire. Without a fallback the surface is stuck on `composer` and a running
-  // command that waits for input hangs with nowhere to type. The fallback:
-  // any running command on Windows gets the live terminal (docked).
-  it('windows: a running command falls back to docked (live terminal)', () => {
-    expect(deriveInputSurface({ ...base, isWindows: true, commandRunning: true })).toBe('docked');
+  // Was the `isWindows` special case (Task 10). Windows (ConPTY) has no termios
+  // and no /proc, so the interactivity signals above never fire — but neither
+  // do they for an SSH session with no remote hooks or a shell with no
+  // integration. The input is now the resolver's provenance, so all three take
+  // this one path. Without it the surface is stuck on `composer` and a running
+  // command that waits for input hangs with nowhere to type.
+  it('falls back to docked whenever nothing authoritative is reporting', () => {
+    expect(deriveInputSurface({
+      altScreenVisible: false, interactiveMode: false, interactiveFullscreen: false,
+      awaitingInput: false, passwordPrompt: false,
+      degraded: true, commandRunning: true,
+    })).toBe('docked');
   });
 
-  it('windows: no running command stays on the composer', () => {
-    expect(deriveInputSurface({ ...base, isWindows: true, commandRunning: false })).toBe('composer');
+  it('stays on the composer when degraded but nothing is running', () => {
+    expect(deriveInputSurface({
+      altScreenVisible: false, interactiveMode: false, interactiveFullscreen: false,
+      awaitingInput: false, passwordPrompt: false,
+      degraded: true, commandRunning: false,
+    })).toBe('composer');
   });
 
-  it('the windows fallback never applies off-windows (unix uses real signals)', () => {
-    expect(deriveInputSurface({ ...base, isWindows: false, commandRunning: true })).toBe('composer');
+  it('never applies while an authoritative source is reporting', () => {
+    expect(deriveInputSurface({ ...base, degraded: false, commandRunning: true })).toBe('composer');
   });
 
-  it('the windows fallback is outranked by rooted sessions and real prompts', () => {
-    expect(deriveInputSurface({ ...base, isWindows: true, commandRunning: true, rootedSession: true })).toBe('rooted');
-    expect(deriveInputSurface({ ...base, isWindows: true, commandRunning: true, passwordPrompt: true })).toBe('tier1');
-    expect(deriveInputSurface({ ...base, isWindows: true, commandRunning: true, altScreenVisible: true })).toBe('fullscreen');
+  it('is outranked by rooted sessions and real prompts', () => {
+    expect(deriveInputSurface({ ...base, degraded: true, commandRunning: true, rootedSession: true })).toBe('rooted');
+    expect(deriveInputSurface({ ...base, degraded: true, commandRunning: true, passwordPrompt: true })).toBe('tier1');
+    expect(deriveInputSurface({ ...base, degraded: true, commandRunning: true, altScreenVisible: true })).toBe('fullscreen');
   });
 });
 

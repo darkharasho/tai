@@ -80,8 +80,13 @@ export function useTerminalMode(onResolved?: (state: ModeState) => void): Termin
     onCommandEnd: useCallback(() => {
       // A finished block is a command boundary: the foreground is the shell
       // again. Same semantics as the prompt marker, so it reuses that signal
-      // rather than inventing a parallel reset path.
-      commit(resolverRef.current.apply({ kind: 'osc133', phase: 'prompt' }));
+      // rather than inventing a parallel reset path — but as the SYNTHETIC
+      // 'idle' phase, not 'prompt'. This boundary is worked out from the
+      // segmenter's own prompt heuristics; it is not an OSC 133 marker and so
+      // is not evidence that shell integration exists. Sending 'prompt' here
+      // would let a degraded remote session clear its own 'no-hooks'
+      // degradation on the first heuristic prompt match.
+      commit(resolverRef.current.apply({ kind: 'osc133', phase: 'idle' }));
     }, [commit]),
     reset: useCallback(() => {
       resolverRef.current.reset();
