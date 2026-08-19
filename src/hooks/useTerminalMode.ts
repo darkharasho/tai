@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { createModeResolver, type ModeSignal, type ModeState } from '@/utils/terminalMode';
 import { sameModeState } from '@/utils/modeFlags';
 
@@ -36,14 +36,28 @@ export interface TerminalModeApi {
   reset: () => void;
 }
 
-export function useTerminalMode(): TerminalModeApi {
+/**
+ * @param onResolved Sink for every resolved state, called synchronously with
+ *   the resolver's answer. BlockSegmenter needs the state on the same tick as
+ *   the bytes that produced it — React state lands a tick later, and a
+ *   retention decision made against a stale mode is the race this migration
+ *   exists to remove. It hangs off the hook rather than off each call site so
+ *   that no future signal can update one decider and not the other.
+ */
+export function useTerminalMode(onResolved?: (state: ModeState) => void): TerminalModeApi {
   const resolverRef = useRef(createModeResolver());
   const [modeState, setModeState] = useState<ModeState>(() => resolverRef.current.state);
+  const sinkRef = useRef(onResolved);
+  useEffect(() => { sinkRef.current = onResolved; });
 
   // The resolver returns a fresh object for every signal, including ones that
   // change nothing — committing those would re-render on every 200ms echo poll
   // for no news.
   const commit = useCallback((next: ModeState) => {
+    // Unconditionally, including for news-free readings: the dedupe below is a
+    // render optimisation, and a consumer that skipped one would be reasoning
+    // about a state the resolver has already moved past.
+    sinkRef.current?.(next);
     setModeState(prev => (sameModeState(prev, next) ? prev : next));
   }, []);
 

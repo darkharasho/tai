@@ -5,7 +5,7 @@ import { parseOsc6973 } from '@/utils/osc6973';
 import { parseInteractiveSshCommand, checkSshLoginState } from '@/utils/sshDetect';
 import { isBootstrapEchoLine } from '@/utils/bootstrapEcho';
 import type { SegmentedBlock } from '@/types';
-import type { ModeSignal } from '@/utils/terminalMode';
+import { INITIAL_MODE_STATE, type ModeSignal, type ModeState } from '@/utils/terminalMode';
 
 // Prompt-final glyphs. Beyond the classic `$#%>` we include theme glyphs
 // (❯ → ➜ λ » ⟫) used by Starship/p10k/fish. Deliberately excludes box-drawing
@@ -44,6 +44,10 @@ type ModeSignalCallback = (signal: ModeSignal) => void;
 // limit are silently truncated (head-preserving); marker semantics live at the
 // start so truncating the tail is safe.
 export const MAX_OSC_PAYLOAD = 64 * 1024;
+
+// Bound on bytes retained while the mode is only inferred. Head-preserving,
+// same shape as MAX_OSC_PAYLOAD.
+export const MAX_RETAINED_BYTES = 256 * 1024;
 
 // OSC 133 markers: ESC ] 133 ; <X>[;...] (BEL | ESC \)
 // We only care about the trailing payload for the D marker (exit code).
@@ -113,6 +117,14 @@ export class BlockSegmenter {
   private _osc133ExitCode: number | null = null;
   private _osc133BlockStart = 0;
 
+  // The resolved mode, pushed in from the hook that owns it. Read only to
+  // decide whether dropping bytes is permitted — never to decide rendering.
+  private _modeState: ModeState = INITIAL_MODE_STATE;
+  // Output captured while the mode was only a guess. Rendering already went to
+  // xterm; this exists purely so a wrong guess costs an ugly card instead of
+  // lost data.
+  private _retained = '';
+
   // OSC 6973 (shell hook) pending state — populated by preexec/precmd payloads
   // and consumed when finalizing the integrated block.
   private _pendingPreexec: { command: string } | null = null;
@@ -136,6 +148,46 @@ export class BlockSegmenter {
   onSshSession(cb: SshSessionCallback): void { this._sshSessionCallbacks.push(cb); }
   onBlockActive(cb: BlockActiveCallback): void { this._blockActiveCallbacks.push(cb); }
   onModeSignal(cb: ModeSignalCallback): void { this._modeSignalCallbacks.push(cb); }
+
+  /**
+   * Push resolved mode state in.
+   *
+   * Mode decides rendering, never retention. While the mode is merely inferred
+   * we keep a bounded copy of the bytes we are not routing into the block; if
+   * an authoritative signal later contradicts the guess we replay them, and if
+   * it confirms the guess we drop them. Before this, a false positive from the
+   * cursor-reposition regex destroyed output irrecoverably.
+   */
+  setModeState(state: ModeState): void {
+    const prev = this._modeState;
+    this._modeState = state;
+
+    if (prev.provenance !== 'authoritative' && state.provenance === 'authoritative') {
+      // A different owner than the guess claimed means the guess was wrong.
+      // The same owner is a confirmation: those bytes really were TUI frames
+      // the line model can only mangle, so they stay dropped.
+      if (state.inputOwner !== prev.inputOwner) this._replayRetained();
+      this._retained = '';
+    }
+  }
+
+  /**
+   * Give the block back the output that was withheld on a guess.
+   *
+   * Feeding `_outEmu` is what makes the bytes part of the block: the finalize
+   * path reads the emulator, and the streaming callbacks keep the live card in
+   * step with it.
+   */
+  private _replayRetained(notify = true): void {
+    if (!this._retained) return;
+    this._outEmu.feed(this._retained);
+    this._retained = '';
+    if (!notify) return;
+    const clean = this._outEmu.tailText(STREAM_TAIL_LINES);
+    if (clean.length > 0) {
+      this._outputCallbacks.forEach(cb => cb(clean, this._outEmu.tailAnsi(STREAM_TAIL_LINES)));
+    }
+  }
 
   private _emitModeSignal(signal: ModeSignal): void {
     this._modeSignalCallbacks.forEach(cb => cb(signal));
@@ -576,6 +628,9 @@ export class BlockSegmenter {
         this._osc133ExitCode = null;
         this._osc133BlockStart = Date.now();
         this._passwordPromptFired = false;
+        // Anything still held belonged to the block just finalized, which had
+        // its chance to reclaim it above.
+        this._retained = '';
         this._emitModeSignal({ kind: 'osc133', phase: 'prompt' });
         break;
       }
@@ -646,11 +701,17 @@ export class BlockSegmenter {
 
   private _routeChunk(chunk: string): void {
     if (!this._integrationActive) return;
-    // While the foreground program owns the alt-screen (vim, less, claude, etc)
-    // the byte stream is full-screen TUI noise that doesn't belong in the
-    // block's output buffer. Drop it; xterm.js renders it for the user
-    // separately.
-    if (this._inAltScreen) return;
+    // A genuine alt-screen program's bytes are full-screen TUI noise that
+    // xterm.js renders and the line emulator can only mangle — dropping them is
+    // correct. But only when we KNOW. Under a guess we still route rendering to
+    // xterm, and keep a bounded copy so the guess is recoverable.
+    if (this._inAltScreen) {
+      if (this._modeState.provenance === 'authoritative') return;
+      if (this._retained.length < MAX_RETAINED_BYTES) {
+        this._retained += chunk.slice(0, MAX_RETAINED_BYTES - this._retained.length);
+      }
+      return;
+    }
     switch (this._osc133Phase) {
       case 'prompt':
         if (this._osc133RawPrompt.length < MAX_OSC_PAYLOAD) {
@@ -761,6 +822,13 @@ export class BlockSegmenter {
   }
 
   private _finalizeIntegratedBlock(): void {
+    // The block is ending with a guess still unresolved: no authoritative
+    // signal ever arrived to confirm or contradict it. An unresolved guess
+    // falls on the retaining side, because the cost of being wrong is an ugly
+    // card one way and silently lost output the other. No streaming emit: the
+    // block callback below carries the whole buffer anyway.
+    this._replayRetained(false);
+
     let rawCommand = this._osc133RawCommand;
 
     // Fallback for shell integrations that don't emit a C marker between the
@@ -871,6 +939,8 @@ export class BlockSegmenter {
     this._outEmu.reset();
     this._osc133ExitCode = null;
     this._osc133BlockStart = 0;
+    this._modeState = INITIAL_MODE_STATE;
+    this._retained = '';
     this._pendingPreexec = null;
     this._pendingPrecmd = null;
   }

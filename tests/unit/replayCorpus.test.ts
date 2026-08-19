@@ -36,10 +36,14 @@ describe('PTY replay corpus (baseline)', () => {
   // Pre-Task-8 that correction was invisible: the false alt screen outranked
   // termios and the 500ms debounce delayed the reading besides.
   //
-  // KNOWN-BAD (Task 9 fixes): the `claude` block is still missing. That is a
-  // separate mechanism — `_inAltScreen` still gates `_routeChunk`, and the
-  // reposition regex still sets it — and Task 9 is where routing learns to
-  // read provenance instead.
+  // KNOWN-BAD, but NOT a routing bug and NOT fixed by Task 9: the `claude`
+  // block is missing because the capture ends while claude is still foreground.
+  // The recording's last bytes are claude's teardown; no OSC 133 D/A ever
+  // arrives, so the block is never finalized and can never be emitted, whatever
+  // routing does with its bytes. Task 9 did change what happens to those bytes
+  // — they are now retained rather than discarded — but a block that never ends
+  // has nothing to show them in. Fixing this needs a re-capture that lets
+  // claude exit (fixtures are immutable), not a code change.
   it('claude-ink: Ink TUI never enters alt screen', () => {
     const { blocks, transitions } = replayFixture('claude-ink');
     expect(transitions).toMatchInlineSnapshot(`
@@ -56,11 +60,12 @@ describe('PTY replay corpus (baseline)', () => {
     `);
   });
 
-  // KNOWN-BAD (Task 9 fixes): the vite block never appears — only the setup
-  // block survives. The raw-mode flip is visible to termios but the command
-  // that caused it was never attributed to a block. Task 8 changed nothing
-  // here: the single `termios:cooked` reading agrees with the initial state,
-  // so it produces no transition at all, and block attribution is routing.
+  // KNOWN-BAD, but NOT fixed by Task 9, and the earlier diagnosis was wrong:
+  // the vite block never appears because vite is still running when the capture
+  // stops. There is no OSC 133 D and no following A, so the block is never
+  // finalized — block attribution here is lifecycle, not routing. (The single
+  // `termios:cooked` reading also agrees with the initial state, so it produces
+  // no transition.) Needs a re-capture where vite exits, not a code change.
   it('vite-shortcuts: raw-mode flip mid-session', () => {
     const { blocks, transitions } = replayFixture('vite-shortcuts');
     expect(transitions).toMatchInlineSnapshot(`
@@ -95,6 +100,20 @@ describe('PTY replay corpus (baseline)', () => {
         "python3",
       ]
     `);
+    // FIXED (Task 9): the block used to end at the banner. Everything the user
+    // actually did in the REPL — `2 + 2`, its answer, `exit()` — arrived after
+    // the cursor-back redraws tripped the false alt-screen latch, and
+    // `_routeChunk` discarded it. Retention now holds those bytes on the guess
+    // and, since no authoritative signal ever confirms it, the block replays
+    // them as it ends. This is the whole point of the task, and it is the one
+    // fixture in the corpus that can show it: the two below end mid-command.
+    expect(blocks[1].output).toMatchInlineSnapshot(`
+      "Python 3.14.6 (main, Jun 10 2026, 10:03:53) [GCC 13.3.0] on linux
+      Type "help", "copyright", "credits" or "license" for more information.
+      >>> 2 + 2
+      4
+      >>> exit()"
+    `);
   });
 
   // CORRECT baseline: htop really does enter and leave the alt screen, and the
@@ -117,6 +136,11 @@ describe('PTY replay corpus (baseline)', () => {
         "htop",
       ]
     `);
+    // The over-correction guard, made explicit in Task 9: a real alt screen is
+    // `fullscreen` + `authoritative`, so its bytes are still dropped outright
+    // and never enter the side buffer. If retention ever starts replaying here,
+    // the block fills with htop redraw frames.
+    expect(blocks[1].output).toBe('');
   });
 
   // KNOWN-BAD (Task 10 fixes): `ls` runs on the remote host inside the ssh

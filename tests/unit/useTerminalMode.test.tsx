@@ -6,8 +6,10 @@
  * breaking the wiring breaks these tests.
  */
 import { describe, it, expect } from 'vitest';
+import { useCallback } from 'react';
 import { renderHook, act } from '@testing-library/react';
 import { useTerminalMode, type TerminalModeApi, type TermiosReading } from '@/hooks/useTerminalMode';
+import type { ModeState } from '@/utils/terminalMode';
 import { BlockSegmenter } from '@/components/BlockSegmenter';
 import { deriveInputSurface } from '@/utils/inputSurface';
 import { inputSignalsFromMode } from '@/utils/modeFlags';
@@ -212,6 +214,38 @@ describe('useTerminalMode', () => {
 
     expect(t.mode().modeState.inputOwner).toBe('shell');
     expect(t.surface()).toBe('composer');
+  });
+
+  it('every resolved state reaches the segmenter, so retention sees the live mode', () => {
+    // TerminalSession installs exactly this sink. The segmenter needs the mode
+    // on the same tick as the bytes that produced it, so a wiring that only
+    // updated React state would leave retention deciding against a stale mode
+    // - the race this migration exists to remove. Driven end to end rather
+    // than by asserting on a spy: the point is that the block keeps its output.
+    const seg = new BlockSegmenter();
+    const blocks: any[] = [];
+    seg.onBlock(b => blocks.push(b));
+    const view = renderHook(() =>
+      useTerminalMode(useCallback((state: ModeState) => seg.setModeState(state), [])));
+    seg.onModeSignal(s => act(() => view.result.current.onModeSignal(s)));
+
+    seg.feed(osc133('A'));
+    seg.feed('$ ');
+    seg.feed(osc133('B'));
+    seg.feed('brew install foo\n');
+    seg.feed(osc133('C'));
+    // Cursor-up redraw: the guess that used to discard everything after it.
+    seg.feed('\x1b[2A');
+    seg.feed('==> Downloading foo\n');
+    act(() => view.result.current.onTermios(cooked));
+    seg.feed(osc133('D;0'));
+    seg.feed(osc133('A'));
+
+    expect(view.result.current.modeState).toMatchObject({
+      inputOwner: 'shell', provenance: 'authoritative',
+    });
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].output).toContain('Downloading foo');
   });
 
   it('reset() publishes the initial state, not just the resolver internals', () => {

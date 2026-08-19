@@ -43,6 +43,10 @@ export function replayRecording(rec: PtyRecording): ReplayResult {
   let lastMode = `${resolver.state.inputOwner}:${resolver.state.provenance}`;
 
   const pushMode = () => {
+    // The same sink TerminalSession installs on useTerminalMode: every resolved
+    // state reaches the segmenter, synchronously, so retention decides against
+    // the mode that the current bytes produced rather than the previous one.
+    seg.setModeState(resolver.state);
     const label = `${resolver.state.inputOwner}:${resolver.state.provenance}`;
     if (label !== lastMode) {
       lastMode = label;

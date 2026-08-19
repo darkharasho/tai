@@ -40,6 +40,7 @@ import { capDisplayItems } from '@/utils/blockCap';
 import { withAnswers } from '@/utils/askUserQuestion';
 import { clampStoredOutput } from '@/utils/clampStoredOutput';
 import { useTerminalMode } from '@/hooks/useTerminalMode';
+import type { ModeState } from '@/utils/terminalMode';
 import { inputSignalsFromMode } from '@/utils/modeFlags';
 import { PtyRecorder } from '@/utils/ptyRecording';
 import {
@@ -109,7 +110,12 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   // Every mode decision lives in this hook — the component only forwards
   // events into it and reads one ModeState back. See useTerminalMode for what
   // that state means and for the surfaces this migration deliberately changes.
-  const mode = useTerminalMode();
+  // The segmenter needs the resolved mode on the same tick as the bytes that
+  // produced it, so it is fed from the hook's sink rather than from React
+  // state. Retention is the consumer: it decides whether bytes may be dropped.
+  const mode = useTerminalMode(useCallback((state: ModeState) => {
+    segmenterRef.current.setModeState(state);
+  }, []));
   const { modeState } = mode;
   // Long-running session state: drives the rooted surface and the morphed
   // card header. Mirrored into a ref for the segmenter callbacks (registered
