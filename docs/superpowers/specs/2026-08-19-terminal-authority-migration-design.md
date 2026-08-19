@@ -254,9 +254,12 @@ Consequences:
    session restore. This is a deliberate, user-visible behaviour change: some
    remote sessions will produce fewer, larger blocks than today.
 4. **Surface it.** A quiet chip on the block or tab ("limited shell
-   integration"), reusing the existing `ShellIntegrationInstallCard` affordance
-   locally and pointing at the `⥂` manual remote override
-   (`src/utils/remoteOverride.ts`) for SSH.
+   integration"), reusing the existing `ShellIntegrationInstallCard`
+   (`src/components/ShellIntegrationInstallCard.tsx`) affordance, which already
+   fires for SSH targets that stay silent on OSC 133. Note: the `⥂` manual
+   remote override (`src/utils/remoteOverride.ts`) referenced in earlier drafts
+   was removed in `c379e3b` as superseded by the remote-AI pill; there is no
+   manual override to point at.
 
 ## PTY record and replay
 
