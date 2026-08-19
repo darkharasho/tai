@@ -137,10 +137,7 @@ describe('PTY replay corpus (baseline)', () => {
     `);
   });
 
-  // KNOWN-BAD (Task 5 fixes): the last entry reconstructs `exit` from echoed
-  // bytes while the shell hook reported `fish` — the reconstruction and the
-  // authoritative value disagree outright. `fromShell` is undefined for the
-  // inner blocks, so today there is nothing to cross-check them against.
+  // Fixed by Task 5: command now comes from the preexec hook verbatim.
   it('prompt-redraw: command reconstruction under redraws', () => {
     const { blocks } = replayFixture('prompt-redraw');
     expect(blocks.map(b => ({ command: b.command, fromShell: b.commandFromShell }))).toMatchInlineSnapshot(`
@@ -151,7 +148,7 @@ describe('PTY replay corpus (baseline)', () => {
         },
         {
           "command": "fish",
-          "fromShell": undefined,
+          "fromShell": "fish",
         },
         {
           "command": "echo alpha bravo charlie delta",
@@ -162,7 +159,7 @@ describe('PTY replay corpus (baseline)', () => {
           "fromShell": undefined,
         },
         {
-          "command": "exit",
+          "command": "fish",
           "fromShell": "fish",
         },
       ]

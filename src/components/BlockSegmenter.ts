@@ -590,7 +590,7 @@ export class BlockSegmenter {
         this._osc133Phase = 'output';
         this._cmdDepth++;
         this._setCommandActive(true);
-        const ssh = parseInteractiveSshCommand(renderTermText(this._osc133RawCommand).trim());
+        const ssh = parseInteractiveSshCommand(this._commandText(this._osc133RawCommand).trim());
         if (ssh) {
           this._sshDepth = this._cmdDepth;
           this._setSshSession(true, ssh.host);
@@ -707,6 +707,27 @@ export class BlockSegmenter {
     this._routeChunk(rawData);
   }
 
+  /**
+   * The command the user actually ran.
+   *
+   * The shell tells us verbatim via OSC 6973 preexec; reconstructing it from
+   * echoed bytes is guesswork that has to undo autosuggestion ghosts, PS2
+   * prefixes, prompt redraws and line wrapping. Prefer the hook and keep the
+   * reconstruction only for shells with no integration.
+   *
+   * preexec beats precmd because it is captured before the command produced
+   * any output that could interfere; in practice the two agree.
+   */
+  private _commandText(rawCommand: string): string {
+    const hooked = this._pendingPreexec?.command || this._pendingPrecmd?.command;
+    if (hooked) return hooked;
+    return renderTermText(rawCommand)
+      .trim()
+      .split('\n')
+      .map((l, i) => (i === 0 ? l : stripPs2(l)))
+      .join('\n');
+  }
+
   private _finalizeIntegratedBlock(): void {
     let rawCommand = this._osc133RawCommand;
 
@@ -725,11 +746,8 @@ export class BlockSegmenter {
 
     // The C marker bounds the command, so everything here is command text —
     // but continuation lines still carry their PS2 echo prefixes. Strip them.
-    const command = renderTermText(rawCommand)
-      .trim()
-      .split('\n')
-      .map((l, i) => (i === 0 ? l : stripPs2(l)))
-      .join('\n');
+    // Prefer the hook-reported command text over the echo reconstruction.
+    const command = this._commandText(rawCommand);
     const fullText = this._outEmu.text();
     const output = fullText.trim() ? fullText.replace(/^\n+/, '').trimEnd() : '';
     const rawOutput = output ? this._outEmu.ansi().replace(/^\n+/, '').trimEnd() : '';
@@ -771,6 +789,9 @@ export class BlockSegmenter {
         signal: this._pendingPrecmd.signal,
         cwd: this._pendingPrecmd.cwd,
         commandFromShell: this._pendingPrecmd.command,
+      } : {}),
+      ...(!this._pendingPrecmd && this._pendingPreexec ? {
+        commandFromShell: this._pendingPreexec.command,
       } : {}),
     };
 
