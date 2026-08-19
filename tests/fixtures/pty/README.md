@@ -18,6 +18,16 @@ Add a scenario to the `SCENARIOS` table there, then inspect the result:
 Read the decoded output before committing. The capture masks the values it knows
 about; it cannot know what a new scenario will print.
 
+### Re-recording the ssh fixtures
+
+They need loopback ssh, which is deliberately not left enabled. Set it up, and
+tear it down again afterwards:
+
+    ssh-keygen -t ed25519 -N '' -C tai-fixture -f ~/.ssh/tai_fixture_tmp
+    cat ~/.ssh/tai_fixture_tmp.pub >> ~/.ssh/authorized_keys
+    # ... capture ...
+    sed -i '/tai-fixture/d' ~/.ssh/authorized_keys && rm ~/.ssh/tai_fixture_tmp*
+
 ### Why the capture is not just "run the app and save"
 
 Each of these cost a debugging session, and a fixture captured without them is
