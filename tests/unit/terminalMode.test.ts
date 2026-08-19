@@ -380,6 +380,13 @@ describe('degraded mode', () => {
     const st = r.apply({ kind: 'termios', icanon: false, echo: true });
     expect(st.provenance).toBe('authoritative');
     expect(st.degradedReason).toBeUndefined();
+    // Both assertions above hold even with the heal deleted: the termios branch
+    // hardcodes both fields, so it is not the heal they observe. The gap is only
+    // visible on the NEXT decision that consults it — take one. The boundary
+    // releases the command's authoritative latch so the hint is live again, and
+    // the hint routes through degrade(); 'inferred' means the gap really closed.
+    r.apply({ kind: 'osc133', phase: 'idle' });
+    expect(r.apply({ kind: 'tuiHint' }).provenance).toBe('inferred');
   });
 
   // The brief's five cases above all clear the degradation with the SAME source
