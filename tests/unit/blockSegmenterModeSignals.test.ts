@@ -85,8 +85,8 @@ describe('BlockSegmenter mode signals', () => {
 
   it('emits an altScreen exit when a new prompt clears the alt-screen latch', () => {
     // The A handler drops the latch without an exit sequence ever arriving.
-    // Task 8 deletes onAltScreen, so the resolver must hear this directly
-    // rather than by way of the prompt signal that follows it.
+    // The resolver has to hear that directly rather than by way of the prompt
+    // signal that follows it — there is no legacy callback left to carry it.
     const { seg, signals } = collect();
     seg.feed(osc133('A'));
     seg.feed('$ ');
@@ -100,35 +100,18 @@ describe('BlockSegmenter mode signals', () => {
     expect(kinds.slice(-2)).toEqual(['altScreen:false', 'osc133']);
   });
 
-  it('leaves the legacy cursor-hide takeover unsignalled on entry and clears it on exit', () => {
+  it('signals the legacy cursor-hide takeover as a REVOCABLE fullscreen', () => {
     // Non-integrated shell: _feedLegacy reads a cursor hide as a fullscreen
-    // takeover, but a REVOCABLE one — a cooked termios reading ends it today.
-    // `altScreen` would make it survive that reading (resolver rule 3), which
-    // is a different rendered surface for the same bytes, so entry stays
-    // unsignalled until Task 8 introduces a signal that can express it. The
-    // exit is signalled so the resolver can never be stranded.
+    // takeover, but a revocable one — a cursor hide is how a full TUI and a
+    // cooked spinner both begin. `altScreen` would make it survive a cooked
+    // termios reading (resolver rule 3) and strand the spinner off the
+    // composer, so it gets `fullscreenHint` instead.
     const { seg, signals } = collect();
     seg.feed('user@host:~$ ');
     seg.feed('\x1b[?25l');
+    expect(signals).toContainEqual({ kind: 'fullscreenHint', entered: true });
     expect(signals).not.toContainEqual({ kind: 'altScreen', entered: true });
     seg.feed('\x1b[?25h');
-    expect(signals).toContainEqual({ kind: 'altScreen', entered: false });
-  });
-
-  it('still fires the legacy altScreen and interactive callbacks', () => {
-    // This task is additive; Task 8 removes these. Their survival here is what
-    // makes the refactor reviewable as behaviour-neutral.
-    const seg = new BlockSegmenter();
-    const alt: boolean[] = [];
-    seg.onAltScreen(e => alt.push(e));
-
-    seg.feed(osc133('A'));
-    seg.feed('$ ');
-    seg.feed(osc133('B'));
-    seg.feed('htop\n');
-    seg.feed(osc133('C'));
-    seg.feed('\x1b[?1049h');
-
-    expect(alt).toEqual([true]);
+    expect(signals).toContainEqual({ kind: 'fullscreenHint', entered: false });
   });
 });

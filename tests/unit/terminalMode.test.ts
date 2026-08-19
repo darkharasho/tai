@@ -214,3 +214,89 @@ describe('lifecycle', () => {
     expect(returned).toEqual(r.state);
   });
 });
+
+describe('rule changes (Task 8)', () => {
+  it('an authoritative cooked-mode reading overrules a stale TUI guess immediately', () => {
+    // The old debounce meant a false tuiHint owned the surface for up to 700ms.
+    // Now the correction applies the moment termios speaks.
+    const r = createModeResolver();
+    r.apply({ kind: 'osc133', phase: 'output' });
+    expect(r.apply({ kind: 'tuiHint' }).inputOwner).toBe('program');
+    const st = r.apply({ kind: 'termios', icanon: true, echo: true });
+    expect(st.inputOwner).toBe('shell');
+    expect(st.provenance).toBe('authoritative');
+  });
+
+  it('a transient raw-mode blip is not filtered by a timer, only by later signals', () => {
+    // `brew` briefly drops ICANON for a progress bar. The old code debounced it
+    // away; now the flip happens and the restore corrects it. Both are
+    // authoritative and neither drops output (see Task 9).
+    expect(timeline([
+      { kind: 'osc133', phase: 'output' },
+      { kind: 'termios', icanon: false, echo: true },
+      { kind: 'termios', icanon: true, echo: true },
+    ])).toEqual(['shell:authoritative', 'program:authoritative', 'shell:authoritative']);
+  });
+});
+
+describe('revocable fullscreen (Task 8)', () => {
+  // The legacy cursor-hide takeover has no authoritative entry signal: a cursor
+  // hide is how both `vim`-without-alt-screen and a cooked spinner start. It
+  // cannot reuse `altScreen`, because rule 3 would make it survive a cooked
+  // termios reading and strand a spinner on `fullscreen`. `fullscreenHint` is
+  // the revocable form: it claims the screen, stays labelled `inferred` so
+  // retention never drops bytes on it, and yields to a cooked reading.
+  it('claims the screen, but only as an inference', () => {
+    const r = createModeResolver();
+    const st = r.apply({ kind: 'fullscreenHint', entered: true });
+    expect(st.inputOwner).toBe('fullscreen');
+    expect(st.provenance).toBe('inferred');
+  });
+
+  it('survives a raw reading — a raw-mode program confirms the takeover', () => {
+    const r = createModeResolver();
+    r.apply({ kind: 'fullscreenHint', entered: true });
+    const st = r.apply({ kind: 'termios', icanon: false, echo: true });
+    expect(st.inputOwner).toBe('fullscreen');
+    expect(st.provenance).toBe('inferred');
+  });
+
+  it('is revoked by a cooked reading — the spinner case', () => {
+    const r = createModeResolver();
+    r.apply({ kind: 'fullscreenHint', entered: true });
+    const st = r.apply({ kind: 'termios', icanon: true, echo: true });
+    expect(st.inputOwner).toBe('shell');
+    expect(st.provenance).toBe('authoritative');
+  });
+
+  it('does not make a real alt screen revocable', () => {
+    const r = createModeResolver();
+    r.apply({ kind: 'altScreen', entered: true });
+    expect(r.apply({ kind: 'termios', icanon: true, echo: true }).inputOwner).toBe('fullscreen');
+  });
+
+  it('is upgraded, not downgraded, by a real alt screen arriving after it', () => {
+    const r = createModeResolver();
+    r.apply({ kind: 'fullscreenHint', entered: true });
+    r.apply({ kind: 'altScreen', entered: true });
+    const st = r.apply({ kind: 'termios', icanon: true, echo: true });
+    expect(st.inputOwner).toBe('fullscreen');
+    expect(st.provenance).toBe('authoritative');
+  });
+
+  it('returns ownership to the shell on exit', () => {
+    const r = createModeResolver();
+    r.apply({ kind: 'fullscreenHint', entered: true });
+    const st = r.apply({ kind: 'fullscreenHint', entered: false });
+    expect(st.inputOwner).toBe('shell');
+  });
+
+  it('is cleared by a command boundary, so the next command starts revocable-free', () => {
+    const r = createModeResolver();
+    r.apply({ kind: 'fullscreenHint', entered: true });
+    r.apply({ kind: 'osc133', phase: 'prompt' });
+    expect(r.state.inputOwner).toBe('shell');
+    const st = r.apply({ kind: 'termios', icanon: true, echo: true });
+    expect(st.inputOwner).toBe('shell');
+  });
+});

@@ -16,16 +16,6 @@ export interface ReplayResult {
   timeline: ReplayEvent[];
   /** Labels only. The ergonomic form for assertions; flapping shows up here. */
   transitions: string[];
-  /**
-   * Resolver transitions, kept in their own array rather than merged into
-   * `timeline`. The corpus snapshots pin the legacy labels and their order as
-   * the pre-migration baseline; folding a new label class into the same array
-   * would rewrite every one of those snapshots and destroy the only evidence
-   * that this refactor changed no decisions. Interleaving is still recoverable
-   * from the shared `t` values.
-   */
-  modeTimeline: ReplayEvent[];
-  modeTransitions: string[];
 }
 
 /**
@@ -36,12 +26,17 @@ export interface ReplayResult {
  * final answer; only the transition sequence tells you the terminal flapped
  * three times on the way there, which is the failure class this corpus exists
  * to catch.
+ *
+ * Resolver transitions (`mode:*`) are interleaved into that single timeline
+ * alongside the raw termios readings. They were kept in a separate array while
+ * the resolver was being introduced, so that the pre-migration labels could be
+ * shown to be byte-identical; from Task 8 the resolver IS the decision, so the
+ * corpus records one story rather than two.
  */
 export function replayRecording(rec: PtyRecording): ReplayResult {
   const seg = new BlockSegmenter();
   const blocks: SegmentedBlock[] = [];
   const timeline: ReplayEvent[] = [];
-  const modeTimeline: ReplayEvent[] = [];
   let now = 0;
 
   const resolver = createModeResolver();
@@ -51,17 +46,12 @@ export function replayRecording(rec: PtyRecording): ReplayResult {
     const label = `${resolver.state.inputOwner}:${resolver.state.provenance}`;
     if (label !== lastMode) {
       lastMode = label;
-      modeTimeline.push({ t: now, label: `mode:${label}` });
+      timeline.push({ t: now, label: `mode:${label}` });
     }
   };
 
   seg.onBlock(b => blocks.push(b));
   seg.onModeSignal(signal => { resolver.apply(signal); pushMode(); });
-  seg.onAltScreen(entered => timeline.push({ t: now, label: `altScreen:${entered}` }));
-  seg.onInteractiveMode((entered, fullscreen) => timeline.push({
-    t: now,
-    label: `interactive:${entered}${entered && fullscreen ? ':fullscreen' : ''}`,
-  }));
 
   for (const entry of rec.entries) {
     now = entry.t;
@@ -94,8 +84,6 @@ export function replayRecording(rec: PtyRecording): ReplayResult {
     blocks,
     timeline,
     transitions: timeline.map(e => e.label),
-    modeTimeline,
-    modeTransitions: modeTimeline.map(e => e.label),
   };
 }
 

@@ -53,14 +53,14 @@ describe('BlockSegmenter', () => {
 
   it('detects alt-screen enter/exit', () => {
     const segmenter = new BlockSegmenter();
-    const altCb = vi.fn();
-    segmenter.onAltScreen(altCb);
+    const signalCb = vi.fn();
+    segmenter.onModeSignal(signalCb);
 
     segmenter.feed('\x1b[?1049h');
-    expect(altCb).toHaveBeenCalledWith(true);
+    expect(signalCb).toHaveBeenCalledWith({ kind: 'altScreen', entered: true });
 
     segmenter.feed('\x1b[?1049l');
-    expect(altCb).toHaveBeenCalledWith(false);
+    expect(signalCb).toHaveBeenCalledWith({ kind: 'altScreen', entered: false });
   });
 
   it('pauses segmentation during alt-screen', () => {

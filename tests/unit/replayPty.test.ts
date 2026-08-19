@@ -56,7 +56,7 @@ describe('replayRecording', () => {
     feedSpy.mockRestore();
 
     expect(fedChunks).toEqual(chunks);
-    expect(result.transitions).toContain('altScreen:true');
+    expect(result.transitions).toContain('mode:fullscreen:authoritative');
   });
 
   it('records termios transitions into the timeline with their timestamps', () => {
@@ -67,9 +67,13 @@ describe('replayRecording', () => {
 
     const result = replayRecording(parseRecording(rec.serialize()));
 
+    // Raw readings and the resolver's answer to them interleave in one
+    // timeline: the reading, then the decision it produced.
     expect(result.transitions).toEqual([
       'termios:raw',
+      'mode:program:authoritative',
       'termios:password',
+      'mode:shell:authoritative',
       'termios:cooked',
     ]);
     expect(result.timeline.every(e => typeof e.t === 'number')).toBe(true);
@@ -87,12 +91,13 @@ describe('replayRecording', () => {
 
     const result = replayRecording(parseRecording(rec.serialize()));
 
-    expect(result.transitions).toEqual(['altScreen:true', 'termios:raw']);
+    expect(result.transitions).toEqual([
+      'mode:program:inferred',   // the reposition guess lands first
+      'termios:raw',
+      'mode:program:authoritative',  // termios confirms it 700ms later
+    ]);
   });
 
-  // The resolver's own transitions live in `modeTransitions`, not `transitions`:
-  // the corpus snapshots pin the legacy labels as the pre-migration baseline and
-  // must stay byte-identical through this refactor.
   it('reports resolver mode transitions in the timeline', () => {
     const rec = new PtyRecorder(() => 0);
     rec.data(osc133('A'));
@@ -103,12 +108,12 @@ describe('replayRecording', () => {
     rec.data('\x1b[2A');       // inferred flip
     rec.termios(false, true);  // authoritative confirmation
 
-    const { modeTransitions } = replayRecording(parseRecording(rec.serialize()));
+    const { transitions } = replayRecording(parseRecording(rec.serialize()));
 
-    expect(modeTransitions).toContain('mode:program:inferred');
-    expect(modeTransitions).toContain('mode:program:authoritative');
-    expect(modeTransitions.indexOf('mode:program:inferred'))
-      .toBeLessThan(modeTransitions.indexOf('mode:program:authoritative'));
+    expect(transitions).toContain('mode:program:inferred');
+    expect(transitions).toContain('mode:program:authoritative');
+    expect(transitions.indexOf('mode:program:inferred'))
+      .toBeLessThan(transitions.indexOf('mode:program:authoritative'));
   });
 
   it('returns an empty result for an empty recording', () => {

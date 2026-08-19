@@ -61,7 +61,7 @@ describe('BlockSegmenter OSC 6973 enrichment', () => {
   it('detects alt-screen enter even when the escape spans chunk boundaries', () => {
     const seg = new BlockSegmenter();
     const events: boolean[] = [];
-    seg.onAltScreen(e => events.push(e));
+    seg.onModeSignal(s => { if (s.kind === 'altScreen') events.push(s.entered); });
     seg.feed('\x1b]133;A\x07$ \x1b]133;B\x07cmd\n\x1b]133;C\x07');
     seg.feed('banner\x1b[?');   // chunk ends mid-sequence
     expect(events).toEqual([]); // not yet detected

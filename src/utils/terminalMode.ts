@@ -20,6 +20,7 @@ export type ModeSignal =
   | { kind: 'termios';    icanon: boolean; echo: boolean }   // authoritative
   | { kind: 'altScreen';  entered: boolean }                 // authoritative
   | { kind: 'tuiHint' }                                      // inferred
+  | { kind: 'fullscreenHint'; entered: boolean }             // inferred, revocable
   | { kind: 'osc133';     phase: 'prompt' | 'command' | 'output' | 'idle' }
   | { kind: 'hook';       hook: ShellHook }
   | { kind: 'ptyExit' };
@@ -65,6 +66,10 @@ export function createModeResolver(): ModeResolver {
   // this command. Cleared at every command boundary (rule 4) so the next
   // command's fast path is live again.
   let authoritativeThisCommand = false;
+  // Rule 3a: is the current fullscreen claim revocable? A cursor hide is how a
+  // full TUI and a cooked spinner both begin, so that claim must yield to a
+  // cooked termios reading; a real [?1049h must not.
+  let fullscreenRevocable = false;
 
   function set(next: Partial<ModeState>): ModeState {
     state = { ...state, ...next };
@@ -80,6 +85,22 @@ export function createModeResolver(): ModeResolver {
         const password = !signal.echo && signal.icanon;
         // Rule 3: an alt-screen takeover is a stronger claim than raw mode and
         // is not revoked by a termios reading — htop is fullscreen AND raw.
+        // Rule 3a: a REVOCABLE fullscreen claim (fullscreenHint) survives a raw
+        // reading — raw mode corroborates the takeover — but a cooked reading
+        // revokes it, which is how a spinner that hid the cursor gets back to
+        // the composer. Its provenance stays 'inferred' while it lasts: the
+        // reading is authoritative about the line discipline, not about who
+        // owns the screen, and retention must not drop bytes on a guess.
+        if (state.inputOwner === 'fullscreen' && fullscreenRevocable) {
+          if (!signal.icanon) return set({ passwordPrompt: password, degradedReason: undefined });
+          fullscreenRevocable = false;
+          return set({
+            inputOwner: 'shell',
+            provenance: 'authoritative',
+            passwordPrompt: password,
+            degradedReason: undefined,
+          });
+        }
         const owner: InputOwner = state.inputOwner === 'fullscreen'
           ? 'fullscreen'
           : (!signal.icanon ? 'program' : 'shell');
@@ -93,11 +114,25 @@ export function createModeResolver(): ModeResolver {
 
       case 'altScreen': {
         authoritativeThisCommand = true;
+        // An observed alt screen upgrades a revocable claim into a real one.
+        fullscreenRevocable = false;
         return set({
           inputOwner: signal.entered ? 'fullscreen' : 'shell',
           provenance: 'authoritative',
           degradedReason: undefined,
         });
+      }
+
+      case 'fullscreenHint': {
+        if (signal.entered) {
+          // Never downgrade an authoritative alt screen into a revocable claim.
+          if (state.inputOwner === 'fullscreen' && !fullscreenRevocable) return state;
+          fullscreenRevocable = true;
+          return set({ inputOwner: 'fullscreen', provenance: 'inferred' });
+        }
+        if (state.inputOwner !== 'fullscreen' || !fullscreenRevocable) return state;
+        fullscreenRevocable = false;
+        return set({ inputOwner: 'shell', provenance: 'inferred' });
       }
 
       case 'tuiHint': {
@@ -114,6 +149,7 @@ export function createModeResolver(): ModeResolver {
         }
         // Rule 4: a prompt is proof the foreground is the shell again.
         authoritativeThisCommand = false;
+        fullscreenRevocable = false;
         return set({
           inputOwner: 'shell',
           provenance: 'authoritative',
@@ -128,6 +164,7 @@ export function createModeResolver(): ModeResolver {
         }
         // precmd — same boundary semantics as an OSC 133 prompt.
         authoritativeThisCommand = false;
+        fullscreenRevocable = false;
         return set({
           inputOwner: 'shell',
           provenance: 'authoritative',
@@ -138,6 +175,7 @@ export function createModeResolver(): ModeResolver {
 
       case 'ptyExit': {
         authoritativeThisCommand = false;
+        fullscreenRevocable = false;
         state = { ...INITIAL_MODE_STATE };
         return state;
       }
@@ -150,6 +188,7 @@ export function createModeResolver(): ModeResolver {
     reset() {
       state = { ...INITIAL_MODE_STATE };
       authoritativeThisCommand = false;
+      fullscreenRevocable = false;
     },
   };
 }

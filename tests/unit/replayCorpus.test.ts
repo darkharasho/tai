@@ -12,6 +12,12 @@ import { replayFixture } from '../helpers/replayPty';
  * When a task changes one of these, update the expectation IN THAT TASK'S
  * COMMIT and drop the KNOWN-BAD marker with a note saying which task fixed it.
  *
+ * From Task 8 the `transitions` timeline interleaves the resolver's own
+ * decisions (`mode:<owner>:<provenance>`) with the raw termios readings, in
+ * recorded order. The old `altScreen:*` / `interactive:*` labels are gone with
+ * the callbacks that produced them: they reported what one of three competing
+ * deciders thought, and there is now one decider.
+ *
  * Capture provenance: recorded by scripts/capture-in-ns.sh driving the real app
  * (see tests/fixtures/pty/README.md). Two scenarios differ from the plan's text
  * because the capture host could not produce the original: `prompt-redraw` uses
@@ -21,17 +27,26 @@ import { replayFixture } from '../helpers/replayPty';
  * exercise the same mechanism the fixture exists to pin.
  */
 describe('PTY replay corpus (baseline)', () => {
-  // KNOWN-BAD (Tasks 5-8 fix): the recording contains no alt-screen enter
-  // sequence at all — `claude` is an Ink TUI that repositions the cursor
-  // without switching screens — yet the segmenter reports altScreen:true off
-  // TUI_REPOSITION_RE. The `claude` block is missing for the same reason: once
-  // the false alt-screen latch is set, _routeChunk discards its output.
+  // FIXED (Task 8) for the transitions: the recording contains no alt-screen
+  // enter sequence at all — `claude` is an Ink TUI that repositions the cursor
+  // without switching screens — and the timeline no longer claims one. The
+  // cursor-reposition regex is now a `tuiHint`, which resolves to a DOCKED
+  // program labelled `inferred`; the cooked termios reading that follows then
+  // authoritatively overrules the guess and hands the input back to the shell.
+  // Pre-Task-8 that correction was invisible: the false alt screen outranked
+  // termios and the 500ms debounce delayed the reading besides.
+  //
+  // KNOWN-BAD (Task 9 fixes): the `claude` block is still missing. That is a
+  // separate mechanism — `_inAltScreen` still gates `_routeChunk`, and the
+  // reposition regex still sets it — and Task 9 is where routing learns to
+  // read provenance instead.
   it('claude-ink: Ink TUI never enters alt screen', () => {
     const { blocks, transitions } = replayFixture('claude-ink');
     expect(transitions).toMatchInlineSnapshot(`
       [
-        "altScreen:true",
+        "mode:program:inferred",
         "termios:cooked",
+        "mode:shell:authoritative",
       ]
     `);
     expect(blocks.map(b => b.command)).toMatchInlineSnapshot(`
@@ -41,9 +56,11 @@ describe('PTY replay corpus (baseline)', () => {
     `);
   });
 
-  // KNOWN-BAD (Tasks 5-8 fix): the vite block never appears — only the setup
+  // KNOWN-BAD (Task 9 fixes): the vite block never appears — only the setup
   // block survives. The raw-mode flip is visible to termios but the command
-  // that caused it was never attributed to a block.
+  // that caused it was never attributed to a block. Task 8 changed nothing
+  // here: the single `termios:cooked` reading agrees with the initial state,
+  // so it produces no transition at all, and block attribution is routing.
   it('vite-shortcuts: raw-mode flip mid-session', () => {
     const { blocks, transitions } = replayFixture('vite-shortcuts');
     expect(transitions).toMatchInlineSnapshot(`
@@ -58,15 +75,18 @@ describe('PTY replay corpus (baseline)', () => {
     `);
   });
 
-  // KNOWN-BAD (Tasks 5-8 fix): another alt-screen false positive. The REPL's
-  // cursor-back redraws (\x1b[<n>D) trip TUI_REPOSITION_RE; the recording has
-  // no [?1049h in it.
+  // FIXED (Task 8): another alt-screen false positive, now honest. The REPL's
+  // cursor-back redraws (\x1b[<n>D) trip TUI_REPOSITION_RE and the recording
+  // has no [?1049h in it, so the guess resolves to a docked program labelled
+  // `inferred` rather than to a fullscreen takeover. The second transition is
+  // the next OSC 133 prompt clearing the latch — a command boundary is proof
+  // the shell is foreground again, hence `authoritative`.
   it('python-repl: cursor-back prompt redraws', () => {
     const { blocks, transitions } = replayFixture('python-repl');
     expect(transitions).toMatchInlineSnapshot(`
       [
-        "altScreen:true",
-        "altScreen:false",
+        "mode:program:inferred",
+        "mode:shell:authoritative",
       ]
     `);
     expect(blocks.map(b => b.command)).toMatchInlineSnapshot(`
@@ -82,10 +102,13 @@ describe('PTY replay corpus (baseline)', () => {
   // right call — it is here to catch a fix that over-corrects.
   it('htop-altscreen: genuine alt screen', () => {
     const { blocks, transitions } = replayFixture('htop-altscreen');
+    // Task 8 relabelled only: a real [?1049h still resolves to fullscreen, and
+    // still AUTHORITATIVELY — which is what separates it from the two entries
+    // above and what keeps dropping its bytes the right call.
     expect(transitions).toMatchInlineSnapshot(`
       [
-        "altScreen:true",
-        "altScreen:false",
+        "mode:fullscreen:authoritative",
+        "mode:shell:authoritative",
       ]
     `);
     expect(blocks.map(b => b.command)).toMatchInlineSnapshot(`

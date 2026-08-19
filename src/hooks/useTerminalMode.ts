@@ -1,31 +1,34 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { createModeResolver, type ModeSignal, type ModeState } from '@/utils/terminalMode';
-import { legacyFlagsFromMode, sameModeState } from '@/utils/modeFlags';
-import { createRawModeGate, type RawModeGate, type TermiosReading } from '@/utils/rawModeGate';
+import { sameModeState } from '@/utils/modeFlags';
+
+/** A termios reading from the kernel-side echo poller. */
+export interface TermiosReading {
+  icanon: boolean;
+  echo: boolean;
+}
 
 /**
  * All of the terminal's mode wiring, in one testable place.
  *
- * TerminalSession forwards events here and reads flags back; it holds no mode
- * logic of its own. That is deliberate: a test that re-implements the wiring
- * can drift from the component silently while still reading as coverage, so
- * the component and the tests have to call the same code.
+ * TerminalSession forwards events here and reads `modeState` back; it holds no
+ * mode logic of its own. That is deliberate: a test that re-implements the
+ * wiring can drift from the component silently while still reading as coverage,
+ * so the component and the tests have to call the same code.
  *
- * The three flags are the resolver's projection (see legacyFlagsFromMode).
- * Every input surface is preserved except the inferred-TUI path — see
- * onModeSignal below.
+ * There is exactly one piece of state. The three React flags this replaced
+ * (altScreenVisible / interactiveMode / interactiveFullscreen) were three
+ * deciders with three latencies and an ad-hoc precedence; the resolver settles
+ * that by tier instead. In particular there is no debounce on the termios
+ * reading any more — it was there to paper over the same race, and delaying the
+ * authoritative signal only delayed the correction of a bad guess. A transient
+ * ICANON drop (brew's progress bar) now moves the surface and is corrected by
+ * the restore, which is honest and, from Task 9, free of output loss.
  */
 export interface TerminalModeApi {
-  altScreenVisible: boolean;
-  interactiveMode: boolean;
-  interactiveFullscreen: boolean;
   modeState: ModeState;
   /** BlockSegmenter.onModeSignal */
   onModeSignal: (signal: ModeSignal) => void;
-  /** BlockSegmenter.onAltScreen */
-  onLegacyAltScreen: (entered: boolean) => void;
-  /** BlockSegmenter.onInteractiveMode */
-  onLegacyInteractive: (entered: boolean, fullscreen?: boolean) => void;
   /** A termios reading from the echo poller. */
   onTermios: (reading: TermiosReading) => void;
   /** The block finished, so no raw-mode program can still be foreground. */
@@ -34,86 +37,41 @@ export interface TerminalModeApi {
 }
 
 export function useTerminalMode(): TerminalModeApi {
-  const [altScreenVisible, setAltScreenVisible] = useState(false);
-  const [interactiveMode, setInteractiveMode] = useState(false);
-  const [interactiveFullscreen, setInteractiveFullscreen] = useState(false);
   const resolverRef = useRef(createModeResolver());
   const [modeState, setModeState] = useState<ModeState>(() => resolverRef.current.state);
 
-  // Only real transitions may re-derive: the resolver returns a fresh object
-  // for every signal, including ones that change nothing, and re-running the
-  // effect on those would overwrite flags the legacy callbacks just set — and
-  // re-render on every 200ms echo poll for no news.
-  const commitMode = useCallback((next: ModeState) => {
+  // The resolver returns a fresh object for every signal, including ones that
+  // change nothing — committing those would re-render on every 200ms echo poll
+  // for no news.
+  const commit = useCallback((next: ModeState) => {
     setModeState(prev => (sameModeState(prev, next) ? prev : next));
   }, []);
 
-  useEffect(() => {
-    const flags = legacyFlagsFromMode(modeState);
-    setAltScreenVisible(flags.altScreenVisible);
-    setInteractiveMode(flags.interactiveMode);
-    setInteractiveFullscreen(flags.interactiveFullscreen);
-  }, [modeState]);
-
-  const interactiveModeRef = useRef(false);
-  interactiveModeRef.current = interactiveMode;
-
-  const gateRef = useRef<RawModeGate | null>(null);
-  if (!gateRef.current) {
-    gateRef.current = createRawModeGate({
-      isActive: () => interactiveModeRef.current,
-      onActivate: (r) => {
-        setInteractiveMode(true);
-        // A faithful port of master's debounce timer, which cleared this flag
-        // alongside setting interactiveMode. No test pins it because nothing
-        // can observe it: onActivate only runs when isActive() was false, and
-        // interactiveFullscreen is never true while interactiveMode is false —
-        // every path sets the two together. Kept rather than dropped so this
-        // step stays a move of master's code, not a rewrite of it.
-        setInteractiveFullscreen(false);
-        commitMode(resolverRef.current.apply({ kind: 'termios', icanon: r.icanon, echo: r.echo }));
-      },
-      onDeactivate: (r) => {
-        setInteractiveMode(false);
-        commitMode(resolverRef.current.apply({ kind: 'termios', icanon: r.icanon, echo: r.echo }));
-      },
-    });
-  }
-
-  useEffect(() => () => { gateRef.current?.cancel(); }, []);
-
   return {
-    altScreenVisible,
-    interactiveMode,
-    interactiveFullscreen,
     modeState,
-    // One deliberate exception to "every surface is unchanged": an inferred TUI
-    // (tuiHint, from the cursor-reposition regex) resolves to 'program' and so
-    // renders 'docked', where the pre-migration code faked an alt screen and
-    // rendered 'fullscreen'. That is the tuiHint row of the plan's behaviour
-    // table and the reason claude-ink and python-repl are pinned KNOWN-BAD in
-    // the replay corpus: a redraw heuristic is not an alt screen, and docked is
-    // the honest answer. Pinned by tests/unit/useTerminalMode.test.tsx.
+    // An inferred TUI (tuiHint, from the cursor-reposition regex) resolves to
+    // 'program' and so renders 'docked', where the pre-migration code faked an
+    // alt screen and rendered 'fullscreen'. That is the tuiHint row of the
+    // plan's behaviour table and the reason claude-ink and python-repl were
+    // pinned KNOWN-BAD in the replay corpus: a redraw heuristic is not an alt
+    // screen, and docked is the honest answer.
     onModeSignal: useCallback((signal: ModeSignal) => {
-      commitMode(resolverRef.current.apply(signal));
-    }, [commitMode]),
-    onLegacyAltScreen: useCallback((entered: boolean) => {
-      setAltScreenVisible(entered);
-    }, []),
-    onLegacyInteractive: useCallback((entered: boolean, fullscreen?: boolean) => {
-      setInteractiveMode(entered);
-      setInteractiveFullscreen(entered && !!fullscreen);
-    }, []),
+      commit(resolverRef.current.apply(signal));
+    }, [commit]),
     onTermios: useCallback((reading: TermiosReading) => {
-      gateRef.current?.update(reading);
-    }, []),
+      commit(resolverRef.current.apply({
+        kind: 'termios', icanon: reading.icanon, echo: reading.echo,
+      }));
+    }, [commit]),
     onCommandEnd: useCallback(() => {
-      gateRef.current?.cancel();
-      setInteractiveMode(false);
-    }, []),
+      // A finished block is a command boundary: the foreground is the shell
+      // again. Same semantics as the prompt marker, so it reuses that signal
+      // rather than inventing a parallel reset path.
+      commit(resolverRef.current.apply({ kind: 'osc133', phase: 'prompt' }));
+    }, [commit]),
     reset: useCallback(() => {
-      gateRef.current?.cancel();
       resolverRef.current.reset();
-    }, []),
+      commit(resolverRef.current.state);
+    }, [commit]),
   };
 }

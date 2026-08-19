@@ -2,29 +2,30 @@
 /**
  * The terminal's mode wiring, exercised through the same hook TerminalSession
  * uses. The component holds no mode logic of its own — it forwards segmenter
- * and termios events into these methods and reads the flags back — so breaking
- * the wiring breaks these tests.
+ * and termios events into these methods and reads `modeState` back — so
+ * breaking the wiring breaks these tests.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useTerminalMode, type TerminalModeApi } from '@/hooks/useTerminalMode';
+import { useTerminalMode, type TerminalModeApi, type TermiosReading } from '@/hooks/useTerminalMode';
 import { BlockSegmenter } from '@/components/BlockSegmenter';
 import { deriveInputSurface } from '@/utils/inputSurface';
-import type { TermiosReading } from '@/utils/rawModeGate';
 
-const raw: TermiosReading = { icanon: false, echo: true, interactiveProgram: true };
-const cooked: TermiosReading = { icanon: true, echo: true, interactiveProgram: false };
+const raw: TermiosReading = { icanon: false, echo: true };
+const cooked: TermiosReading = { icanon: true, echo: true };
 const CURSOR_HIDE = '\x1b[?25l';
 
 function osc133(letter: string) {
   return `\x1b]133;${letter}\x07`;
 }
 
+/** The same projection TerminalSession makes at its deriveInputSurface call. */
 function surfaceOf(mode: TerminalModeApi) {
+  const owner = mode.modeState.inputOwner;
   return deriveInputSurface({
-    altScreenVisible: mode.altScreenVisible,
-    interactiveMode: mode.interactiveMode,
-    interactiveFullscreen: mode.interactiveFullscreen,
+    altScreenVisible: owner === 'fullscreen',
+    interactiveMode: owner === 'program' || owner === 'fullscreen',
+    interactiveFullscreen: owner === 'fullscreen',
     awaitingInput: false,
     passwordPrompt: false,
   });
@@ -34,42 +35,59 @@ function setup() {
   let renders = 0;
   const view = renderHook(() => { renders++; return useTerminalMode(); });
   const mode = () => view.result.current;
-  // Exactly the three subscriptions TerminalSession makes.
+  // The single subscription TerminalSession makes.
   const attach = (seg: BlockSegmenter) => {
     seg.onModeSignal(s => act(() => mode().onModeSignal(s)));
-    seg.onAltScreen(e => act(() => mode().onLegacyAltScreen(e)));
-    seg.onInteractiveMode((e, f) => act(() => mode().onLegacyInteractive(e, f)));
     return seg;
   };
   return { view, mode, attach, surface: () => surfaceOf(mode()), renders: () => renders };
 }
 
 describe('useTerminalMode', () => {
-  beforeEach(() => vi.useFakeTimers());
-  afterEach(() => vi.useRealTimers());
-
-  it('a transient ICANON drop never moves the input surface', () => {
+  it('a transient ICANON drop moves the surface and the restore moves it back', () => {
     // `brew`/`npm` clear ICANON for a progress bar and restore it a tick later.
+    // The 500ms debounce used to swallow the first reading entirely. It is gone:
+    // filtering an AUTHORITATIVE signal on a timer only delays the correction of
+    // a bad guess, and the flip no longer costs output (Task 9's retention is
+    // gated on provenance, and both of these readings are authoritative).
     const t = setup();
     act(() => t.mode().onTermios(raw));
-    act(() => { vi.advanceTimersByTime(200); });
-    expect(t.surface()).toBe('composer');
+    expect(t.surface()).toBe('docked');
+    expect(t.mode().modeState.provenance).toBe('authoritative');
 
     act(() => t.mode().onTermios(cooked));
-    act(() => { vi.advanceTimersByTime(5000); });
 
     expect(t.surface()).toBe('composer');
-    expect(t.mode().interactiveMode).toBe(false);
     expect(t.mode().modeState.inputOwner).toBe('shell');
   });
 
-  it('a raw-mode program that persists docks after the debounce', () => {
+  it('a raw-mode program docks the moment termios says so, with no delay', () => {
     const t = setup();
     act(() => t.mode().onTermios(raw));
-    act(() => { vi.advanceTimersByTime(500); });
 
     expect(t.surface()).toBe('docked');
     expect(t.mode().modeState.inputOwner).toBe('program');
+    expect(t.mode().modeState.provenance).toBe('authoritative');
+  });
+
+  it('an authoritative cooked reading overrules a stale TUI guess immediately', () => {
+    // The pre-migration ordering: the reposition regex fires instantly, termios
+    // arrives up to 700ms later (200ms poll + 500ms debounce) and was allowed to
+    // correct the guess only after that whole window.
+    const t = setup();
+    const seg = t.attach(new BlockSegmenter());
+    seg.feed(osc133('A'));
+    seg.feed('$ ');
+    seg.feed(osc133('B'));
+    seg.feed('brew install foo\n');
+    seg.feed(osc133('C'));
+    seg.feed('\x1b[2A');
+    expect(t.surface()).toBe('docked');
+    expect(t.mode().modeState.provenance).toBe('inferred');
+
+    act(() => t.mode().onTermios(cooked));
+
+    expect(t.surface()).toBe('composer');
     expect(t.mode().modeState.provenance).toBe('authoritative');
   });
 
@@ -84,8 +102,12 @@ describe('useTerminalMode', () => {
     seg.feed('\x1b[?1049h');
 
     expect(t.mode().modeState.inputOwner).toBe('fullscreen');
-    expect(t.mode().altScreenVisible).toBe(true);
-    expect(t.mode().interactiveFullscreen).toBe(true);
+    expect(t.mode().modeState.provenance).toBe('authoritative');
+    expect(t.surface()).toBe('fullscreen');
+
+    // And it is NOT revocable: htop is fullscreen and raw at once, and a cooked
+    // reading arriving mid-TUI must not knock it back to the composer.
+    act(() => t.mode().onTermios(cooked));
     expect(t.surface()).toBe('fullscreen');
 
     seg.feed('\x1b[?1049l');
@@ -97,8 +119,8 @@ describe('useTerminalMode', () => {
     // cursor-reposition regex latched _inAltScreen and rendered 'fullscreen';
     // an Ink app like `claude` never switches screens, so that was a guess
     // dressed up as an observation — and it is why claude-ink and python-repl
-    // are pinned KNOWN-BAD in the replay corpus. tuiHint resolves to 'program',
-    // which renders 'docked'. Task 8 keeps this; do not "restore" fullscreen.
+    // were pinned KNOWN-BAD in the replay corpus. tuiHint resolves to 'program',
+    // which renders 'docked'.
     const t = setup();
     const seg = t.attach(new BlockSegmenter());
     seg.feed(osc133('A'));
@@ -110,31 +132,32 @@ describe('useTerminalMode', () => {
 
     expect(t.mode().modeState.inputOwner).toBe('program');
     expect(t.mode().modeState.provenance).toBe('inferred');
-    expect(t.mode().altScreenVisible).toBe(false);
     expect(t.surface()).toBe('docked');
   });
 
   it('a legacy cursor-hide takeover keeps its fullscreen surface under a raw reading', () => {
-    // Non-integrated shell: the segmenter reports fullscreen via
-    // onInteractiveMode(true, true). The echo poller then reports raw mode, and
-    // the gate must not commit it — committing would resolve to 'program' and
-    // downgrade the surface to docked.
+    // Non-integrated shell: the segmenter reports a REVOCABLE fullscreen. A raw
+    // reading corroborates it, so the takeover holds — downgrading to 'program'
+    // here would drop a full TUI to the docked surface mid-draw.
     const t = setup();
     const seg = t.attach(new BlockSegmenter());
     seg.feed('user@host:~$ ');
     seg.feed(CURSOR_HIDE);
     expect(t.surface()).toBe('fullscreen');
+    // Labelled inferred, not authoritative: a cursor hide is not proof of a
+    // screen takeover, and retention must not drop bytes on it.
+    expect(t.mode().modeState.provenance).toBe('inferred');
 
     act(() => t.mode().onTermios(raw));
-    act(() => { vi.advanceTimersByTime(5000); });
 
     expect(t.surface()).toBe('fullscreen');
+    expect(t.mode().modeState.provenance).toBe('inferred');
   });
 
   it('a legacy cursor-hide takeover still falls back on a cooked reading', () => {
     // A cooked spinner that hides the cursor: this takeover is revocable, and
     // the pre-migration code revoked it here. It is why the cursor-hide path
-    // emits no altScreen mode signal (that would survive the reading).
+    // emits fullscreenHint rather than altScreen — the latter would survive.
     const t = setup();
     const seg = t.attach(new BlockSegmenter());
     seg.feed('user@host:~$ ');
@@ -160,13 +183,23 @@ describe('useTerminalMode', () => {
     expect(t.renders()).toBe(before);
   });
 
-  it('the end of a block cancels a pending raw-mode commit', () => {
+  it('the end of a block returns ownership to the shell', () => {
     const t = setup();
     act(() => t.mode().onTermios(raw));
-    act(() => t.mode().onCommandEnd());
-    act(() => { vi.advanceTimersByTime(5000); });
+    expect(t.surface()).toBe('docked');
 
-    expect(t.mode().interactiveMode).toBe(false);
+    act(() => t.mode().onCommandEnd());
+
+    expect(t.mode().modeState.inputOwner).toBe('shell');
+    expect(t.surface()).toBe('composer');
+  });
+
+  it('reset() publishes the initial state, not just the resolver internals', () => {
+    const t = setup();
+    act(() => t.mode().onTermios(raw));
+    act(() => t.mode().reset());
+
+    expect(t.mode().modeState.inputOwner).toBe('shell');
     expect(t.surface()).toBe('composer');
   });
 });

@@ -33,8 +33,6 @@ const TUI_REPOSITION_RE = /\x1b\[(?:\d*[AF]|(?:[2-9]|\d{2,})D)/;
 
 type BlockCallback = (block: SegmentedBlock) => void;
 type OutputCallback = (output: string, rawOutput: string) => void;
-type AltScreenCallback = (entered: boolean) => void;
-type InteractiveModeCallback = (entered: boolean, fullscreen?: boolean) => void;
 type PasswordPromptCallback = () => void;
 type PromptChangeCallback = (prompt: string, isRemote: boolean, sshTarget: string | null) => void;
 type ShellIntegrationCallback = (active: boolean) => void;
@@ -70,8 +68,6 @@ export class BlockSegmenter {
   private _emu = new TermEmulator();
   private _blockCallbacks: BlockCallback[] = [];
   private _outputCallbacks: OutputCallback[] = [];
-  private _altScreenCallbacks: AltScreenCallback[] = [];
-  private _interactiveCallbacks: InteractiveModeCallback[] = [];
   private _passwordCallbacks: PasswordPromptCallback[] = [];
   private _promptChangeCallbacks: PromptChangeCallback[] = [];
   private _integrationCallbacks: ShellIntegrationCallback[] = [];
@@ -134,8 +130,6 @@ export class BlockSegmenter {
 
   onBlock(cb: BlockCallback): void { this._blockCallbacks.push(cb); }
   onOutput(cb: OutputCallback): void { this._outputCallbacks.push(cb); }
-  onAltScreen(cb: AltScreenCallback): void { this._altScreenCallbacks.push(cb); }
-  onInteractiveMode(cb: InteractiveModeCallback): void { this._interactiveCallbacks.push(cb); }
   onPasswordPrompt(cb: PasswordPromptCallback): void { this._passwordCallbacks.push(cb); }
   onPromptChange(cb: PromptChangeCallback): void { this._promptChangeCallbacks.push(cb); }
   onShellIntegration(cb: ShellIntegrationCallback): void { this._integrationCallbacks.push(cb); }
@@ -206,15 +200,14 @@ export class BlockSegmenter {
       if (this._inInteractiveMode) {
         this._inInteractiveMode = false;
         this._interactiveFullscreen = false;
-        this._interactiveCallbacks.forEach(cb => cb(false));
       }
-      this._altScreenCallbacks.forEach(cb => cb(true));
+      // No fullscreenHint revocation needed first: an observed alt screen
+      // upgrades a revocable claim in the resolver.
       this._emitModeSignal({ kind: 'altScreen', entered: true });
     }
     if (altExitSeq) {
       this._inAltScreen = false;
       this._emu.reset();
-      this._altScreenCallbacks.forEach(cb => cb(false));
       this._emitModeSignal({ kind: 'altScreen', entered: false });
       const exitIdx = rawData.indexOf(altExitSeq) + altExitSeq.length;
       rawData = rawData.substring(exitIdx);
@@ -228,8 +221,7 @@ export class BlockSegmenter {
         this._inInteractiveMode = false;
         this._interactiveFullscreen = false;
         this._truncateToCommandEcho();
-        this._interactiveCallbacks.forEach(cb => cb(false));
-        this._emitModeSignal({ kind: 'altScreen', entered: false });
+        this._emitModeSignal({ kind: 'fullscreenHint', entered: false });
         const showIdx = rawData.indexOf(CURSOR_SHOW) + CURSOR_SHOW.length;
         rawData = rawData.substring(showIdx);
         if (!rawData) return;
@@ -240,16 +232,13 @@ export class BlockSegmenter {
       this._inInteractiveMode = true;
       this._interactiveFullscreen = true;
       this._truncateToCommandEcho();
-      this._interactiveCallbacks.forEach(cb => cb(true, true));
-      // Deliberately no mode signal on entry. This path means "fullscreen until
-      // something says otherwise", and a cooked termios reading IS that
-      // something today (the echo poll clears interactiveMode and the surface
-      // returns to the composer). An `altScreen` signal would instead make it
-      // survive that reading by rule 3, exactly as a real [?1049h does — a
-      // different rendered surface for the same bytes. The resolver has no
-      // signal for a revocable fullscreen, and adding one is a rule change, so
-      // it belongs to Task 8 along with the removal of onInteractiveMode. Until
-      // then the exit signals keep the resolver from being stranded.
+      // A cursor hide means "fullscreen until something says otherwise": it is
+      // how a full TUI and a cooked spinner both start. `altScreen` would make
+      // it survive a cooked termios reading (resolver rule 3) and strand the
+      // spinner off the composer, so it gets the revocable form instead —
+      // inferred provenance, yielding to a cooked reading, corroborated by a
+      // raw one.
+      this._emitModeSignal({ kind: 'fullscreenHint', entered: true });
     }
 
     this._emu.feed(rawData);
@@ -346,8 +335,7 @@ export class BlockSegmenter {
     if (this._inInteractiveMode) {
       this._inInteractiveMode = false;
       this._interactiveFullscreen = false;
-      this._interactiveCallbacks.forEach(cb => cb(false));
-      this._emitModeSignal({ kind: 'altScreen', entered: false });
+      this._emitModeSignal({ kind: 'fullscreenHint', entered: false });
     }
   }
 
@@ -573,7 +561,6 @@ export class BlockSegmenter {
         // line-oriented output isn't dropped by _routeChunk's alt-screen guard.
         if (this._inAltScreen) {
           this._inAltScreen = false;
-          this._altScreenCallbacks.forEach(cb => cb(false));
           this._emitModeSignal({ kind: 'altScreen', entered: false });
         }
         this._osc133Phase = 'prompt';
@@ -708,12 +695,10 @@ export class BlockSegmenter {
     const altExitSeq = ALT_SCREEN_EXIT_SEQS.find(s => scanned.includes(s));
     if (hasAltEnter && !this._inAltScreen) {
       this._inAltScreen = true;
-      this._altScreenCallbacks.forEach(cb => cb(true));
       this._emitModeSignal({ kind: 'altScreen', entered: true });
     }
     if (altExitSeq && this._inAltScreen) {
       this._inAltScreen = false;
-      this._altScreenCallbacks.forEach(cb => cb(false));
       this._emitModeSignal({ kind: 'altScreen', entered: false });
     }
     // Keep the last 7 bytes (max-altSeq-length - 1) for next chunk's scan.
@@ -725,7 +710,6 @@ export class BlockSegmenter {
     // instead of accumulating as garbled text in the line-oriented output.
     if (!this._inAltScreen && this._osc133Phase === 'output' && TUI_REPOSITION_RE.test(rawData)) {
       this._inAltScreen = true;
-      this._altScreenCallbacks.forEach(cb => cb(true));
       // A cursor-reposition redraw is an inference, not an observation. It is
       // labelled as such so the resolver can let an authoritative signal
       // overrule it and so retention can refuse to drop bytes on a guess.
@@ -864,8 +848,6 @@ export class BlockSegmenter {
     this._passwordPromptFired = false;
     this._blockCallbacks = [];
     this._outputCallbacks = [];
-    this._altScreenCallbacks = [];
-    this._interactiveCallbacks = [];
     this._passwordCallbacks = [];
     this._promptChangeCallbacks = [];
     this._integrationCallbacks = [];

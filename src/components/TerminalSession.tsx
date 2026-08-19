@@ -106,10 +106,10 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const displayItemsRef = useRef<DisplayItem[]>([]);
   useEffect(() => { displayItemsRef.current = displayItems; }, [displayItems]);
   // Every mode decision lives in this hook — the component only forwards
-  // events into it and reads flags back. See useTerminalMode for what the flags
-  // mean and for the one surface this migration deliberately changes.
+  // events into it and reads one ModeState back. See useTerminalMode for what
+  // that state means and for the surfaces this migration deliberately changes.
   const mode = useTerminalMode();
-  const { altScreenVisible, interactiveMode, interactiveFullscreen } = mode;
+  const { modeState } = mode;
   // Long-running session state: drives the rooted surface and the morphed
   // card header. Mirrored into a ref for the segmenter callbacks (registered
   // once on mount, so they can't see fresh state).
@@ -241,12 +241,10 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const aiBlockIdRef = useRef<string | null>(null);
   const aiSuggestedCommands = useRef<Set<string>>(new Set());
   const pendingCommandRef = useRef<{ command: string; startTime: number } | null>(null);
-  const altScreenRef = useRef(false);
   const preambleSentRef = useRef(false);
   const lastContextBlockIdRef = useRef<string | null>(null);
   const gitBranchRef = useRef<string | null>(null);
   const capturedOutputRef = useRef<string | null>(null);
-  altScreenRef.current = altScreenVisible;
 
   const showDaemonToast = (message: string, ok: boolean) => {
     if (daemonToastTimerRef.current) clearTimeout(daemonToastTimerRef.current);
@@ -608,30 +606,24 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
 
     segmenter.onModeSignal((signal) => {
       if (cancelled) return;
-      mode.onModeSignal(signal);
-    });
-
-    segmenter.onAltScreen((entered) => {
-      if (cancelled) return;
-      mode.onLegacyAltScreen(entered);
-    });
-
-    segmenter.onInteractiveMode((entered, fullscreen) => {
-      if (cancelled) return;
-      if (entered && fullscreen) {
-        hiddenXtermRef.current?.clear();
-      } else if (!entered) {
-        const content = hiddenXtermRef.current?.getBufferContent();
-        if (content && content.trim()) capturedOutputRef.current = content;
+      // The hidden-xterm capture used to hang off the legacy interactive callback;
+      // it keys on the same fullscreen takeover, now a fullscreenHint.
+      if (signal.kind === 'fullscreenHint') {
+        if (signal.entered) {
+          hiddenXtermRef.current?.clear();
+        } else {
+          const content = hiddenXtermRef.current?.getBufferContent();
+          if (content && content.trim()) capturedOutputRef.current = content;
+          setPasswordPrompt(false);
+        }
       }
-      mode.onLegacyInteractive(entered, fullscreen);
-      if (!entered) setPasswordPrompt(false);
+      mode.onModeSignal(signal);
     });
 
     segmenter.onPasswordPrompt(() => {
       if (cancelled) return;
       // A password prompt is the `tier1` surface, driven solely by passwordPrompt
-      // (it wins in deriveInputSurface). Do NOT set interactiveMode here: it would
+      // (it wins in deriveInputSurface). Do NOT claim the input here: that would
       // pull the surface to `docked`, show the xterm over the PasswordPrompt widget,
       // and — since nothing cleanly resets it for this path — leave the surface
       // stuck off `composer` after the prompt clears (sudo never "kicks back").
@@ -668,8 +660,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         window.tai?.pty?.stopEchoPoll?.(ptyId);
         setPasswordPrompt(false);
         // A completed block means the foreground is the shell again, so no
-        // raw-mode program can be running — clear interactiveMode so a stale
-        // value can never strand the surface off `composer`.
+        // raw-mode program can be running — a command boundary, so a stale
+        // reading can never strand the surface off `composer`.
         mode.onCommandEnd();
       }
     });
@@ -679,22 +671,13 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       if (evtId !== ptyId) return;
       recorderRef.current.termios(e.icanon, e.echo);
       setPasswordPrompt(e.passwordPrompt);
-      // Raw-mode tty (REPLs like python/node/psql, plus full TUIs) — route
-      // the card through xterm so the user sees keystrokes echo and can
-      // use readline navigation/history.
-      //
-      // Debounce activation: commands like `brew` briefly disable ICANON for
-      // progress bars, causing a false `interactiveProgram` signal. Require
-      // the raw-mode state to persist before flipping the surface to `docked`.
-      // A real REPL/TUI stays in raw mode indefinitely, so a short window is
-      // enough to filter the transient toggles while keeping the input surface
-      // snappy. Deactivation is immediate so the surface snaps back to
-      // `composer` the moment the child restores canonical mode or exits.
-      mode.onTermios({
-        icanon: e.icanon,
-        echo: e.echo,
-        interactiveProgram: e.interactiveProgram,
-      });
+      // No debounce. It existed to paper over the race between this signal and
+      // the two byte-sniffing ones; the resolver settles that race by tier, so
+      // delaying the authoritative signal now only delays the correction of a
+      // bad guess. Transient raw-mode blips (brew's progress bar) are handled
+      // by the restore signal, and no longer cost output — see the
+      // provenance-gated retention in _routeChunk.
+      mode.onTermios({ icanon: e.icanon, echo: e.echo });
     });
 
     const cleanupAutoAuth = window.tai?.pty?.onAutoAuth?.((id: number) => {
@@ -1439,19 +1422,27 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   useEffect(() => {
     if (!visible) return;
     const handleFocus = () => {
-      if (!altScreenVisible && !awaitingInput && !passwordPrompt) inputRef.current?.focus();
+      if (modeState.inputOwner !== 'fullscreen' && !awaitingInput && !passwordPrompt) inputRef.current?.focus();
     };
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [visible, altScreenVisible, awaitingInput, passwordPrompt]);
+  }, [visible, modeState.inputOwner, awaitingInput, passwordPrompt]);
 
   const surface = deriveInputSurface({
-    altScreenVisible, interactiveMode, interactiveFullscreen, awaitingInput, passwordPrompt,
+    altScreenVisible: modeState.inputOwner === 'fullscreen',
+    interactiveMode: modeState.inputOwner === 'program' || modeState.inputOwner === 'fullscreen',
+    interactiveFullscreen: modeState.inputOwner === 'fullscreen',
+    awaitingInput,
+    passwordPrompt,
     rootedSession: !!(activeSession?.rooted && hasActiveBlock),
     // Windows (ConPTY) has no termios / /proc, so the signals above never fire;
     // fall back to the live terminal whenever a command is running so the user
     // can type into a program that's waiting for input.
     isWindows: window.tai?.system?.platform === 'win32',
+    // Deliberately hasActiveBlock, not modeState.commandRunning: commandRunning
+    // is fed by OSC 133 / shell hooks, and Windows ships no shell integration,
+    // so the resolver's value is always false exactly where this fallback is
+    // the only thing keeping a ConPTY user able to type.
     commandRunning: hasActiveBlock,
   });
 
@@ -1584,10 +1575,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     return () => window.clearTimeout(t);
   }, [displayItems, tabId]);
 
-  const showFullscreenInteractive = surface === 'fullscreen' && !altScreenVisible;
   // Surface-driven: the xterm renders only for `docked` (portaled into the
   // pinned block) and `fullscreen`. Crucially NOT for `tier1` — a password
-  // prompt sets interactiveMode=true, so the old `|| interactiveMode` formula
+  // prompt used to claim the input, so the old `|| interactiveMode` formula
   // rendered the fallback xterm over the PasswordPrompt widget and stole its
   // keystrokes (masked dots never updated).
   const showXterm = shouldShowXterm(surface);
@@ -1602,7 +1592,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const inputDisabled = blockInputLocked || (hasActiveBlock && !passwordPrompt && !remoteAiActive);
   const activeBodyMode: import('@/types').BlockBodyMode =
     passwordPrompt ? 'password'
-    : (altScreenVisible || interactiveMode) ? 'interactive'
+    : modeState.inputOwner !== 'shell' ? 'interactive'
     : 'output';
 
   // While docked/tier1/rooted, the trailing active command block is rendered
