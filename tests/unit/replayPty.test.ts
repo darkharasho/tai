@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { PtyRecorder, parseRecording } from '@/utils/ptyRecording';
+import { BlockSegmenter } from '@/components/BlockSegmenter';
 import { replayRecording } from '../helpers/replayPty';
 
 function osc133(letter: string) {
@@ -32,17 +33,29 @@ describe('replayRecording', () => {
     // The alt-screen enter sequence is split across two chunks. This only
     // resolves correctly if the replay feeds the chunks exactly as recorded —
     // the segmenter's _altScreenTail lookback is what stitches it.
+    //
+    // Note on the assertion shape: `_altScreenTail` is a plain 7-byte
+    // suffix carried into the next `feed()` call's substring scan
+    // (`scanned = tail + rawData`, BlockSegmenter.ts:679-691). Because
+    // `.slice(-7)` on a chunk that is itself <=7 bytes returns the whole
+    // chunk, `tail(A) + B` and the joined string `A + B` are byte-identical
+    // whenever a two-chunk split is joined back together — the substring
+    // scan cannot tell "fed as two calls, stitched via the tail" apart from
+    // "fed as one joined call". So `toContain('altScreen:true')` alone does
+    // NOT prove chunk boundaries were preserved (verified below by mutation
+    // testing). The assertion that actually discriminates is the literal
+    // sequence of `feed()` calls the harness makes: it must match the
+    // recorded chunks one-for-one, unmodified and unmerged.
     const rec = new PtyRecorder(() => 0);
-    rec.data(osc133('A'));
-    rec.data('$ ');
-    rec.data(osc133('B'));
-    rec.data('htop\n');
-    rec.data(osc133('C'));
-    rec.data('\x1b[?');
-    rec.data('1049h');
+    const chunks = [osc133('A'), '$ ', osc133('B'), 'htop\n', osc133('C'), '\x1b[?', '1049h'];
+    for (const c of chunks) rec.data(c);
 
+    const feedSpy = vi.spyOn(BlockSegmenter.prototype, 'feed');
     const result = replayRecording(parseRecording(rec.serialize()));
+    const fedChunks = feedSpy.mock.calls.map(call => call[0]);
+    feedSpy.mockRestore();
 
+    expect(fedChunks).toEqual(chunks);
     expect(result.transitions).toContain('altScreen:true');
   });
 
