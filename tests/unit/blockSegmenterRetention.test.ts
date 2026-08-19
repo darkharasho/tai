@@ -101,8 +101,11 @@ describe('provenance-gated retention', () => {
     seg.setModeState(AUTHORITATIVE_SHELL);
     finishBlock(seg);
 
-    // Authoritative alt-screen: dropping is correct and stays.
-    expect(blocks[0]?.output ?? '').not.toContain('redraw noise');
+    // Authoritative alt-screen: dropping is correct and stays. The length
+    // assertion is load-bearing: `blocks[0]?.output ?? ''` alone passes when no
+    // block is emitted at all, which is a segmentation failure, not a drop.
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].output).not.toContain('redraw noise');
   });
 
   it('discards the side buffer when the guess escalates to a real alt screen', () => {
@@ -122,7 +125,8 @@ describe('provenance-gated retention', () => {
     seg.setModeState(AUTHORITATIVE_FULLSCREEN); // the hint was right
     finishBlock(seg);
 
-    expect(blocks[0]?.output ?? '').not.toContain('TUI frame redraw');
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].output).not.toContain('TUI frame redraw');
   });
 
   it('keeps output when the guess is promoted to an authoritative program', () => {
