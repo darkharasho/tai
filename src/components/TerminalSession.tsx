@@ -39,9 +39,7 @@ import { detectSshError } from '@/utils/sshDetect';
 import { capDisplayItems } from '@/utils/blockCap';
 import { withAnswers } from '@/utils/askUserQuestion';
 import { clampStoredOutput } from '@/utils/clampStoredOutput';
-import { createModeResolver, type ModeState } from '@/utils/terminalMode';
-import { legacyFlagsFromMode, sameModeState } from '@/utils/modeFlags';
-import { createRawModeGate, type RawModeGate } from '@/utils/rawModeGate';
+import { useTerminalMode } from '@/hooks/useTerminalMode';
 import { PtyRecorder } from '@/utils/ptyRecording';
 import {
   initialRemoteAi, pillView, onSshChange, enableWatch, setMode,
@@ -107,7 +105,11 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const [sideChatOpen, setSideChatOpen] = useState(false);
   const displayItemsRef = useRef<DisplayItem[]>([]);
   useEffect(() => { displayItemsRef.current = displayItems; }, [displayItems]);
-  const [altScreenVisible, setAltScreenVisible] = useState(false);
+  // Every mode decision lives in this hook — the component only forwards
+  // events into it and reads flags back. See useTerminalMode for what the flags
+  // mean and for the one surface this migration deliberately changes.
+  const mode = useTerminalMode();
+  const { altScreenVisible, interactiveMode, interactiveFullscreen } = mode;
   // Long-running session state: drives the rooted surface and the morphed
   // card header. Mirrored into a ref for the segmenter callbacks (registered
   // once on mount, so they can't see fresh state).
@@ -124,7 +126,6 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     for (const r of [sessionPromoteTimerRef, daemonToastTimerRef, findFlashTimerRef] as Array<React.MutableRefObject<ReturnType<typeof setTimeout> | number | null>>) {
       if (r.current != null) { clearTimeout(r.current as ReturnType<typeof setTimeout>); r.current = null; }
     }
-    rawModeGateRef.current?.cancel();
   }, []);
 
   const beginSession = useCallback((command: string) => {
@@ -143,31 +144,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       }, LONG_RUN_PROMOTE_MS);
     }
   }, []);
-  const [interactiveMode, setInteractiveMode] = useState(false);
   const [interactivePortalTarget, setInteractivePortalTarget] = useState<HTMLDivElement | null>(null);
   const [xtermFallbackEl, setXtermFallbackEl] = useState<HTMLDivElement | null>(null);
-  const [interactiveFullscreen, setInteractiveFullscreen] = useState(false);
-  const modeResolverRef = useRef(createModeResolver());
-  const [modeState, setModeState] = useState<ModeState>(() => modeResolverRef.current.state);
-  // Only real transitions may re-derive: the resolver returns a fresh object for
-  // every signal, including ones that change nothing, and re-running the effect
-  // on those would overwrite flags the legacy callbacks had just set.
-  const commitMode = useCallback((next: ModeState) => {
-    setModeState(prev => (sameModeState(prev, next) ? prev : next));
-  }, []);
-  // The resolver decides; the three legacy flags are its projection, mapped so
-  // that every surface deriveInputSurface can produce is unchanged (see
-  // legacyFlagsFromMode, and tests/unit/modeWiring.test.ts for the sequences
-  // this preserves). What it is NOT is a claim that the resolver has seen
-  // everything: the legacy cursor-hide takeover deliberately emits no signal,
-  // because the resolver cannot yet express a fullscreen that a cooked termios
-  // reading revokes. The flags collapse into modeState in the next commit.
-  useEffect(() => {
-    const flags = legacyFlagsFromMode(modeState);
-    setAltScreenVisible(flags.altScreenVisible);
-    setInteractiveMode(flags.interactiveMode);
-    setInteractiveFullscreen(flags.interactiveFullscreen);
-  }, [modeState]);
   const [inputMode, setInputMode] = useState<'shell' | 'ai'>('shell');
   const handleInputModeChange = useCallback((mode: 'shell' | 'ai') => {
     setInputMode(mode);
@@ -264,35 +242,11 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const aiSuggestedCommands = useRef<Set<string>>(new Set());
   const pendingCommandRef = useRef<{ command: string; startTime: number } | null>(null);
   const altScreenRef = useRef(false);
-  const interactiveModeRef = useRef(false);
   const preambleSentRef = useRef(false);
   const lastContextBlockIdRef = useRef<string | null>(null);
   const gitBranchRef = useRef<string | null>(null);
   const capturedOutputRef = useRef<string | null>(null);
-  // Debounce for echo-poller interactiveMode activation. Commands like `brew`
-  // briefly disable ICANON for progress bars; without debouncing, the surface
-  // flips to `docked` and the card pops out of the scroll list instead of
-  // morphing in-place from the pending block. The gate is also the single
-  // commit point for a raw-mode reading — the resolver learns about raw mode
-  // here and nowhere else, so it never sees a transient the surface already
-  // filtered out. Task 8 removes the debounce.
-  const rawModeGateRef = useRef<RawModeGate | null>(null);
-  if (!rawModeGateRef.current) {
-    rawModeGateRef.current = createRawModeGate({
-      isActive: () => interactiveModeRef.current,
-      onActivate: (r) => {
-        setInteractiveMode(true);
-        setInteractiveFullscreen(false);
-        commitMode(modeResolverRef.current.apply({ kind: 'termios', icanon: r.icanon, echo: r.echo }));
-      },
-      onDeactivate: (r) => {
-        setInteractiveMode(false);
-        commitMode(modeResolverRef.current.apply({ kind: 'termios', icanon: r.icanon, echo: r.echo }));
-      },
-    });
-  }
   altScreenRef.current = altScreenVisible;
-  interactiveModeRef.current = interactiveMode;
 
   const showDaemonToast = (message: string, ok: boolean) => {
     if (daemonToastTimerRef.current) clearTimeout(daemonToastTimerRef.current);
@@ -654,12 +608,12 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
 
     segmenter.onModeSignal((signal) => {
       if (cancelled) return;
-      commitMode(modeResolverRef.current.apply(signal));
+      mode.onModeSignal(signal);
     });
 
     segmenter.onAltScreen((entered) => {
       if (cancelled) return;
-      setAltScreenVisible(entered);
+      mode.onLegacyAltScreen(entered);
     });
 
     segmenter.onInteractiveMode((entered, fullscreen) => {
@@ -670,8 +624,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         const content = hiddenXtermRef.current?.getBufferContent();
         if (content && content.trim()) capturedOutputRef.current = content;
       }
-      setInteractiveMode(entered);
-      setInteractiveFullscreen(entered && !!fullscreen);
+      mode.onLegacyInteractive(entered, fullscreen);
       if (!entered) setPasswordPrompt(false);
     });
 
@@ -717,8 +670,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         // A completed block means the foreground is the shell again, so no
         // raw-mode program can be running — clear interactiveMode so a stale
         // value can never strand the surface off `composer`.
-        rawModeGateRef.current?.cancel();
-        setInteractiveMode(false);
+        mode.onCommandEnd();
       }
     });
 
@@ -738,7 +690,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       // enough to filter the transient toggles while keeping the input surface
       // snappy. Deactivation is immediate so the surface snaps back to
       // `composer` the moment the child restores canonical mode or exits.
-      rawModeGateRef.current?.update({
+      mode.onTermios({
         icanon: e.icanon,
         echo: e.echo,
         interactiveProgram: e.interactiveProgram,
@@ -778,10 +730,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       cleanupResized?.();
       cleanupEcho?.();
       cleanupAutoAuth?.();
-      rawModeGateRef.current?.cancel();
       if (outputRafId !== null) cancelAnimationFrame(outputRafId);
       segmenter.reset();
-      modeResolverRef.current.reset();
+      mode.reset();
       recorderRef.current.clear();
       setShellIntegrated(false);
       setSshSessionActive(false);
