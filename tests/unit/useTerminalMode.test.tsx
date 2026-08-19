@@ -10,6 +10,7 @@ import { renderHook, act } from '@testing-library/react';
 import { useTerminalMode, type TerminalModeApi, type TermiosReading } from '@/hooks/useTerminalMode';
 import { BlockSegmenter } from '@/components/BlockSegmenter';
 import { deriveInputSurface } from '@/utils/inputSurface';
+import { inputSignalsFromMode } from '@/utils/modeFlags';
 
 const raw: TermiosReading = { icanon: false, echo: true };
 const cooked: TermiosReading = { icanon: true, echo: true };
@@ -19,13 +20,14 @@ function osc133(letter: string) {
   return `\x1b]133;${letter}\x07`;
 }
 
-/** The same projection TerminalSession makes at its deriveInputSurface call. */
+/**
+ * Literally the projection TerminalSession makes — the same function, not a
+ * copy of its logic. Re-implementing it here would let the component's mapping
+ * break while these tests kept reporting the right surfaces.
+ */
 function surfaceOf(mode: TerminalModeApi) {
-  const owner = mode.modeState.inputOwner;
   return deriveInputSurface({
-    altScreenVisible: owner === 'fullscreen',
-    interactiveMode: owner === 'program' || owner === 'fullscreen',
-    interactiveFullscreen: owner === 'fullscreen',
+    ...inputSignalsFromMode(mode.modeState),
     awaitingInput: false,
     passwordPrompt: false,
   });
@@ -152,6 +154,24 @@ describe('useTerminalMode', () => {
 
     expect(t.surface()).toBe('fullscreen');
     expect(t.mode().modeState.provenance).toBe('inferred');
+  });
+
+  it('a real alt screen supersedes a revocable takeover without a visible gap', () => {
+    // The revocable claim is explicitly ended before the alt screen is
+    // announced, so consumers see the exit. The surface must not flicker back
+    // to the composer in between.
+    const t = setup();
+    const seg = t.attach(new BlockSegmenter());
+    seg.feed('user@host:~$ ');
+    seg.feed(CURSOR_HIDE);
+    seg.feed('\x1b[?1049h');
+
+    expect(t.surface()).toBe('fullscreen');
+    expect(t.mode().modeState.provenance).toBe('authoritative');
+
+    // And having been upgraded, it is no longer revocable.
+    act(() => t.mode().onTermios(cooked));
+    expect(t.surface()).toBe('fullscreen');
   });
 
   it('a legacy cursor-hide takeover still falls back on a cooked reading', () => {

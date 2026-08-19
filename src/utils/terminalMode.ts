@@ -69,6 +69,15 @@ export function createModeResolver(): ModeResolver {
   // Rule 3a: is the current fullscreen claim revocable? A cursor hide is how a
   // full TUI and a cooked spinner both begin, so that claim must yield to a
   // cooked termios reading; a real [?1049h must not.
+  //
+  // The resets of this flag in the boundary branches below (osc133 prompt, hook
+  // precmd, ptyExit) are DEFENSIVE and deliberately untested: the guard that
+  // reads it only fires while inputOwner is 'fullscreen', and both signals that
+  // can set 'fullscreen' write this flag on the way in, so a stale value is
+  // unreachable. They are kept because the flag is a second piece of state that
+  // must not survive a lifetime boundary, and a future signal that sets
+  // 'fullscreen' without writing it would turn an unreachable bug into a live
+  // one. Do not read their survival as coverage.
   let fullscreenRevocable = false;
 
   function set(next: Partial<ModeState>): ModeState {

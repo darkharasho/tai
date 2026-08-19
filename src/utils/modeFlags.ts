@@ -16,3 +16,33 @@ export function sameModeState(a: ModeState, b: ModeState): boolean {
     && a.passwordPrompt === b.passwordPrompt
     && a.commandRunning === b.commandRunning;
 }
+
+/**
+ * The projection from the resolver's one state to the three interactivity
+ * signals `deriveInputSurface` reads.
+ *
+ * This is a pure function of ModeState rather than three fields inlined at the
+ * call site, and that is load-bearing. `deriveInputSurface` reaches 'fullscreen'
+ * either through `altScreenVisible` or through `interactiveMode &&
+ * interactiveFullscreen`, and 'docked' through `interactiveMode` alone — three
+ * booleans with a non-obvious precedence. Inlined into a component with no test
+ * file, all three could be replaced by `false` (stranding every TUI, REPL and
+ * alt-screen program on the composer with no xterm) without a single test
+ * noticing. Here it is unit-testable, and — critically — the tests call the
+ * same function the component does instead of re-implementing it, which is the
+ * exact drift this migration keeps paying for.
+ *
+ * There is still one state. This is a view of it, not a second copy.
+ */
+export function inputSignalsFromMode(mode: ModeState): {
+  altScreenVisible: boolean;
+  interactiveMode: boolean;
+  interactiveFullscreen: boolean;
+} {
+  const fullscreen = mode.inputOwner === 'fullscreen';
+  return {
+    altScreenVisible: fullscreen,
+    interactiveMode: fullscreen || mode.inputOwner === 'program',
+    interactiveFullscreen: fullscreen,
+  };
+}

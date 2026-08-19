@@ -200,9 +200,15 @@ export class BlockSegmenter {
       if (this._inInteractiveMode) {
         this._inInteractiveMode = false;
         this._interactiveFullscreen = false;
+        // The revocable takeover ends here even though the resolver would have
+        // upgraded it in place: this is the FOURTH legacy interactive-exit
+        // site, and consumers hang side effects off the exit, not just state.
+        // TerminalSession harvests the hidden xterm's buffer and clears
+        // passwordPrompt here — skip the emit and a password prompt followed by
+        // a real alt-screen takeover stays "prompting" until something else
+        // clears it.
+        this._emitModeSignal({ kind: 'fullscreenHint', entered: false });
       }
-      // No fullscreenHint revocation needed first: an observed alt screen
-      // upgrades a revocable claim in the resolver.
       this._emitModeSignal({ kind: 'altScreen', entered: true });
     }
     if (altExitSeq) {

@@ -83,6 +83,27 @@ describe('BlockSegmenter mode signals', () => {
     expect(phases).toEqual(['prompt']);
   });
 
+  it('ends the revocable takeover before a real alt screen supersedes it', () => {
+    // Cursor hide, then a genuine [?1049h. The resolver alone would not need
+    // the exit — an observed alt screen upgrades the claim in place — but the
+    // exit carries component-side side effects (TerminalSession harvests the
+    // hidden xterm's buffer and clears passwordPrompt on it). Neither the
+    // pre-migration code nor the first cut of this task tested it: the legacy
+    // callback fired here and its replacement silently did not, so a password
+    // prompt followed by a TUI kept `passwordPrompt` stuck true.
+    const { seg, signals } = collect();
+    seg.feed('user@host:~$ ');
+    seg.feed('\x1b[?25l');
+    seg.feed('\x1b[?1049h');
+
+    const tail = signals.map(s => (
+      s.kind === 'fullscreenHint' ? `fullscreenHint:${s.entered}`
+        : s.kind === 'altScreen' ? `altScreen:${s.entered}`
+        : s.kind
+    ));
+    expect(tail).toEqual(['fullscreenHint:true', 'fullscreenHint:false', 'altScreen:true']);
+  });
+
   it('emits an altScreen exit when a new prompt clears the alt-screen latch', () => {
     // The A handler drops the latch without an exit sequence ever arriving.
     // The resolver has to hear that directly rather than by way of the prompt

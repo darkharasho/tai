@@ -291,7 +291,17 @@ describe('revocable fullscreen (Task 8)', () => {
     expect(st.inputOwner).toBe('shell');
   });
 
-  it('is cleared by a command boundary, so the next command starts revocable-free', () => {
+  it('ends at a command boundary, like every other claim on the input', () => {
+    // Renamed from "is cleared by a command boundary, so the next command
+    // starts revocable-free" — that name claimed coverage this does not have.
+    // The `fullscreenRevocable = false` in the boundary branches is DEFENSIVE,
+    // not load-bearing, and deleting it leaves this green: rule 3a's guard only
+    // reads the flag while inputOwner is already 'fullscreen', and the only two
+    // signals that can set 'fullscreen' (altScreen, fullscreenHint) each write
+    // the flag on the way in. So a stale latch is unreachable by construction
+    // and no test can observe it. What IS worth pinning is what this asserts:
+    // the boundary returns ownership to the shell and a later cooked reading
+    // agrees. See the note at the resets in terminalMode.ts.
     const r = createModeResolver();
     r.apply({ kind: 'fullscreenHint', entered: true });
     r.apply({ kind: 'osc133', phase: 'prompt' });

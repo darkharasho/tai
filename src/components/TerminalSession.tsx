@@ -40,6 +40,7 @@ import { capDisplayItems } from '@/utils/blockCap';
 import { withAnswers } from '@/utils/askUserQuestion';
 import { clampStoredOutput } from '@/utils/clampStoredOutput';
 import { useTerminalMode } from '@/hooks/useTerminalMode';
+import { inputSignalsFromMode } from '@/utils/modeFlags';
 import { PtyRecorder } from '@/utils/ptyRecording';
 import {
   initialRemoteAi, pillView, onSshChange, enableWatch, setMode,
@@ -1419,19 +1420,24 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [visible, ptyId, handleStopAI, commandIndex, cwd]);
 
+  // The one projection from the resolver's state to the interactivity signals
+  // every consumer below reads. It lives in a tested pure function rather than
+  // inline here: this component has no test file, so an inlined mapping can be
+  // broken (all three false strands every TUI on the composer) with tsc clean
+  // and the suite green. See inputSignalsFromMode.
+  const modeSignals = inputSignalsFromMode(modeState);
+
   useEffect(() => {
     if (!visible) return;
     const handleFocus = () => {
-      if (modeState.inputOwner !== 'fullscreen' && !awaitingInput && !passwordPrompt) inputRef.current?.focus();
+      if (!modeSignals.altScreenVisible && !awaitingInput && !passwordPrompt) inputRef.current?.focus();
     };
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [visible, modeState.inputOwner, awaitingInput, passwordPrompt]);
+  }, [visible, modeSignals.altScreenVisible, awaitingInput, passwordPrompt]);
 
   const surface = deriveInputSurface({
-    altScreenVisible: modeState.inputOwner === 'fullscreen',
-    interactiveMode: modeState.inputOwner === 'program' || modeState.inputOwner === 'fullscreen',
-    interactiveFullscreen: modeState.inputOwner === 'fullscreen',
+    ...modeSignals,
     awaitingInput,
     passwordPrompt,
     rootedSession: !!(activeSession?.rooted && hasActiveBlock),
@@ -1592,7 +1598,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const inputDisabled = blockInputLocked || (hasActiveBlock && !passwordPrompt && !remoteAiActive);
   const activeBodyMode: import('@/types').BlockBodyMode =
     passwordPrompt ? 'password'
-    : modeState.inputOwner !== 'shell' ? 'interactive'
+    : modeSignals.interactiveMode ? 'interactive'
     : 'output';
 
   // While docked/tier1/rooted, the trailing active command block is rendered
