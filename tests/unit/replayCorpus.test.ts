@@ -141,9 +141,11 @@ describe('PTY replay corpus (baseline)', () => {
   // nesting boundary. The block itself is fish's own `exit` (fish's C..D;0
   // bounds it), but the outer bash's precmd for its own `fish` command
   // fires after fish's D marker and is attributed to this block's
-  // `commandFromShell` metadata. `command` is correct (sourced from
-  // fish's own preexec); fixing the cross-shell `commandFromShell` leak is
-  // out of Task 5's scope.
+  // `commandFromShell` metadata. `command` is right for a different reason:
+  // no preexec reaches blocks 3-5 at all in this recording (hence
+  // fromShell: undefined on 3 and 4), so they come from echo
+  // reconstruction, which happens to reconstruct them correctly. Fixing the
+  // cross-shell `commandFromShell` leak is out of Task 5's scope.
   it('prompt-redraw: command reconstruction under redraws', () => {
     const { blocks } = replayFixture('prompt-redraw');
     expect(blocks.map(b => ({ command: b.command, fromShell: b.commandFromShell }))).toMatchInlineSnapshot(`
