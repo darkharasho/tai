@@ -64,6 +64,8 @@ describe('tai-fish.fish OSC 6973 emission (integration)', () => {
 
     const whichFish = spawnSync('which', ['fish'], { encoding: 'utf8' });
     if (whichFish.status !== 0) {
+      // Loud on purpose: a silent skip is a coverage hole that looks green.
+      console.warn('[integration] fish not installed — skipping fish PTY test');
       return;
     }
 
@@ -73,7 +75,11 @@ describe('tai-fish.fish OSC 6973 emission (integration)', () => {
     try {
       pty = await import('node-pty');
     } catch {
-      // node-pty not loadable in this environment — static checks cover wiring.
+      // node-pty is built against Electron's ABI by our postinstall and has no
+      // Linux prebuild, so plain Node cannot always load it. fish cannot use
+      // the script(1) fallback the other shells use — it blocks on terminal
+      // probes at startup and needs a PTY that answers back.
+      console.warn('[integration] node-pty unloadable — skipping fish PTY test');
       return;
     }
 

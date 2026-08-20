@@ -19,12 +19,19 @@ jobs:
         with:
           go-version: '1.22'
           cache-dependency-path: daemon/go.sum
-      # The zsh shell-integration test skips itself when zsh is absent, and the
-      # runner image does not ship it — so without this the OSC 6973 hooks in
-      # tai-zsh.zsh are never actually executed anywhere in CI.
-      - name: Install zsh (for the shell-integration tests)
-        run: sudo apt-get update && sudo apt-get install -y zsh
+      # The shell-integration tests skip themselves when their shell is absent,
+      # and the runner image ships neither — so without this the OSC 6973 hooks
+      # in tai-zsh.zsh and tai-fish.fish are executed nowhere in CI.
+      - name: Install zsh and fish (for the shell-integration tests)
+        run: sudo apt-get update && sudo apt-get install -y zsh fish
       - run: npm ci
       - run: npm run build
       - run: cd daemon && go test ./...
+      # postinstall rebuilds node-pty against Electron's ABI, and there is no
+      # Linux prebuild to fall back on, so vitest (plain Node) cannot load it.
+      # The bash/zsh tests degrade to script(1), but fish needs a PTY it can
+      # talk back to — it blocks on terminal probes at startup — so without
+      # this its integration case skips even with fish installed.
+      - name: Rebuild node-pty for Node (vitest runs outside Electron)
+        run: npm rebuild node-pty --build-from-source
       - run: npm test
