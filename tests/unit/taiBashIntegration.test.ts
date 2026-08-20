@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { runInPty, osc6973Payloads, findModernBash } from '../helpers/scriptPty';
 
 const script = readFileSync(
   resolve(__dirname, '../../electron/shell-integration/tai-bash.sh'),
@@ -81,124 +82,68 @@ describe('tai-bash.sh', () => {
 
 describe('tai-bash.sh OSC 6973 emission (integration)', () => {
   it('emits preexec and precmd hooks around a real command', async () => {
-    const { spawnSync } = await import('node:child_process');
-    const { writeFileSync, readFileSync: readSync, mkdtempSync, rmSync } = await import('node:fs');
-    const { tmpdir } = await import('node:os');
-    const { join } = await import('node:path');
     const { parseOsc6973 } = await import('@/utils/osc6973');
     const scriptPath = resolve(__dirname, '../../electron/shell-integration/tai-bash.sh');
 
-    // `script(1)` is required to allocate a PTY so PROMPT_COMMAND fires.
-    const which = spawnSync('which', ['script'], { encoding: 'utf8' });
-    if (which.status !== 0) {
-      // Skip silently when no PTY tool; static-analysis tests still cover wiring.
-      return;
-    }
+    // PS0 (bash >= 4.4) is what emits preexec; on a 3.2 host there is nothing
+    // to assert. Static-analysis tests above still cover the wiring.
+    const bash = findModernBash();
+    if (!bash) return;
 
-    const dir = mkdtempSync(join(tmpdir(), 'tai-bash-test-'));
-    const cmdsPath = join(dir, 'cmds');
-    const outPath = join(dir, 'out');
-    writeFileSync(cmdsPath, `source ${scriptPath}\necho hi\nexit\n`);
+    const transcript = await runInPty(
+      bash,
+      ['--norc', '--noprofile', '-i'],
+      `source ${scriptPath}\necho hi\nexit\n`,
+    );
+    if (transcript === null) return;
+    const hooks = osc6973Payloads(transcript)
+      .map((hex) => parseOsc6973(hex))
+      .filter(Boolean) as unknown as Array<Record<string, unknown>>;
 
-    try {
-      // util-linux script: `script -q -c CMD FILE`. Redirect stdin from a
-      // file so the input persists into the child's interactive bash.
-      spawnSync(
-        'script',
-        ['-q', '-c', `bash --norc --noprofile -i < ${cmdsPath}`, outPath],
-        {
-          encoding: 'utf8',
-          timeout: 10_000,
-          // Test runners (including Claude Code) often set TERM=dumb, which
-          // makes our integration script intentionally bail. Force xterm so
-          // the script loads.
-          env: { ...process.env, TERM: 'xterm-256color' },
-        },
-      );
-      const stdout = readSync(outPath, 'utf8');
-      const re = /\x1b\]6973;([0-9a-f]+)\x07/g;
-      const hooks: Array<Record<string, unknown>> = [];
-      let m: RegExpExecArray | null;
-      while ((m = re.exec(stdout)) !== null) {
-        const parsed = parseOsc6973(m[1]);
-        if (parsed) hooks.push(parsed as unknown as Record<string, unknown>);
-      }
-
-      const preexec = hooks.find(
-        (h) =>
-          h.hook === 'preexec' &&
-          typeof h.command === 'string' &&
-          (h.command as string).includes('echo hi'),
-      );
-      const precmd = hooks.find(
-        (h) =>
-          h.hook === 'precmd' &&
-          h.exit === 0 &&
-          typeof h.command === 'string' &&
-          (h.command as string).includes('echo hi'),
-      );
-      expect(preexec, `hooks=${JSON.stringify(hooks)}`).toBeDefined();
-      expect(precmd, `hooks=${JSON.stringify(hooks)}`).toBeDefined();
-      expect(precmd?.duration_ms as number).toBeGreaterThanOrEqual(0);
-      expect(typeof precmd?.cwd).toBe('string');
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  }, 15_000);
+    const preexec = hooks.find(
+      (h) =>
+        h.hook === 'preexec' &&
+        typeof h.command === 'string' &&
+        (h.command as string).includes('echo hi'),
+    );
+    const precmd = hooks.find(
+      (h) =>
+        h.hook === 'precmd' &&
+        h.exit === 0 &&
+        typeof h.command === 'string' &&
+        (h.command as string).includes('echo hi'),
+    );
+    expect(preexec, `hooks=${JSON.stringify(hooks)}`).toBeDefined();
+    expect(precmd, `hooks=${JSON.stringify(hooks)}`).toBeDefined();
+    expect(precmd?.duration_ms as number).toBeGreaterThanOrEqual(0);
+    expect(typeof precmd?.cwd).toBe('string');
+  }, 20_000);
 
   // Regression: __tai_json_escape previously only escaped \, ", \n, \r, \t.
   // Other C0 control bytes (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F) leaked through
   // verbatim and produced invalid JSON per RFC 8259, which parseOsc6973
   // silently dropped. The fix escapes all C0 bytes as \u00XX.
   it('produces parseable JSON when a command contains a C0 control byte', async () => {
-    const { spawnSync } = await import('node:child_process');
-    const { writeFileSync, readFileSync: readSync, mkdtempSync, rmSync } = await import('node:fs');
-    const { tmpdir } = await import('node:os');
-    const { join } = await import('node:path');
     const { parseOsc6973 } = await import('@/utils/osc6973');
     const scriptPath = resolve(__dirname, '../../electron/shell-integration/tai-bash.sh');
 
-    const which = spawnSync('which', ['script'], { encoding: 'utf8' });
-    if (which.status !== 0) {
-      return;
-    }
-
-    const dir = mkdtempSync(join(tmpdir(), 'tai-bash-c0-test-'));
-    const cmdsPath = join(dir, 'cmds');
-    const outPath = join(dir, 'out');
     // `printf 'a\x01b'` puts a literal SOH (0x01) byte in the printed output,
     // and the command string itself contains the bash-expanded $'\x01' once
     // history records it; either way the escape function must handle it.
-    writeFileSync(
-      cmdsPath,
+    const bash = findModernBash();
+    if (!bash) return;
+
+    const transcript = await runInPty(
+      bash,
+      ['--norc', '--noprofile', '-i'],
       `source ${scriptPath}\nprintf 'a\\x01b\\n'\nexit\n`,
     );
+    if (transcript === null) return;
+    const payloads = osc6973Payloads(transcript);
+    const parseable = payloads.filter((hex) => parseOsc6973(hex)).length;
 
-    try {
-      spawnSync(
-        'script',
-        ['-q', '-c', `bash --norc --noprofile -i < ${cmdsPath}`, outPath],
-        {
-          encoding: 'utf8',
-          timeout: 10_000,
-          env: { ...process.env, TERM: 'xterm-256color' },
-        },
-      );
-      const stdout = readSync(outPath, 'utf8');
-      const re = /\x1b\]6973;([0-9a-f]+)\x07/g;
-      let totalPayloads = 0;
-      let parseable = 0;
-      let m: RegExpExecArray | null;
-      while ((m = re.exec(stdout)) !== null) {
-        totalPayloads++;
-        const parsed = parseOsc6973(m[1]);
-        if (parsed) parseable++;
-      }
-      // Every OSC 6973 payload emitted must be valid parseable JSON.
-      expect(totalPayloads, `stdout=${JSON.stringify(stdout)}`).toBeGreaterThan(0);
-      expect(parseable).toBe(totalPayloads);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  }, 15_000);
+    // Every OSC 6973 payload emitted must be valid parseable JSON.
+    expect(payloads.length, `transcript=${JSON.stringify(transcript)}`).toBeGreaterThan(0);
+    expect(parseable).toBe(payloads.length);
+  }, 20_000);
 });

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { runInPty, osc6973Payloads } from '../helpers/scriptPty';
 
 const scriptPath = resolve(
   __dirname,
@@ -67,62 +68,39 @@ describe('tai-zsh.zsh', () => {
 describe('tai-zsh.zsh OSC 6973 emission (integration)', () => {
   it('emits preexec and precmd hooks around a real command', async () => {
     const { spawnSync } = await import('node:child_process');
-    const { writeFileSync, readFileSync: readSync, mkdtempSync, rmSync } =
-      await import('node:fs');
-    const { tmpdir } = await import('node:os');
-    const { join } = await import('node:path');
     const { parseOsc6973 } = await import('@/utils/osc6973');
 
-    const whichZsh = spawnSync('which', ['zsh'], { encoding: 'utf8' });
-    const whichScript = spawnSync('which', ['script'], { encoding: 'utf8' });
-    if (whichZsh.status !== 0 || whichScript.status !== 0) {
-      // No zsh and/or no PTY tool — static-analysis tests cover wiring.
+    if (spawnSync('which', ['zsh'], { encoding: 'utf8' }).status !== 0) {
+      // No zsh here — the static-analysis tests above still cover the wiring.
       return;
     }
 
-    const dir = mkdtempSync(join(tmpdir(), 'tai-zsh-test-'));
-    const cmdsPath = join(dir, 'cmds');
-    const outPath = join(dir, 'out');
-    writeFileSync(cmdsPath, `source ${scriptPath}\necho hi\nexit\n`);
+    const transcript = await runInPty(
+      'zsh',
+      ['-f', '-i'],
+      `source ${scriptPath}\necho hi\nexit\n`,
+    );
+    if (transcript === null) return;
+    const hooks = osc6973Payloads(transcript)
+      .map((hex) => parseOsc6973(hex))
+      .filter(Boolean) as unknown as Array<Record<string, unknown>>;
 
-    try {
-      spawnSync(
-        'script',
-        ['-q', '-c', `zsh -f -i < ${cmdsPath}`, outPath],
-        {
-          encoding: 'utf8',
-          timeout: 10_000,
-          env: { ...process.env, TERM: 'xterm-256color' },
-        },
-      );
-      const stdout = readSync(outPath, 'utf8');
-      const re = /\x1b\]6973;([0-9a-f]+)\x07/g;
-      const hooks: Array<Record<string, unknown>> = [];
-      let m: RegExpExecArray | null;
-      while ((m = re.exec(stdout)) !== null) {
-        const parsed = parseOsc6973(m[1]);
-        if (parsed) hooks.push(parsed as unknown as Record<string, unknown>);
-      }
-
-      const preexec = hooks.find(
-        (h) =>
-          h.hook === 'preexec' &&
-          typeof h.command === 'string' &&
-          (h.command as string).includes('echo hi'),
-      );
-      const precmd = hooks.find(
-        (h) =>
-          h.hook === 'precmd' &&
-          h.exit === 0 &&
-          typeof h.command === 'string' &&
-          (h.command as string).includes('echo hi'),
-      );
-      expect(preexec, `hooks=${JSON.stringify(hooks)}`).toBeDefined();
-      expect(precmd, `hooks=${JSON.stringify(hooks)}`).toBeDefined();
-      expect(precmd?.duration_ms as number).toBeGreaterThanOrEqual(0);
-      expect(typeof precmd?.cwd).toBe('string');
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  }, 15_000);
+    const preexec = hooks.find(
+      (h) =>
+        h.hook === 'preexec' &&
+        typeof h.command === 'string' &&
+        (h.command as string).includes('echo hi'),
+    );
+    const precmd = hooks.find(
+      (h) =>
+        h.hook === 'precmd' &&
+        h.exit === 0 &&
+        typeof h.command === 'string' &&
+        (h.command as string).includes('echo hi'),
+    );
+    expect(preexec, `hooks=${JSON.stringify(hooks)}`).toBeDefined();
+    expect(precmd, `hooks=${JSON.stringify(hooks)}`).toBeDefined();
+    expect(precmd?.duration_ms as number).toBeGreaterThanOrEqual(0);
+    expect(typeof precmd?.cwd).toBe('string');
+  }, 20_000);
 });
