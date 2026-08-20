@@ -19,6 +19,11 @@ jobs:
         with:
           go-version: '1.22'
           cache-dependency-path: daemon/go.sum
+      # The zsh shell-integration test skips itself when zsh is absent, and the
+      # runner image does not ship it — so without this the OSC 6973 hooks in
+      # tai-zsh.zsh are never actually executed anywhere in CI.
+      - name: Install zsh (for the shell-integration tests)
+        run: sudo apt-get update && sudo apt-get install -y zsh
       - run: npm ci
       - run: npm run build
       - run: cd daemon && go test ./...
