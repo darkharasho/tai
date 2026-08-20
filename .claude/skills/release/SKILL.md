@@ -60,11 +60,42 @@ If E2E tests fail, STOP and show the output. Do NOT proceed with the release.
 
 ### Step 4: Bump version
 
+The version lives in three places and all three must move together, or the
+lockfile keeps declaring the previous release (which is what happened to
+v1.12.0 and v1.13.0 — both shipped with the lock still saying 1.11.4).
+
 1. Read `package.json`.
 2. Parse the current `version` field (semver: `MAJOR.MINOR.PATCH`).
 3. Increment the segment specified by the bump argument, resetting lower segments to 0.
 4. Write the updated version back to `package.json` (change only the version field, preserve everything else).
-5. Tell the user the old and new version.
+5. Edit `package-lock.json` the same way — **only** these two fields:
+   - the top-level `version`
+   - `packages[""].version`
+
+   Do **not** run `npm version` or `npm install` to do this. Both rewrite the
+   whole lockfile, and the npm on this machine strips the `libc` markers from
+   the platform-specific optional dependencies when it does — npm uses those to
+   skip packages that cannot run on the host (musl vs glibc builds).
+
+6. Verify all three agree before continuing:
+
+   ```bash
+   node -e "const l=require('./package-lock.json'),p=require('./package.json');const v=[p.version,l.version,l.packages[''].version];if(new Set(v).size!==1){console.error('version mismatch:',v);process.exit(1)}console.log('version',p.version)"
+   ```
+
+   If it reports a mismatch, fix the files before going any further — do not
+   commit a half-bumped tree.
+
+7. Confirm the lockfile diff is exactly the two version lines:
+
+   ```bash
+   git diff --stat package-lock.json   # expect: 2 insertions(+), 2 deletions(-)
+   ```
+
+   Anything larger means the lock was regenerated. Restore it with
+   `git checkout package-lock.json` and redo the edit by hand.
+
+8. Tell the user the old and new version.
 
 ### Step 5: Generate release notes
 
@@ -93,7 +124,7 @@ If E2E tests fail, STOP and show the output. Do NOT proceed with the release.
 Run these commands sequentially:
 
 ```bash
-git add package.json
+git add package.json package-lock.json
 git commit -m "release: v{NEW_VERSION}"
 git tag v{NEW_VERSION}
 ```
