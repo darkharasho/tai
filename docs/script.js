@@ -22,12 +22,15 @@ document.addEventListener("DOMContentLoaded", () => {
   if (body && input) {
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-    const prompt = (cmd = "") =>
-      '<span class="t-user-name">alex</span>' +
-      '<span class="t-host">@fedora</span> ' +
-      '<span class="t-path">~/projects/tai</span> ' +
-      '<span class="t-dollar">$</span>' +
-      (cmd ? ' <span class="t-user">' + cmd + '</span>' : '');
+    // The block header is Warp's two rows: a muted meta line (cwd, branch,
+    // duration) above the command standing alone. No prompt glyph, no
+    // user@host — the composer's chip row carries that now.
+    const metaLine = (dur) =>
+      '<span class="t-block__meta">' +
+        '<span class="t-path">~/projects/tai</span>' +
+        '<span class="t-git">git:(main)</span>' +
+        (dur ? '<span class="t-dur">(' + dur + ')</span>' : '') +
+      '</span>';
 
     async function typeInto(el, text, speed = 30) {
       for (const ch of text) {
@@ -45,15 +48,11 @@ document.addEventListener("DOMContentLoaded", () => {
       return div;
     }
 
-    function shellBlock({ cmd, dur = "0.1s", output = "" }) {
-      const div = makeBlock();
+    function shellBlock({ cmd, dur = "0.1s", output = "", failed = false }) {
+      const div = makeBlock(failed ? "failed" : "");
       div.innerHTML =
-        `<div class="t-block__header">` +
-          `<span class="t-pulse"></span>` +
-          `<span class="t-block__cmd">${prompt(cmd)}</span>` +
-          `<span class="t-duration">${dur}</span>` +
-        `</div>` +
-        `<div class="t-block__sep"></div>` +
+        `<div class="t-block__header">${metaLine(dur)}</div>` +
+        `<div class="t-block__cmd">${cmd}</div>` +
         (output ? `<div class="t-block__body">${output}</div>` : "");
       scrollBottom();
       return div;
@@ -63,13 +62,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     function claudeBlock() {
       const div = makeBlock("ai");
+      div.classList.add("t-block--streaming");
       div.innerHTML =
         `<div class="t-block__header">` +
+          `<span class="t-chevron"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>` +
           `<span class="t-provider-icon">${claudeLogoSVG}</span>` +
           `<span class="t-ai-name">Claude</span>` +
           `<span class="t-stream-dot"></span>` +
         `</div>` +
-        `<div class="t-block__sep"></div>` +
         `<div class="t-md" id="claude-md"></div>`;
       scrollBottom();
       return div;
@@ -118,31 +118,20 @@ document.addEventListener("DOMContentLoaded", () => {
       if (status) status.innerHTML = `<span class="t-tool__status--ok">${okSVG}</span>`;
     }
 
+    // The question renders like a command line: bare mono text, no bubble.
     function questionRow(text) {
       const div = document.createElement("div");
       div.className = "t-question";
-      div.innerHTML =
-        `<span class="t-question__icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.5L19 10l-5.1 1.5L12 17l-1.9-5.5L5 10l5.1-1.5z"/><path d="M19 3v3"/><path d="M21 4.5h-3"/></svg></span>` +
-        `<span class="t-question__text">${text}</span>`;
+      div.textContent = text;
       body.appendChild(div);
       scrollBottom();
       return div;
     }
 
     const tab = document.getElementById("demo-tab");
-    const tabBadge = document.getElementById("demo-tab-badge");
-    const tabMode = document.getElementById("demo-tab-mode");
-    const chevronSVG = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>';
-    const sparkleSVG = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.5L19 10l-5.1 1.5L12 17l-1.9-5.5L5 10l5.1-1.5z"/><path d="M19 3v3"/><path d="M21 4.5h-3"/></svg>';
     function setTabMode(mode) {
       if (!tab) return;
-      if (mode === "ai") {
-        tab.classList.add("is-ai");
-        if (tabBadge) tabBadge.innerHTML = sparkleSVG + '<span>AI</span>';
-      } else {
-        tab.classList.remove("is-ai");
-        if (tabBadge) tabBadge.innerHTML = chevronSVG + '<span>Terminal</span>';
-      }
+      tab.classList.toggle("is-ai", mode === "ai");
     }
 
     function addHistory() {
@@ -165,25 +154,33 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    const shieldCheckSVG = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>';
+    const folderSVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2z"/></svg>';
+    const shellSVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><polyline points="7 9 10 12 7 15"/><line x1="13" y1="15" x2="17" y2="15"/></svg>';
+    const sparkSVG = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.5L19 10l-5.1 1.5L12 17l-1.9-5.5L5 10l5.1-1.5z"/><path d="M19 3v3"/><path d="M21 4.5h-3"/></svg>';
 
-    function renderInput({ mode = "shell", text = "", ghost = "", showCursor = true, focused = true }) {
+    // Warp's composer: a row of context chips, the input flush beneath with no
+    // frame around it, then a muted key hint.
+    function renderInput({ mode = "shell", text = "", ghost = "", showCursor = true }) {
       setTabMode(mode);
-      input.className = "terminal__input-row" + (focused ? " is-focused" : "") + (mode === "ai" ? " is-ai" : "");
-      const promptHTML = mode === "ai"
-        ? '<span class="t-sparkle" style="font-size:14px">✦</span> <span class="t-path t-path--input">~/projects/tai</span> '
-        : '<span class="t-user-name">alex</span><span class="t-host">@fedora</span> <span class="t-path t-path--input">~/projects/tai</span> <span class="t-dollar">$</span> ';
-      const modeLabel = mode === "ai" ? "AI" : "Shell";
+      const isAI = mode === "ai";
       input.innerHTML =
-        '<span class="terminal__perm-pill" tabindex="-1">' + shieldCheckSVG + 'Default</span>' +
-        '<div class="terminal__input-text">' +
-          promptHTML +
+        '<div class="t-chiprow">' +
+          '<span class="t-intdot" title="Shell integration active"></span>' +
+          '<span class="t-chip ' + (isAI ? 't-chip--ai' : 't-chip--shell') + '">' +
+            (isAI ? sparkSVG + 'AI' : shellSVG + 'Shell') +
+          '</span>' +
+          '<span class="t-chip">alex@fedora</span>' +
+          '<span class="t-chip">' + folderSVG + '~/projects/tai</span>' +
+        '</div>' +
+        '<div class="t-inputline">' +
           '<span class="t-user" id="in-text">' + text + '</span>' +
           (ghost ? '<span class="t-ghost" id="in-ghost">' + ghost + '</span>' : '') +
           (showCursor ? '<span class="t-cursor"></span>' : '') +
         '</div>' +
-        '<span class="terminal__mode-kbd">Shift+Tab</span>' +
-        '<span class="terminal__mode-label">' + modeLabel + '</span>';
+        '<div class="t-hint">' +
+          '<span class="t-kbd">Shift+Tab</span>' +
+          '<span class="t-hint-label">switch to ' + (isAI ? 'Shell' : 'AI') + '</span>' +
+        '</div>';
       return {
         textEl: input.querySelector("#in-text"),
         ghostEl: input.querySelector("#in-ghost"),
@@ -252,6 +249,7 @@ document.addEventListener("DOMContentLoaded", () => {
         await sleep(reduced ? 0 : 500);
       }
       claude.querySelector(".t-stream-dot")?.remove();
+      claude.classList.remove("t-block--streaming");
       const dur = document.createElement("span");
       dur.className = "t-duration";
       dur.textContent = "1.4s";

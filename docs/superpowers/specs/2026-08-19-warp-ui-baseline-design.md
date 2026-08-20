@@ -113,8 +113,7 @@ The sidebar's visibility persists as `appearance.sidebar` (default on). No new
 keybinding: `Ctrl+B` and the obvious neighbours are readline bindings the shell
 owns, so the toggle is a button only.
 
-Still outstanding: the README screenshots show the old horizontal tab bar and
-need retaking.
+The README/site screenshots were retaken against the new chrome (see P5).
 
 ### P3.1 — Refinement pass
 
@@ -194,6 +193,35 @@ command row's contract.
 Collapse state is local to the component rather than lifted into `BlockList`'s
 `manualCollapsed` set: AI turns are not windowed and not restored, so nothing
 outside the turn needs to read or persist it.
+
+### P5 — Screenshots and the marketing site
+
+The published screenshots and the animated hero demo on the site both showed the
+retired horizontal tab bar, so both were brought forward.
+
+`scripts/take-screenshots.mjs` needed three fixes before it could run at all,
+each of which had been failing silently:
+
+- the composer is a `textarea` now, and it shares the page with xterm's hidden
+  helper textarea — hence the `data-composer` hook rather than a tag selector;
+- the staging commands (`export PS1`, `cd`) were typed before the shell had
+  drawn its first prompt and were dropped, and the shell integration replays the
+  user's own `PROMPT_COMMAND`, which rebuilds `PS1` and undoes the demo prompt.
+  Clearing `__tai_user_pc` is what makes it stick. Since TAI reads the user,
+  host and cwd it renders out of the prompt text, this is the whole of what
+  keeps the real machine out of the published images — so the script now
+  verifies it took and refuses to publish otherwise;
+- the block list had not finished autoscrolling at capture time, cropping the
+  newest block out of frame.
+
+The AI-mode shot now asks a real question and waits for the answer, because it
+is captioned as showing a Markdown reply and previously showed only a composer.
+
+The site's hero demo was rebuilt on the same chrome: top bar with a centred
+search pill, vertical tab rail, two-line block headers, a bare question line, a
+flat answer under an 11px meta line, and the chip-row composer. Approval keeps
+its card — it is a prompt awaiting an answer, not a finished block in the
+stream. The tab rail hides under 680px, standing in for the app's toggle.
 
 ## Testing
 
