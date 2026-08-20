@@ -13,6 +13,7 @@
     "dist:win": "vite build && electron-builder --win",
     "predist:mac": "cd daemon && make all",
     "dist:mac": "vite build && electron-builder --mac dmg zip",
+    "icons": "node scripts/generate-icons.mjs",
     "readme:screenshots": "npm run build && node scripts/take-screenshots.mjs",
     "test": "vitest run --config tests/vitest.config.ts",
     "test:watch": "vitest --config tests/vitest.config.ts"
@@ -40,7 +41,7 @@
     },
     "win": {
       "target": "nsis",
-      "icon": "public/img/tai.png",
+      "icon": "build/icon.ico",
       "artifactName": "tai-Setup-${version}.${ext}"
     },
     "mac": {
@@ -117,6 +118,7 @@
     "electron-builder": "^26.8.1",
     "jsdom": "^29.0.2",
     "playwright": "^1.59.1",
+    "sharp": "^0.34.5",
     "typescript": "^5.9.3",
     "vite": "^6.4.2",
     "vite-plugin-electron": "^0.28.8",
