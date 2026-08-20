@@ -517,6 +517,64 @@ html, body {
   --shiki-token-link: #f5a83c;
 }
 
+/* Warp — ports warpdotdev/themes warp_bundled/warp_dark.yaml. The published
+   theme only defines background (#000000), foreground (#ffffff), accent
+   (#00c2ff) and the 16 terminal colors; those are used verbatim below. The
+   UI surfaces are lightened steps off the black base, the way Warp derives
+   its own chrome, and the role/Shiki accents are drawn from the same 16. */
+[data-theme="warp"] {
+  /* Surfaces are read off the reference screenshot, not off warp_dark.yaml.
+     The published theme declares background #000000, but Warp paints its
+     chrome by lightening that base — pure black is the terminal grid's
+     colour, not the window's. The 16 terminal colours below stay verbatim
+     from warpdotdev/themes warp_bundled/warp_dark.yaml. */
+  --bg-base: #1c1c1e;
+  --bg-surface: #2b2b2e;
+  --bg-mid: #232326;
+  --bg-input: #1c1c1e;
+  --bg-elevated: #232326;
+  --bg-hover: #313135;
+  --bg-card: #212124;
+  --border-subtle: #333338;
+  --border-card: #3a3a40;
+  --text-primary: #e8e8e8;
+  --text-secondary: #c0c0c0;
+  --text-muted: #8a8a8a;
+  --color-shell: #b4fa72;
+  --color-ai: #4a9eff;
+  --color-agent: #ff8ffd;
+  --color-error: #ef5350;
+  --color-warning: #ded98a;
+  --color-info: #4a9eff;
+  --selection-bg: rgba(74, 158, 255, 0.28);
+  --frame-gradient: linear-gradient(90deg, #b4fa72, #4a9eff, #ff8ffd, #b4fa72);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.16);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.26);
+  --scrollbar-thumb-active: rgba(74, 158, 255, 0.5);
+  --input-surface: linear-gradient(180deg, #2b2b2e, #26262a);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.5);
+
+  --ansi-30: #616161; --ansi-31: #ff8272; --ansi-32: #b4fa72; --ansi-33: #fefdc2;
+  --ansi-34: #a5d5fe; --ansi-35: #ff8ffd; --ansi-36: #d0d1fe; --ansi-37: #f1f1f1;
+  --ansi-90: #8e8e8e; --ansi-91: #ffc4bd; --ansi-92: #d6fcb9; --ansi-93: #fefdd5;
+  --ansi-94: #c1e3fe; --ansi-95: #ffb1fe; --ansi-96: #e5e6fe; --ansi-97: #feffff;
+  --ansi-bg-40: #151515; --ansi-bg-41: #381d19; --ansi-bg-42: #283719; --ansi-bg-43: #38382b;
+  --ansi-bg-44: #242f38; --ansi-bg-45: #381f38; --ansi-bg-46: #2e2e38; --ansi-bg-47: #353535;
+  --ansi-bg-100: #282828; --ansi-bg-101: #473735; --ansi-bg-102: #3c4734; --ansi-bg-103: #47473c;
+  --ansi-bg-104: #364047; --ansi-bg-105: #473247; --ansi-bg-106: #404047; --ansi-bg-107: #474747;
+
+  --shiki-foreground: #f1f1f1;
+  --shiki-token-comment: #8e8e8e;
+  --shiki-token-keyword: #ff8ffd;
+  --shiki-token-string: #b4fa72;
+  --shiki-token-string-expression: #b4fa72;
+  --shiki-token-constant: #a5d5fe;
+  --shiki-token-function: #d0d1fe;
+  --shiki-token-parameter: #ff8272;
+  --shiki-token-punctuation: #c4c4c4;
+  --shiki-token-link: #4a9eff;
+}
+
 /* App root background lives here (not inline) so themes can restyle it.
    isolation creates a stacking context so the Cosmos atmosphere can sit at
    z-index -1: above this background, below ALL content unconditionally. */
@@ -782,6 +840,10 @@ html, body {
 
 [data-theme="magma"] .cb-stream-cursor {
   box-shadow: 0 0 8px rgba(255, 122, 66, 0.75);
+}
+
+[data-theme="warp"] .cb-stream-cursor {
+  box-shadow: 0 0 8px rgba(74, 158, 255, 0.7);
 }
 
 @media (prefers-reduced-motion: reduce) {

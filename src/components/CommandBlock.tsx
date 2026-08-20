@@ -449,24 +449,25 @@ export const CommandBlock = memo(function CommandBlock({
       /* No click-to-collapse: selecting command text must never fold the
          block. Collapse lives in the context menu; collapsed rows still
          expand on click. */
-      <div className={styles.promptLine} ref={headerRef}>
-        <div className={styles.promptLeft}>
-          {statusGlyph}
-          {(isRemote || !path) && user && (
-            <span className={styles.promptUser} style={{ color: modeColor }}>{user}</span>
-          )}
-          {path && <span className={styles.promptPath} title={block.cwd}>{path}</span>}
-          <span className={styles.promptSep}>❯</span>
-          <span className={styles.cmd}>{cmdFirst}</span>
-          {aiSuggested && <span className={styles.viaAi}>ai</span>}
-          {!active && block.gitBranch && (
-            <span className={styles.branchChip} title={block.cwd}>
-              <GitBranch size={10} />
-              {block.gitBranch}
-            </span>
-          )}
-        </div>
-        <div className={styles.promptRight}>
+      /* Warp's two-row header: a muted meta line (cwd, branch, duration)
+         over the command standing alone. The block's left rail carries
+         success/failure, so no glyph and no prompt separator here. */
+      <div className={styles.blockHead} ref={headerRef}>
+        <div className={styles.metaLine}>
+          <div className={styles.promptLeft}>
+            {(isRemote || !path) && user && (
+              <span className={styles.promptUser} style={{ color: modeColor }}>{user}</span>
+            )}
+            {path && <span className={styles.promptPath} title={block.cwd}>{path}</span>}
+            {block.gitBranch && (
+              <span className={styles.metaGit} title={block.cwd}>git:({block.gitBranch})</span>
+            )}
+            {!active && block.duration >= DURATION_VISIBLE_MS && (
+              <span className={styles.metaDur}>({formatDuration(block.duration)})</span>
+            )}
+            {aiSuggested && <span className={styles.viaAi}>ai</span>}
+          </div>
+          <div className={styles.promptRight}>
           {headerExtra}
           {active ? (
             <>
@@ -527,11 +528,12 @@ export const CommandBlock = memo(function CommandBlock({
                 {copied ? <Check size={11} /> : <Copy size={11} />}
               </span>
               {exitTag}
-              {block.duration >= DURATION_VISIBLE_MS && (
-                <span className={styles.durChip}>{formatDuration(block.duration)}</span>
-              )}
             </>
           )}
+          </div>
+        </div>
+        <div className={styles.cmdLine}>
+          <span className={styles.cmd}>{cmdFirst}</span>
         </div>
       </div>
       )}

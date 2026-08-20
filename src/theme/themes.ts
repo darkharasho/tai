@@ -9,7 +9,7 @@ import type { ITheme } from '@xterm/xterm';
  * must match black…white / brightBlack…brightWhite below.
  */
 
-export type ThemeId = 'default' | 'graphite' | 'ash' | 'fjord' | 'ember' | 'cosmos' | 'abyss' | 'magma';
+export type ThemeId = 'default' | 'graphite' | 'ash' | 'fjord' | 'ember' | 'cosmos' | 'abyss' | 'magma' | 'warp';
 
 export interface ThemeDef {
   id: ThemeId;
@@ -136,6 +136,25 @@ export const THEMES: ThemeDef[] = [
       blue: '#6f9ed8', magenta: '#c06ee8', cyan: '#56b8d8', white: '#e0d2c8',
       brightBlack: '#826f62', brightRed: '#ff6d6d', brightGreen: '#bcd072', brightYellow: '#ffe06a',
       brightBlue: '#8ab4e8', brightMagenta: '#d490f5', brightCyan: '#74ccea', brightWhite: '#fdf3ea',
+    },
+  },
+  {
+    id: 'warp',
+    label: 'Warp',
+    xterm: {
+      /* The 16 terminal_colors below are verbatim from warpdotdev/themes
+         warp_bundled/warp_dark.yaml. The grid surface is not: that file
+         declares #000000, but Warp paints its window chrome by lightening
+         the base, so the grid matches --bg-base to sit flush in the pane. */
+      background: '#1c1c1e',
+      foreground: '#e8e8e8',
+      cursor: '#4a9eff',
+      cursorAccent: '#1c1c1e',
+      selectionBackground: 'rgba(74, 158, 255, 0.28)',
+      black: '#616161', red: '#ff8272', green: '#b4fa72', yellow: '#fefdc2',
+      blue: '#a5d5fe', magenta: '#ff8ffd', cyan: '#d0d1fe', white: '#f1f1f1',
+      brightBlack: '#8e8e8e', brightRed: '#ffc4bd', brightGreen: '#d6fcb9', brightYellow: '#fefdd5',
+      brightBlue: '#c1e3fe', brightMagenta: '#ffb1fe', brightCyan: '#e5e6fe', brightWhite: '#feffff',
     },
   },
 ];

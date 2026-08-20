@@ -6,7 +6,7 @@ import { classifyInput, FLIP_THRESHOLD } from '@/utils/commandDetector';
 import { stripForceShellPrefix, shouldShowAutoBadge } from '@/utils/inputModeUx';
 import { buildNextCommandPrompt, extractCommand } from '@/utils/aiNextCommand';
 import styles from './TerminalInput.module.css';
-import { ShieldCheck, ShieldOff } from 'lucide-react';
+import { ShieldCheck, ShieldOff, Folder, Sparkles, TerminalSquare } from 'lucide-react';
 import type { AIProvider, TrustLevel } from '@/types';
 import type { PillView, RemoteAiMode } from '@/utils/remoteAiSession';
 import { tokenize, resolveCompletion, type CompletionItem } from '@/completions/resolveCompletion';
@@ -483,8 +483,10 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
           ))}
         </div>
       )}
-      <div className={`${styles.box} ${isAI ? styles.boxAi : ''} ${promptIsRemote ? styles.boxRemote : ''}`}>
-        <div className={styles.row}>
+      {/* Warp's composer stack: a row of context chips, the input flush
+          beneath with no frame around it, then a muted key-hint line. */}
+      <div className={styles.box}>
+        <div className={styles.chipRow}>
           <span
             className={`${styles.integrationDot} ${shellIntegrated ? styles.integrationDotActive : ''}`}
             title={shellIntegrated
@@ -492,6 +494,22 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
               : 'Shell integration not detected \u2014 falling back to prompt-text heuristics. Block boundaries may be flaky.'}
             aria-label={shellIntegrated ? 'Shell integration active' : 'Shell integration not detected'}
           />
+          <span className={`${styles.chip} ${isAI ? styles.chipAi : styles.chipShell}`}>
+            {isAI ? <Sparkles size={11} /> : <TerminalSquare size={11} />}
+            {isAI ? 'AI' : 'Shell'}
+          </span>
+          {userName && (
+            <span
+              className={styles.chip}
+              style={promptIsRemote ? { color: 'var(--color-agent)' } : undefined}
+            >
+              {userName}
+            </span>
+          )}
+          <span className={styles.chip} title={promptPath}>
+            <Folder size={11} />
+            {promptPath}
+          </span>
           {remoteAiView && onEnableRemoteAi && onSetRemoteAiMode && onDismissRemoteAi && (
             <RemoteAiPill
               view={remoteAiView}
@@ -500,36 +518,6 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
               onDismiss={onDismissRemoteAi}
             />
           )}
-          {isAI ? (
-            <>
-              <span className={styles.promptAi}>{'\u2726'}</span>
-              <span className={styles.path}>{promptPath}</span>
-            </>
-          ) : (
-            <>
-              {userName && <span className={styles.user} style={promptIsRemote ? { color: 'var(--color-agent)' } : undefined}>{userName}</span>}
-              <span className={styles.path}>{promptPath}</span>
-              <span className={styles.dollar}>$</span>
-            </>
-          )}
-          <div className={styles.fieldWrap}>
-            {prediction && (
-              <span className={styles.ghost} aria-hidden="true">
-                <span style={{ visibility: 'hidden' }}>{value}</span>{prediction.slice(value.length)}
-              </span>
-            )}
-            <textarea
-              ref={inputRef}
-              className={styles.field}
-              value={value}
-              onChange={handleChange}
-              onKeyDown={handleKeyDown}
-              placeholder={disabled ? 'Command running… (input queues)' : (isAI ? 'Ask AI...' : '')}
-              spellCheck={false}
-              autoComplete="off"
-              rows={1}
-            />
-          </div>
           {isAI && aiProvider && trustLevel && onTrustLevelChange && (
             <button
               className={`${styles.permBadge} ${trustLevel === 'bypass' ? styles.permDanger : ''}`}
@@ -548,15 +536,39 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
               <span className={styles.permLabel}>{PERM_LABELS[aiProvider][trustLevel]}</span>
             </button>
           )}
-          <div className={styles.hint}>
-            {showAutoBadge && (
-              <span className={styles.autoBadge} title="Mode auto-detected — Shift+Tab to lock, ! to force shell">
-                auto
+        </div>
+        <div className={styles.row}>
+          <div className={styles.fieldWrap}>
+            {prediction && (
+              <span className={styles.ghost} aria-hidden="true">
+                <span style={{ visibility: 'hidden' }}>{value}</span>{prediction.slice(value.length)}
               </span>
             )}
-            <span className={styles.kbd}>Shift+Tab</span>
-            <span className={styles.hintLabel}>{isAI ? 'Shell' : 'AI'}</span>
+            <textarea
+              ref={inputRef}
+              className={styles.field}
+              value={value}
+              onChange={handleChange}
+              onKeyDown={handleKeyDown}
+              placeholder={disabled
+                ? 'Command running… (input queues)'
+                : isAI
+                  ? 'Ask AI anything, e.g. why did the last build fail and how do I fix it?'
+                  : 'Run a command, or press Shift+Tab to ask AI'}
+              spellCheck={false}
+              autoComplete="off"
+              rows={1}
+            />
           </div>
+        </div>
+        <div className={styles.hint}>
+          {showAutoBadge && (
+            <span className={styles.autoBadge} title="Mode auto-detected — Shift+Tab to lock, ! to force shell">
+              auto
+            </span>
+          )}
+          <span className={styles.kbd}>Shift+Tab</span>
+          <span className={styles.hintLabel}>switch to {isAI ? 'Shell' : 'AI'}</span>
         </div>
       </div>
     </div>
