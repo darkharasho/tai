@@ -1,101 +1,66 @@
 .wrapper {
-  padding: 10px 14px;
+  padding: 6px 16px 10px;
   flex-shrink: 0;
 }
 
+/* Frameless, the way Warp's composer sits in the pane: no card, no ring,
+   just a hairline separating it from the block stream. The mode signal
+   that used to live in the gradient ring now rides on the mode chip. */
 .box {
   position: relative;
-  border-radius: 10px;
-  background: var(--input-surface);
+  background: transparent;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 8px;
   overflow: visible;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-/* Gradient ring extending outside .box via dual-background: a 2.5px
-   transparent border claims ring space, the padding-box layer fills
-   the inner area with the .box surface gradient (hiding the colored
-   gradient there), so only the ring shows the role color. Renders
-   uniform thickness at every corner — no mask sub-pixel sampling. */
-.box::before {
-  content: '';
-  position: absolute;
-  inset: -2.5px;
-  border-radius: 12.5px;
-  border: 2.5px solid transparent;
-  background:
-    var(--input-surface) padding-box,
-    linear-gradient(135deg, var(--color-shell) 0%, color-mix(in srgb, var(--color-shell) 72%, black) 30%, color-mix(in srgb, var(--color-shell) 54%, black) 50%, color-mix(in srgb, var(--color-shell) 72%, black) 70%, var(--color-shell) 100%) border-box;
-  background-size: 100% 100%, 300% 300%;
-  animation: gradientSweep 20s ease-in-out infinite alternate;
-  pointer-events: none;
-  z-index: 0;
-  opacity: 0.5;
-  transition: opacity 0.2s ease;
+/* Row 1: context chips (mode, user, cwd, permissions). */
+.chipRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-height: 22px;
+  margin-bottom: 6px;
 }
 
-.box:focus-within::before {
-  opacity: 0.8;
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 320px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.box::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 10px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  pointer-events: none;
-  z-index: 1;
+.chipShell {
+  color: var(--color-shell);
+  border-color: color-mix(in srgb, var(--color-shell) 40%, transparent);
 }
 
-.boxAi::before {
-  background:
-    var(--input-surface) padding-box,
-    linear-gradient(135deg, var(--color-ai) 0%, color-mix(in srgb, var(--color-ai) 78%, black) 30%, color-mix(in srgb, var(--color-ai) 62%, black) 50%, color-mix(in srgb, var(--color-ai) 78%, black) 70%, var(--color-ai) 100%) border-box;
-  background-size: 100% 100%, 300% 300%;
+.chipAi {
+  color: var(--color-ai);
+  border-color: color-mix(in srgb, var(--color-ai) 40%, transparent);
 }
 
-.boxRemote::before {
-  background:
-    var(--input-surface) padding-box,
-    linear-gradient(135deg, var(--color-agent) 0%, color-mix(in srgb, var(--color-agent) 82%, black) 30%, color-mix(in srgb, var(--color-agent) 60%, black) 50%, color-mix(in srgb, var(--color-agent) 82%, black) 70%, var(--color-agent) 100%) border-box;
-  background-size: 100% 100%, 300% 300%;
-}
-
+/* Row 2: the input, flush — no prompt glyph, no frame. */
 .row {
   position: relative;
   z-index: 2;
-  padding: 11px 16px;
-  min-height: 42px;
-  box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 8px;
+  min-height: 24px;
   font-family: var(--font-mono);
   font-size: 13px;
-}
-
-.user {
-  color: var(--color-shell);
-  flex-shrink: 0;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.path {
-  color: var(--color-info);
-  flex-shrink: 0;
-  font-size: 13px;
-}
-
-.dollar {
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.promptAi {
-  color: var(--color-ai);
-  font-size: 14px;
-  flex-shrink: 0;
 }
 
 .integrationDot {
@@ -157,13 +122,13 @@
   color: var(--text-muted);
 }
 
+/* Row 3: the key hint, quieter than everything above it. */
 .hint {
   display: flex;
   align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-  margin-left: auto;
-  backdrop-filter: blur(4px);
+  gap: 5px;
+  margin-top: 6px;
+  opacity: 0.75;
 }
 
 .kbd {

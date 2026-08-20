@@ -526,3 +526,37 @@ describe('BlockSegmenter', () => {
     });
   });
 });
+
+describe('BlockSegmenter pre-prompt output', () => {
+  it('reports no duration for output printed before the first prompt', () => {
+    const segmenter = new BlockSegmenter();
+    const blockCb = vi.fn();
+    segmenter.onBlock(blockCb);
+
+    // A MOTD banner: the shell prints it before any prompt, so there is no
+    // start time to measure against. Timing it from the epoch produced
+    // durations like "29786422m 36s".
+    segmenter.feed('Welcome to the machine\n');
+    segmenter.feed('user@host:~$ ');
+
+    expect(blockCb).toHaveBeenCalledTimes(1);
+    const block = blockCb.mock.calls[0][0];
+    // No prompt has been seen, so there is nothing to strip a command off of
+    // and the banner arrives as the block's command text.
+    expect(block.command).toContain('Welcome to the machine');
+    expect(block.duration).toBe(0);
+  });
+
+  it('does not emit a card for command-less output with nothing visible in it', () => {
+    const segmenter = new BlockSegmenter();
+    const blockCb = vi.fn();
+    segmenter.onBlock(blockCb);
+
+    // Control bytes survive the trim that guards this path, so they used to
+    // emit an empty block: a bare prompt row with a duration and no command.
+    segmenter.feed('\u0000\u200b\n');
+    segmenter.feed('user@host:~$ ');
+
+    expect(blockCb).not.toHaveBeenCalled();
+  });
+});

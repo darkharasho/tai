@@ -1,5 +1,7 @@
 .wrapper {
-  margin: 0 0 14px;
+  /* Turns separate by whitespace, the way blocks do — there is no card edge
+     left to do it. */
+  margin: 0 0 16px;
 }
 
 .wrapper:last-child {
@@ -7,26 +9,22 @@
 }
 
 .prompt {
-  display: block;
-  background: var(--bg-elevated);
-  border-left: 3px solid var(--color-shell);
-  border-radius: 12px;
-  padding: 9px 14px;
-  margin-bottom: 8px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  /* The question is something you typed, so it renders like a command line:
+     no bubble, no `YOU` label, no border. The conversation rail already says
+     whose turn this is. */
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 0;
 }
 
+/* Holds the follow-up glyph. Empty on a first question, so the row collapses
+   to the text alone. */
 .promptLabel {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-family: var(--font-sans);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-shell);
-  margin-bottom: 2px;
+  flex-shrink: 0;
+  color: var(--text-muted);
 }
 
 .promptLabelIcon {
@@ -40,7 +38,7 @@
 /* Remote (on-a-host) variants: swap the default shell-green accent for the
    agent-orange used across remote cards. */
 .promptRemote {
-  border-left-color: var(--color-agent);
+  /* nothing to tint on a bare line; the turn below carries the remote colour */
 }
 
 .promptLabelRemote {
@@ -49,8 +47,8 @@
 
 .promptText {
   color: var(--text-primary);
-  font-family: var(--font-sans);
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: 13px;
   font-weight: 400;
   line-height: 1.5;
   min-width: 0;
@@ -117,49 +115,39 @@
   text-decoration: underline;
 }
 
-/* Card treatment */
+/* Flat treatment: the answer is terminal output, not a card. State rides the
+   left rail — transparent at rest, accent while streaming — exactly the way a
+   running command block wears its accent. */
 .block {
   --accent-color: var(--color-ai);
   position: relative;
-  background: var(--bg-card);
-  border-top: var(--accent-card-border-top);
-  border-right: var(--accent-card-border-right);
-  border-bottom: var(--accent-card-border-bottom);
-  border-left: var(--accent-card-border-left);
-  border-radius: 10px;
-  box-shadow: var(--accent-card-shadow);
+  padding-top: 10px;
+  box-shadow: inset 3px 0 0 transparent;
+  transition: box-shadow 0.2s ease;
 }
 
-.block::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 10px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  border-left: 2px solid var(--accent-color);
-  border-top: 2px solid var(--accent-color);
-  pointer-events: none;
-  z-index: 1;
-  -webkit-mask-image: var(--accent-tl-mask);
-  mask-image: var(--accent-tl-mask);
-  -webkit-mask-composite: var(--accent-tl-webkit-composite);
-  mask-composite: var(--accent-tl-composite);
+.blockStreaming {
+  box-shadow: inset 3px 0 0 var(--accent-color);
 }
 
-.block::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 10px;
-  border-right: 2px solid var(--accent-color);
-  border-bottom: 2px solid var(--accent-color);
-  pointer-events: none;
-  z-index: 1;
-  opacity: var(--accent-br-opacity);
-  -webkit-mask-image: var(--accent-br-mask);
-  mask-image: var(--accent-br-mask);
-  -webkit-mask-composite: var(--accent-br-webkit-composite);
-  mask-composite: var(--accent-br-composite);
+.blockRemote {
+  --accent-color: var(--color-agent);
+}
+
+/* Folded: the turn is one row, the way a collapsed command block is. Padded
+   like a row rather than a section, and hover-lit so it reads as clickable. */
+.blockCollapsed {
+  padding-top: 6px;
+  padding-bottom: 2px;
+  transition: background 0.15s ease, box-shadow 0.2s ease;
+}
+
+.blockCollapsed:hover {
+  background: rgba(255, 255, 255, 0.022);
+}
+
+.blockCollapsed .header {
+  margin-bottom: 0;
 }
 
 .accent {
@@ -167,7 +155,8 @@
 }
 
 .inner {
-  padding: 12px 14px;
+  /* Clear of the 3px rail, matching the indent the conversation gutter sets. */
+  padding: 0 0 0 13px;
   position: relative;
   z-index: 3;
 }
@@ -176,8 +165,41 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
+  margin-bottom: 5px;
   gap: 12px;
+}
+
+.headerToggle {
+  cursor: pointer;
+  user-select: none;
+}
+
+.headerChevron {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-left: -3px;
+  color: var(--text-muted);
+  opacity: 0.5;
+  transition: opacity 0.15s ease;
+}
+
+.headerToggle:hover .headerChevron {
+  opacity: 1;
+}
+
+/* Stands in for the folded answer. Takes the slack between the provider name
+   and the duration, and truncates rather than wrapping — one row, always. */
+.collapsedSummary {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .headerLeft {
@@ -188,27 +210,29 @@
 }
 
 .providerIcon {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   mask-size: contain;
   mask-repeat: no-repeat;
   mask-position: center;
-  background-color: var(--color-ai);
+  background-color: var(--accent-color, var(--color-ai));
   flex-shrink: 0;
 }
 
 .label {
-  color: var(--color-ai);
-  font-family: var(--font-sans);
-  font-size: 13px;
-  font-weight: 600;
+  /* Same muted 11px mono as a command block's meta line — the provider swatch
+     beside it is the one place the AI colour still lands. */
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
 }
 
 .streamingDot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--color-ai);
+  background: var(--accent-color, var(--color-ai));
   animation: aiPulse 1.2s ease-in-out infinite;
 }
 
@@ -241,7 +265,7 @@
 
 .duration {
   color: var(--text-muted);
-  font-family: var(--font-sans);
+  font-family: var(--font-mono);
   font-size: 11px;
   flex-shrink: 0;
   opacity: 0.6;

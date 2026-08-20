@@ -23,19 +23,21 @@ function makeBlock(extra: Partial<SegmentedBlock> = {}): SegmentedBlock {
 const noop = () => {};
 const base = { onCopy: noop, onAskAI: noop, onRerun: noop };
 
-describe('CommandBlock branch chip', () => {
+describe('CommandBlock git branch', () => {
+  // The branch moved out of its own pill and into Warp's muted meta line,
+  // where it reads as the shell would print it: git:(branch).
   it('shows the git branch when present on the block', () => {
     const { container } = render(
       <CommandBlock block={makeBlock({ gitBranch: 'feature/x' })} {...base} />,
     );
-    const chip = container.querySelector('[class*="branchChip"]');
-    expect(chip).toBeTruthy();
-    expect(chip!.textContent).toContain('feature/x');
+    const git = container.querySelector('[class*="metaGit"]');
+    expect(git).toBeTruthy();
+    expect(git!.textContent).toBe('git:(feature/x)');
   });
 
-  it('shows no chip without a branch', () => {
+  it('shows nothing without a branch', () => {
     const { container } = render(<CommandBlock block={makeBlock()} {...base} />);
-    expect(container.querySelector('[class*="branchChip"]')).toBeNull();
+    expect(container.querySelector('[class*="metaGit"]')).toBeNull();
   });
 
   it('exposes the post-exec cwd as a tooltip on the path', () => {

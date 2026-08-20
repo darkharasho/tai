@@ -118,6 +118,14 @@ export function InlineAIBlock({
   const expandAllByDefault: boolean = config['ai.expandToolCalls'] ?? false;
 
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
+  const [collapsed, setCollapsed] = useState(false);
+
+  // A streaming turn has nothing to collapse to yet — the row would have to
+  // summarise an answer that is still arriving.
+  const canCollapse = !streaming;
+  const toggleCollapsed = useCallback(() => setCollapsed(c => !c), []);
+
+  const summary = summarizeAnswer(entries, content);
 
   const toggleTool = useCallback((id: string, defaultOpen: boolean) => {
     setExpandedTools(prev => {
@@ -182,10 +190,11 @@ export function InlineAIBlock({
     <div className={styles.wrapper}>
       {question && (
         <div className={`${styles.prompt}${isRemote ? ` ${styles.promptRemote}` : ''}`}>
-          <span className={`${styles.promptLabel}${isFollowup ? ` ${styles.promptLabelFollowup}` : ''}${isRemote ? ` ${styles.promptLabelRemote}` : ''}`}>
-            {isFollowup && <CornerDownRight size={10} className={styles.promptLabelIcon} />}
-            You
-          </span>
+          {isFollowup && (
+            <span className={`${styles.promptLabel} ${styles.promptLabelFollowup}${isRemote ? ` ${styles.promptLabelRemote}` : ''}`}>
+              <CornerDownRight size={11} className={styles.promptLabelIcon} />
+            </span>
+          )}
           <div className={styles.promptText}>
             <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
               {question}
@@ -194,11 +203,28 @@ export function InlineAIBlock({
         </div>
       )}
       {(streaming || content || (entries && entries.length > 0)) && (
-        <div className={styles.block} data-card-surface>
+        <div
+          className={`${styles.block}${streaming ? ` ${styles.blockStreaming}` : ''}${isRemote ? ` ${styles.blockRemote}` : ''}${collapsed ? ` ${styles.blockCollapsed}` : ''}`}
+          data-ai-turn
+          data-streaming={streaming ? 'true' : undefined}
+          data-collapsed={collapsed ? 'true' : undefined}
+        >
           <div className={styles.accent} />
           <div className={styles.inner}>
-            <div className={styles.header}>
+            {/* The meta line doubles as the collapse control, the way the
+                collapsed command row does: click anywhere on it to fold the
+                answer down to this single row. */}
+            <div
+              className={`${styles.header}${canCollapse ? ` ${styles.headerToggle}` : ''}`}
+              onClick={canCollapse ? toggleCollapsed : undefined}
+              data-ai-meta
+            >
               <div className={styles.headerLeft}>
+                {canCollapse && (
+                  <span className={styles.headerChevron}>
+                    {collapsed ? <ChevronRight size={10} /> : <ChevronDown size={10} />}
+                  </span>
+                )}
                 <span
                   className={styles.providerIcon}
                   style={{ maskImage: `url(${PROVIDER_ICONS[aiProvider]})`, WebkitMaskImage: `url(${PROVIDER_ICONS[aiProvider]})` }}
@@ -206,6 +232,9 @@ export function InlineAIBlock({
                 <span className={styles.label}>{PROVIDER_NAMES[aiProvider]}</span>
                 {streaming && <span className={styles.streamingDot} />}
               </div>
+              {collapsed && summary && (
+                <span className={styles.collapsedSummary}>{summary}</span>
+              )}
               {streaming && onStop && (
                 <button className={styles.stopBtn} onClick={onStop} title="Stop response (Ctrl+C)">
                   <Square size={10} />
@@ -217,6 +246,7 @@ export function InlineAIBlock({
               )}
             </div>
 
+            {!collapsed && (<>
             <div className={styles.body}>
               {entries && entries.length > 0 ? (
                 entries.map((entry, i) => {
@@ -314,11 +344,26 @@ export function InlineAIBlock({
                 ))}
               </div>
             )}
+            </>)}
           </div>
         </div>
       )}
     </div>
   );
+}
+
+/** One muted line standing in for a folded answer: the first real line of the
+ *  reply, with the markdown markers that would read as noise stripped off. */
+function summarizeAnswer(entries: AIEntry[] | undefined, content: string): string {
+  const text = entries?.length
+    ? [...entries].reverse().find(e => e.kind === 'text' && e.text)?.text ?? ''
+    : content;
+  const line = text.split('\n').map(l => l.trim()).find(Boolean);
+  if (!line) return '';
+  return line
+    .replace(/^[#>\-*\s]+/, '')
+    .replace(/[*`_]/g, '')
+    .trim();
 }
 
 function extractText(node: React.ReactNode): string {

@@ -1375,6 +1375,29 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     ));
   }, [tabId]);
 
+  // The palette opens from two places — Cmd/Ctrl-K and the top bar's search
+  // pill — so its item assembly lives here rather than inside the key handler.
+  const openPalette = useCallback(() => {
+    const now = Date.now();
+    const histItems: PaletteItem[] = Object.values(commandIndex.stats)
+      .sort((a, b) => frecency(b, now, cwd) - frecency(a, now, cwd))
+      .slice(0, 30)
+      .map(s => ({ id: `h:${s.command}`, label: s.command, value: s.command, source: 'history' as const }));
+    const cmdItems: PaletteItem[] = getCommandNames().map(name => ({
+      id: `c:${name}`, label: name, value: name, source: 'command' as const,
+    }));
+    const cmdSet = new Set(cmdItems.map(c => c.value));
+    const dedupedHist = histItems.filter(h => !cmdSet.has(h.value));
+    Promise.resolve(window.tai?.workflows?.get?.() ?? []).then((wfRaw: Workflow[]) => {
+      const wfItems: PaletteItem[] = wfRaw.map(w => ({
+        id: `w:${w.id}`, label: w.name, value: w.command, source: 'workflow' as const, description: w.description,
+      }));
+      // Deduplicate history against commands
+      setPaletteItems([...wfItems, ...dedupedHist, ...cmdItems]);
+      setPaletteOpen(true);
+    });
+  }, [commandIndex, cwd]);
+
   useEffect(() => {
     if (!visible) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1419,31 +1442,18 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       // Cmd/Ctrl-K: open command palette (page-level focus only — not from xterm)
       if (e.key === 'k' && (e.metaKey || e.ctrlKey) && !e.shiftKey) {
         e.preventDefault();
-        const now = Date.now();
-        const histItems: PaletteItem[] = Object.values(commandIndex.stats)
-          .sort((a, b) => frecency(b, now, cwd) - frecency(a, now, cwd))
-          .slice(0, 30)
-          .map(s => ({ id: `h:${s.command}`, label: s.command, value: s.command, source: 'history' as const }));
-        const cmdItems: PaletteItem[] = getCommandNames().map(name => ({
-          id: `c:${name}`, label: name, value: name, source: 'command' as const,
-        }));
-        const cmdSet = new Set(cmdItems.map(c => c.value));
-        const dedupedHist = histItems.filter(h => !cmdSet.has(h.value));
-        Promise.resolve(window.tai?.workflows?.get?.() ?? []).then((wfRaw: Workflow[]) => {
-          const wfItems: PaletteItem[] = wfRaw.map(w => ({
-            id: `w:${w.id}`, label: w.name, value: w.command, source: 'workflow' as const, description: w.description,
-          }));
-          // Deduplicate history against commands
-          setPaletteItems([...wfItems, ...dedupedHist, ...cmdItems]);
-          setPaletteOpen(true);
-        });
+        openPalette();
         return;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [visible, ptyId, handleStopAI, commandIndex, cwd]);
+    window.addEventListener('tai:open-palette', openPalette);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('tai:open-palette', openPalette);
+    };
+  }, [visible, ptyId, handleStopAI, commandIndex, cwd, openPalette]);
 
   // The one projection from the resolver's state to the interactivity signals
   // every consumer below reads. It lives in a tested pure function rather than

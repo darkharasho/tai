@@ -316,6 +316,8 @@ button { font: inherit; cursor: pointer; }
   --tai-card: #141719;
   --tai-card-border: #1e2228;
   --tai-elevated: #1c2027;
+  --tai-surface: #16181b;
+  --tai-border: rgba(255, 255, 255, 0.06);
   --tai-text: #bec6d0;
   --tai-text-secondary: #a0acbb;
   --tai-text-muted: #5a6a7a;
@@ -358,204 +360,239 @@ button { font: inherit; cursor: pointer; }
   0% { background-position: 200% 0; }
   100% { background-position: 0% 0; }
 }
-.terminal__bar {
+/* Window chrome, matching the app: a thin icon bar with a centred search pill,
+   and a vertical tab rail down the left. */
+.terminal__topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 4px;
-  padding: 0 12px;
-  background: linear-gradient(180deg, rgba(19, 23, 32, 0.95) 0%, rgba(17, 20, 24, 0.9) 100%);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  min-height: 44px;
-}
-.terminal__tabs { display: flex; align-items: center; gap: 4px; height: 44px; }
-.terminal__tab {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
   gap: 8px;
-  padding: 6px 14px;
-  border-radius: 6px;
-  background: transparent;
-  border-bottom: 2px solid transparent;
-  transition: background 0.2s ease, border-bottom-color 0.2s ease;
-  font-family: var(--tai-font-sans);
+  position: relative;
+  padding: 0 8px;
+  min-height: 38px;
+  flex-shrink: 0;
+  background: var(--tai-surface);
+  border-bottom: 1px solid var(--tai-border);
 }
-.terminal__tab:hover { background: rgba(255, 255, 255, 0.04); }
-.terminal__tab.is-active {
-  background: rgba(255, 255, 255, 0.06);
-  border-bottom-color: var(--tai-shell);
-}
-.terminal__tab.is-ai.is-active { border-bottom-color: var(--tai-ai); }
-.terminal__tab::after {
-  content: "";
-  position: absolute;
-  left: 0; right: 0; bottom: -2px;
-  height: 20px;
-  background: radial-gradient(ellipse at center bottom, rgba(0, 168, 132, 0.20) 0%, transparent 70%);
-  opacity: 0;
-  pointer-events: none;
-}
-.terminal__tab.is-active::after { opacity: 1; }
-.terminal__tab.is-ai.is-active::after {
-  background: radial-gradient(ellipse at center bottom, rgba(139, 92, 246, 0.22) 0%, transparent 70%);
-}
-.terminal__tab-num {
-  color: var(--tai-text-muted);
-  font-size: 11px;
-  font-weight: 400;
-}
-.terminal__tab-label {
-  color: #6a7080;
-  font-size: 12px;
-  font-weight: 400;
-}
-.terminal__tab.is-active .terminal__tab-label {
-  color: #e8ecf0;
-  font-weight: 600;
-}
-.terminal__tab-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-family: var(--tai-font-sans);
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--tai-shell);
-  background: rgba(0, 168, 132, 0.07);
-  border: 1px solid rgba(0, 168, 132, 0.2);
-}
-.terminal__tab-badge svg { color: currentColor; flex-shrink: 0; }
-.terminal__tab.is-ai .terminal__tab-badge {
-  color: var(--tai-ai);
-  background: rgba(139, 92, 246, 0.07);
-  border-color: rgba(139, 92, 246, 0.2);
-}
-.terminal__controls { display: flex; align-items: center; gap: 2px; }
-.terminal__ctl-sep {
-  width: 1px;
-  height: 16px;
-  background: rgba(255, 255, 255, 0.08);
-  margin: 0 4px;
-}
+.terminal__cluster { display: flex; align-items: center; gap: 2px; flex: 1 0 auto; }
+.terminal__cluster--end { justify-content: flex-end; }
+
 .terminal__ctl {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 10px;
+  width: 28px;
+  height: 26px;
+  padding: 0;
   background: transparent;
   border: 0;
+  border-radius: 6px;
   color: var(--tai-text-muted);
-  border-radius: 4px;
   cursor: default;
   transition: background 0.15s ease, color 0.15s ease;
 }
-.terminal__ctl:hover { background: rgba(255, 255, 255, 0.06); color: #8a9090; }
-.terminal__ctl--win { padding: 6px 8px; color: #4a5060; }
-.terminal__ctl--win:hover { background: rgba(255, 255, 255, 0.06); color: #8a9090; }
+.terminal__ctl:hover { background: rgba(255, 255, 255, 0.06); color: var(--tai-text-secondary); }
+.terminal__ctl--win { width: 30px; }
 .terminal__ctl--close:hover { background: #e35535; color: #fff; }
+.terminal__ctl-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--tai-border);
+}
+
+/* A button, not a field — in the app it opens the command palette. */
+.terminal__search {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: min(320px, 55%);
+  padding: 3px 10px;
+  border: 1px solid var(--tai-border);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--tai-text-muted);
+  font-family: var(--tai-font-sans);
+  font-size: 11.5px;
+  cursor: default;
+}
+.terminal__search svg { flex-shrink: 0; }
+.terminal__search-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.terminal__search-kbd {
+  flex-shrink: 0;
+  padding: 0 4px;
+  border: 1px solid var(--tai-border);
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 1.5;
+  opacity: 0.8;
+}
+
+.terminal__main { display: flex; flex: 1; min-height: 0; }
+
+.terminal__sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 150px;
+  flex-shrink: 0;
+  background: var(--tai-surface);
+  border-right: 1px solid var(--tai-border);
+  font-family: var(--tai-font-sans);
+}
+.terminal__tabs { flex: 1; min-height: 0; padding: 6px; }
+
+.terminal__tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+}
+.terminal__tab.is-active { background: rgba(255, 255, 255, 0.05); }
+/* The rail carries the mode colour, as the app's does. */
+.terminal__tab::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background 0.2s ease;
+}
+.terminal__tab.is-active::before { background: var(--tai-shell); }
+.terminal__tab.is-ai.is-active::before { background: var(--tai-ai); }
+
+.terminal__tab-num {
+  flex-shrink: 0;
+  width: 12px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--tai-text-muted);
+  opacity: 0.7;
+}
+.terminal__tab-body { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.terminal__tab-label { font-size: 12px; color: #e8ecf0; font-weight: 600; }
+.terminal__tab-sub {
+  font-family: var(--tai-font-mono);
+  font-size: 10px;
+  color: var(--tai-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.terminal__tab-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--tai-shell);
+  box-shadow: 0 0 6px var(--tai-shell);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+.terminal__tab.is-ai .terminal__tab-dot {
+  background: var(--tai-ai);
+  box-shadow: 0 0 6px var(--tai-ai);
+}
+
+.terminal__newtab {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 14px;
+  border: 0;
+  border-top: 1px solid var(--tai-border);
+  background: transparent;
+  color: var(--tai-text-muted);
+  font-family: var(--tai-font-sans);
+  font-size: 12px;
+  text-align: left;
+  cursor: default;
+}
+
+.terminal__pane { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 
 .terminal__body {
-  padding: 18px 16px 20px;
+  padding: 10px 0 12px;
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
   overflow-y: auto;
 }
 .terminal__body::-webkit-scrollbar { width: 8px; }
 .terminal__body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 4px; }
 .terminal__body::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.12); }
 
-.terminal__input-wrapper {
-  padding: 8px 14px 10px;
+/* Composer: chip row, then the input flush with no frame, then a muted hint. */
+.terminal__composer {
   flex-shrink: 0;
-}
-.terminal__input-row {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 11px 16px;
-  background: linear-gradient(180deg, #181c22, #161a1f);
-  border-radius: 10px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  margin: 0 16px 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--tai-border);
   font-family: var(--tai-font-mono);
   font-size: 13px;
 }
-.terminal__input-row::before {
-  content: "";
-  position: absolute;
-  inset: -1.5px;
-  border-radius: 11.5px;
-  background: linear-gradient(135deg, var(--tai-shell) 0%, #007a60 30%, #005a47 50%, #007a60 70%, var(--tai-shell) 100%);
-  background-size: 300% 300%;
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-          mask-composite: exclude;
-  padding: 1.5px;
-  opacity: 0.5;
-  animation: gradientSweep 20s ease-in-out infinite alternate;
-  transition: opacity 0.3s ease;
+.t-chiprow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  margin-bottom: 6px;
 }
-.terminal__input-row.is-focused::before { opacity: 0.8; }
-.terminal__input-row.is-ai::before {
-  background: linear-gradient(135deg, var(--tai-ai) 0%, #7048b8 30%, #5a3494 50%, #7048b8 70%, var(--tai-ai) 100%);
-  background-size: 300% 300%;
+.t-intdot {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #00ff88;
 }
-@keyframes gradientSweep {
-  0% { background-position: 0% 50%; }
-  100% { background-position: 100% 50%; }
+.t-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--tai-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--tai-text-secondary);
+  font-family: var(--tai-font-sans);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: nowrap;
 }
-@media (prefers-reduced-motion: reduce) {
-  .terminal__input-row::before { animation: none; }
-}
+.t-chip svg { flex-shrink: 0; }
+.t-chip--shell { color: var(--tai-shell); border-color: rgba(0, 168, 132, 0.4); }
+.t-chip--ai { color: var(--tai-ai); border-color: rgba(139, 92, 246, 0.4); }
 
-.terminal__input-text {
-  flex: 1;
-  min-width: 0;
+.t-inputline {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
   overflow: hidden;
   white-space: nowrap;
 }
-
-.terminal__mode-kbd {
-  font-family: var(--tai-font-sans);
-  font-size: 10px;
-  color: var(--tai-text-muted);
-  padding: 1px 5px;
-  border-radius: 3px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(12, 15, 17, 0.6);
-}
-.terminal__mode-label {
-  font-family: var(--tai-font-sans);
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--tai-text-muted);
-}
-
-.terminal__perm-pill {
-  display: inline-flex;
+.t-hint {
+  display: flex;
   align-items: center;
   gap: 5px;
-  padding: 3px 8px;
-  border-radius: 4px;
-  font-family: var(--tai-font-sans);
-  font-size: 11px;
+  margin-top: 6px;
+  opacity: 0.75;
+}
+.t-kbd {
+  padding: 1px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+  background: rgba(12, 15, 17, 0.6);
   color: var(--tai-text-muted);
-  background: transparent;
-  border: 1px solid transparent;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  font-family: var(--tai-font-sans);
+  font-size: 10px;
 }
-.terminal__perm-pill:hover {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.08);
-  color: var(--tai-text-secondary);
-}
-.terminal__perm-pill svg { flex-shrink: 0; }
+.t-hint-label { color: var(--tai-text-muted); font-family: var(--tai-font-sans); font-size: 10px; }
 
 @media (prefers-reduced-motion: reduce) {
   .terminal::before { animation: none; }
@@ -565,6 +602,14 @@ button { font: inherit; cursor: pointer; }
   .hero { padding: 64px 0 56px; }
   .hero__inner { grid-template-columns: 1fr; gap: 40px; }
   .terminal__body { min-height: 280px; }
+}
+
+/* The app hides its tab rail on demand; here the trigger is width. */
+@media (max-width: 680px) {
+  .terminal__sidebar { display: none; }
+}
+@media (max-width: 560px) {
+  .terminal__search-label { display: none; }
 }
 
 .t-user-name { color: var(--tai-shell); font-weight: 500; }
@@ -584,42 +629,42 @@ button { font: inherit; cursor: pointer; }
 
 .t-block {
   position: relative;
-  background: var(--tai-card);
-  border: 1px solid var(--tai-card-border);
-  border-radius: 10px;
-  padding: 14px 16px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.03);
   flex-shrink: 0;
+  /* Warp separates blocks with whitespace, not borders — the padding is the
+     separator, so it has to be generous. */
+  padding: 12px 16px 14px;
+  background: transparent;
+  /* Held transparent so gaining a state rail never shifts the layout. */
+  box-shadow: inset 3px 0 0 transparent;
   --tai-accent: var(--tai-shell);
 }
 .t-block--ai { --tai-accent: var(--tai-ai); }
-.t-block--suggest { --tai-accent: var(--tai-agent); }
-.t-block::before,
-.t-block::after {
-  content: "";
-  position: absolute;
-  width: 50%;
-  height: 50%;
-  max-width: 140px;
-  max-height: 140px;
-  pointer-events: none;
+/* The answer hangs under its meta line, the way output hangs under a command. */
+.t-block--ai .t-block__header { padding-left: 12px; }
+.t-block--ai .t-md { padding-left: 12px; }
+
+/* Approval is the one surface that stays a card: it is a prompt awaiting an
+   answer, not a finished block in the stream. */
+.t-block--suggest {
+  --tai-accent: var(--tai-agent);
+  margin: 4px 16px 6px;
+  padding: 12px 14px;
+  background: var(--tai-card);
+  border: 1px solid rgba(234, 88, 12, 0.25);
+  border-radius: 10px;
 }
-.t-block::before {
-  top: -1px; left: -1px;
-  border-top: 2px solid var(--tai-accent);
-  border-left: 2px solid var(--tai-accent);
-  border-top-left-radius: 10px;
-  -webkit-mask: linear-gradient(135deg, #000 0%, transparent 80%);
-          mask: linear-gradient(135deg, #000 0%, transparent 80%);
+.t-block--failed { box-shadow: inset 3px 0 0 var(--tai-err, #ef4444); }
+.t-block--streaming { box-shadow: inset 3px 0 0 var(--tai-accent); }
+
+/* The question an AI turn answers reads like a command line: bare mono text,
+   no bubble and no label. */
+.t-question {
+  padding: 12px 16px 2px;
+  font-family: var(--tai-font-mono);
+  font-size: 13px;
+  color: var(--tai-text);
 }
-.t-block::after {
-  bottom: -1px; right: -1px;
-  border-bottom: 2px solid var(--tai-accent);
-  border-right: 2px solid var(--tai-accent);
-  border-bottom-right-radius: 10px;
-  -webkit-mask: linear-gradient(135deg, transparent 20%, #000 100%);
-          mask: linear-gradient(135deg, transparent 20%, #000 100%);
-}
+
 .t-md {
   font-family: var(--tai-font-sans);
   font-size: 13px;
@@ -698,24 +743,21 @@ button { font: inherit; cursor: pointer; }
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 10px;
+  font-family: var(--tai-font-mono);
+  font-size: 11px;
+  color: var(--tai-text-muted);
+  min-height: 16px;
 }
+.t-block__meta { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .t-block__cmd {
-  flex: 1;
+  padding-top: 1px;
   min-width: 0;
-  overflow-x: auto;
+  overflow: hidden;
   white-space: nowrap;
-  scrollbar-width: none;
+  font-family: var(--tai-font-mono);
+  font-size: 13px;
   color: var(--tai-text);
 }
-.t-block__cmd::-webkit-scrollbar { display: none; }
-.t-block__sep {
-  height: 1px;
-  background: linear-gradient(90deg, rgba(0, 168, 132, 0.18), transparent 60%);
-  margin: 0 0 10px;
-}
-.t-block--ai .t-block__sep { background: linear-gradient(90deg, rgba(139, 92, 246, 0.20), transparent 60%); }
-.t-block--suggest .t-block__sep { background: linear-gradient(90deg, rgba(234, 88, 12, 0.20), transparent 60%); }
 .t-block__body {
   overflow-x: auto;
   white-space: pre;
@@ -751,13 +793,11 @@ button { font: inherit; cursor: pointer; }
 
 .t-duration {
   flex-shrink: 0;
-  padding: 2px 8px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  font-family: var(--tai-font-sans);
+  margin-left: auto;
+  font-family: var(--tai-font-mono);
   font-size: 11px;
   color: var(--tai-text-muted);
+  opacity: 0.85;
 }
 
 .t-btn {
@@ -789,39 +829,18 @@ button { font: inherit; cursor: pointer; }
 .t-btn--reject .t-btn-hint { color: rgba(239, 68, 68, 0.5); }
 .t-actions { display: flex; gap: 8px; margin-top: 8px; }
 .t-ai-name {
-  font-family: var(--tai-font-sans);
-  font-size: 13px;
-  color: var(--tai-ai);
-  font-weight: 600;
+  font-family: var(--tai-font-mono);
+  font-size: 11px;
+  color: var(--tai-text-muted);
 }
 .t-ai-name--agent { color: var(--tai-agent); }
 .t-provider-icon {
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
-  color: var(--tai-ai);
+  color: var(--tai-accent);
 }
-
-.t-question {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  margin-bottom: 4px;
-}
-.t-question__icon {
-  color: var(--tai-ai);
-  opacity: 0.7;
-  flex-shrink: 0;
-  display: inline-flex;
-}
-.t-question__text {
-  font-family: var(--tai-font-sans);
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 1.5;
-  color: var(--tai-text);
-}
+.t-chevron { display: inline-flex; color: var(--tai-text-muted); opacity: 0.5; margin-left: -3px; }
 
 .t-cmd-preview {
   background: rgba(234, 88, 12, 0.06);
@@ -832,16 +851,6 @@ button { font: inherit; cursor: pointer; }
   color: #e0e0e0;
 }
 .t-cmd-preview__accent { color: var(--tai-agent); margin-right: 6px; }
-.t-kbd {
-  display: inline-block;
-  padding: 1px 6px;
-  margin: 0 2px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--border-strong);
-  color: var(--text);
-  font-size: 11px;
-}
 .t-cursor {
   display: inline-block;
   width: 8px;

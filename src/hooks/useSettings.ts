@@ -18,6 +18,7 @@ const DEFAULTS = {
   'appearance.colorMode': 'high',
   'appearance.cardAccent': 'brackets',
   'appearance.noise': true,
+  'appearance.sidebar': true,
   'aiNextCommandRefine': false,
 };
 

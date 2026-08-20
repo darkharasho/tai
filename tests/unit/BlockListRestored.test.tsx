@@ -36,14 +36,14 @@ beforeEach(() => {
 describe('BlockList restored cards', () => {
   it('renders restored cards collapsed by default', () => {
     const { container } = render(<BlockList {...baseProps} items={[cmd('a', true), cmd('b')]} />);
-    const collapsed = container.querySelectorAll('[class*="collapsed"]');
+    const collapsed = container.querySelectorAll('[data-collapsed]');
     expect(collapsed).toHaveLength(1);
     expect(collapsed[0].textContent).toContain('c-a');
   });
 
   it('expands a restored card on toggle', () => {
     const { container } = render(<BlockList {...baseProps} items={[cmd('a', true)]} />);
-    fireEvent.click(container.querySelector('[class*="collapsed"]')!);
+    fireEvent.click(container.querySelector('[data-collapsed]')!);
     expect(container.querySelector('[data-card-surface]')).toBeTruthy();
   });
 
@@ -51,7 +51,7 @@ describe('BlockList restored cards', () => {
     const { container } = render(
       <BlockList {...baseProps} items={[cmd('s', false, true), cmd('n')]} />,
     );
-    const collapsed = container.querySelectorAll('[class*="collapsed"]');
+    const collapsed = container.querySelectorAll('[data-collapsed]');
     expect(collapsed).toHaveLength(1);
     expect(collapsed[0].textContent).toContain('c-s');
   });

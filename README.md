@@ -99,6 +99,7 @@ npm run dist             # build distributable
 | `Ctrl+Shift+W` | Close tab |
 | `Ctrl+1-9` | Switch to tab |
 | `Ctrl+Tab` | Next tab |
+| `Ctrl+K` | Command palette — commands, workflows, history |
 | `Ctrl+,` | Settings |
 | `Enter` | Approve AI suggestion |
 | `E` | Edit AI suggestion |

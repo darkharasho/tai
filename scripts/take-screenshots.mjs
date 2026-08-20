@@ -34,53 +34,133 @@ const app = await electron.launch({
 
 const window = await app.firstWindow();
 await window.waitForLoadState('domcontentloaded');
-await window.waitForTimeout(3000);
 
-await window.waitForSelector('input', { timeout: 10000 });
+// The composer is a textarea (it grows with multi-line commands), not an input,
+// and it shares the page with xterm's hidden helper textarea — hence the
+// `data-composer` hook rather than a bare tag selector.
+await window.waitForSelector('textarea[data-composer]', { timeout: 15000 });
 console.log('App ready.');
 
-const input = await window.$('input');
-await input.focus();
+const input = await window.$('textarea[data-composer]');
 
-// Override prompt to use demo identity, cd to project, then clear
-await input.fill(`export PS1='${demoUser}@${demoHost}:~/projects/tai\\$ '`);
-await window.keyboard.press('Enter');
-await window.waitForTimeout(500);
-await input.focus();
-await input.fill(`cd ${ROOT}`);
-await window.keyboard.press('Enter');
-await window.waitForTimeout(2000);
-await input.focus();
-await window.keyboard.press('Control+l');
-await window.waitForTimeout(1000);
+/** Type a line into the composer and run it. */
+async function run(cmd, settle = 1800) {
+  await input.focus();
+  await input.fill(cmd);
+  await window.keyboard.press('Enter');
+  await window.waitForTimeout(settle);
+}
 
-// Run showcase commands from the project directory
+async function clearScreen() {
+  await input.focus();
+  await window.keyboard.press('Control+l');
+  await window.waitForTimeout(800);
+}
+
+const paneText = () => window.evaluate(() => document.body.innerText);
+
+// The block list keeps its scroll position when content lands faster than the
+// autoscroll settles, which crops the newest block — the AI answer, in the shot
+// that is meant to be showing one — out of the bottom of the frame.
+async function scrollToBottom() {
+  await window.evaluate(() => {
+    for (const el of document.querySelectorAll('div')) {
+      if (el.scrollHeight > el.clientHeight + 8) el.scrollTop = el.scrollHeight;
+    }
+  });
+  await window.waitForTimeout(400);
+}
+
+// Anonymise the prompt, then move into the project. Two things make this
+// fiddly, and both fail silently:
+//   - the composer accepts input before the shell behind it has drawn its
+//     first prompt, and anything typed in that window is dropped;
+//   - the shell integration replays the user's own PROMPT_COMMAND on every
+//     prompt, and a distro PROMPT_COMMAND rebuilds PS1 from scratch, so a
+//     bare `export PS1=...` is undone before it is ever displayed. Clearing
+//     the snapshot the integration replays (`__tai_user_pc`) is what makes
+//     the demo prompt stick.
+// TAI reads the user, host and cwd it renders out of the prompt text, so this
+// one assignment is what keeps the real machine out of the published images.
+const demoIdent = `${demoUser}@${demoHost}`;
+const projectLeaf = path.basename(ROOT);
+
+let staged = false;
+for (let attempt = 1; attempt <= 6 && !staged; attempt++) {
+  await run(`__tai_user_pc=''; PS1='${demoIdent} ~/projects/${projectLeaf}$ '`, 700);
+  await run(`cd ${ROOT}`, 900);
+  // Checked against a fresh block rather than the whole pane: the command that
+  // sets PS1 contains the demo identity itself, so checking before the clear
+  // would pass even when the prompt never changed.
+  await clearScreen();
+  await run('echo ready', 900);
+  staged = (await paneText()).includes(demoIdent);
+  if (!staged) console.log(`  waiting for the shell… (attempt ${attempt})`);
+}
+if (!staged) {
+  await app.close();
+  throw new Error('The demo prompt never took — refusing to publish screenshots of the real environment.');
+}
+await clearScreen();
+
+// Showcase commands, run from the project directory. Enough of them to fill the
+// pane: blocks stack up from the composer, so a short run screenshots as a
+// window mostly full of dead space.
 const commands = [
   'cat package.json | head -6',
   'echo "Welcome to TAI — your AI-native terminal"',
   'ls --color=auto src/',
+  'git diff --stat HEAD~1 HEAD',
   'git log --oneline -5',
 ];
 
 for (const cmd of commands) {
-  await input.focus();
-  await input.fill(cmd);
-  await window.keyboard.press('Enter');
-  await window.waitForTimeout(2000);
+  await run(cmd, 2000);
 }
 
 await window.waitForTimeout(1500);
+await scrollToBottom();
 
 console.log('Capturing terminal view...');
 await window.screenshot({ path: path.join(SCREENSHOT_DIR, 'terminal.png') });
 
-// Switch to AI mode
+// Switch to AI mode and ask something real — the shot is captioned as showing
+// a Markdown answer, so it has to contain one.
 await input.focus();
 await window.keyboard.press('Shift+Tab');
-await window.waitForTimeout(500);
-await input.fill('explain what this project does');
-await window.waitForTimeout(1000);
+await window.waitForTimeout(600);
 
+// Whatever trust level this machine happens to be set to, a published
+// screenshot should not be advertising the one that skips approvals.
+for (let i = 0; i < 4; i++) {
+  const level = await window.evaluate(
+    () => document.querySelector('[data-perm-badge]')?.getAttribute('data-perm-badge'),
+  );
+  if (!level || level === 'ask') break;
+  await window.click('[data-perm-badge]');
+  await window.waitForTimeout(300);
+}
+
+await input.focus();
+await input.fill('in one sentence, what is a bash heredoc? include a short example');
+await window.waitForTimeout(400);
+await window.keyboard.press('Enter');
+
+// Wait out the stream; if the provider is not configured on this machine, fall
+// back to capturing whatever is on screen rather than failing the run.
+try {
+  await window.waitForSelector('[data-ai-turn]', { timeout: 30000 });
+  await window.waitForFunction(
+    () => !!document.querySelector('[data-ai-turn]') && !document.querySelector('[data-ai-turn][data-streaming]'),
+    null,
+    { timeout: 120000 },
+  );
+  await window.waitForTimeout(1200);
+} catch {
+  console.warn('! AI answer never completed — capturing the composer state instead.');
+}
+
+await scrollToBottom();
 console.log('Capturing AI mode view...');
 await window.screenshot({ path: path.join(SCREENSHOT_DIR, 'ai-mode.png') });
 

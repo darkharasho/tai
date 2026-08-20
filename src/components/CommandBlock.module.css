@@ -11,39 +11,25 @@
 .block {
   position: relative;
   font-size: 13px;
-  padding: 4px 12px 6px;
-  border-radius: 8px;
+  /* Warp separates blocks with whitespace rather than borders — the padding
+     is the separator, so it has to be generous. */
+  padding: 12px 16px 14px;
   transition: background 0.25s ease, box-shadow 0.25s ease;
   animation: blockIn 0.16s ease-out;
-  /* Accent-led identity: a present rail plus the role color washing
-     faintly across the block from the left — no card surface or border. */
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent-color, var(--color-shell)) 50%, transparent);
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--accent-color, var(--color-shell)) 7%, transparent),
-    color-mix(in srgb, var(--accent-color, var(--color-shell)) 2%, transparent) 30%,
-    transparent 60%
-  );
+  /* Flat by default, the way Warp renders a finished command: no card, no
+     wash, no rail. The 3px left rail is reserved for state (failure, running)
+     and is held transparent here so gaining it never shifts the layout. */
+  box-shadow: inset 3px 0 0 transparent;
+  background: transparent;
 }
 
 .block:hover {
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--accent-color, var(--color-shell)) 9%, transparent),
-    color-mix(in srgb, var(--accent-color, var(--color-shell)) 3%, transparent) 30%,
-    rgba(255, 255, 255, 0.015) 60%
-  );
+  background: rgba(255, 255, 255, 0.022);
 }
 
-/* Louder rails: failures red, a running flat block its full accent. */
+/* State rails: failure red, a running block its accent. */
 .blockFailed {
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-error) 65%, transparent);
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--color-error) 8%, transparent),
-    color-mix(in srgb, var(--color-error) 2%, transparent) 30%,
-    transparent 60%
-  );
+  box-shadow: inset 3px 0 0 var(--color-error);
 }
 
 /* AI-suggested commands wear the blend: ai purple flowing into the role
@@ -52,17 +38,16 @@
   content: '';
   position: absolute;
   left: 0;
-  top: 2px;
-  bottom: 2px;
-  width: 2px;
-  border-radius: 2px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
   background: linear-gradient(180deg, var(--color-ai), var(--accent-color, var(--color-shell)));
   opacity: 0.75;
   pointer-events: none;
 }
 
 .blockActive {
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent-color, var(--color-shell)) 75%, transparent);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent-color, var(--color-shell)) 75%, transparent);
 }
 
 /* Living rail: a soft pulse travels down the accent edge while the
@@ -73,8 +58,7 @@
   left: 0;
   top: 0;
   bottom: 0;
-  width: 2px;
-  border-radius: 2px;
+  width: 3px;
   pointer-events: none;
   background: linear-gradient(
     180deg,
@@ -167,23 +151,90 @@
 .active {
 }
 
+/* One-line form of the expanded header: same rail, same rhythm, same muted
+   meta — just folded onto a single row. */
 .collapsed {
+  position: relative;
   font-size: 13px;
-  padding: 3px 12px;
-  opacity: 0.55;
+  padding: 7px 16px;
   cursor: pointer;
   display: flex;
+  align-items: baseline;
+  gap: 8px;
+  box-shadow: inset 3px 0 0 transparent;
+  transition: background 0.15s ease, box-shadow 0.25s ease;
+}
+
+.collapsed:hover {
+  background: rgba(255, 255, 255, 0.022);
+}
+
+.collapsedFailed {
+  box-shadow: inset 3px 0 0 var(--color-error);
+}
+
+.collapsedCmd {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.collapsedHost {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+/* Mirrors the expanded block's meta line: right-aligned, muted, mono. */
+.collapsedMeta {
+  margin-left: auto;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.collapsedPath {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.blockHead {
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Row 1: everything about the command except the command itself. */
+.metaLine {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  min-height: 16px;
+}
+
+/* Row 2: the command, standing alone in full-strength text. */
+.cmdLine {
+  display: flex;
+  align-items: baseline;
   gap: 6px;
-  border-radius: 6px;
-  transition: opacity 0.15s, background 0.15s;
+  min-width: 0;
+  padding-top: 1px;
 }
 
-.collapsed:hover {
-  background: rgba(255, 255, 255, 0.025);
-}
-
-.collapsed:hover {
+.metaGit,
+.metaDur {
+  flex-shrink: 0;
   opacity: 0.85;
 }
 
@@ -247,7 +298,7 @@
 
 .promptPath {
   font-family: var(--font-mono);
-  color: #3b82f6;
+  color: inherit;
   flex-shrink: 0;
 }
 
@@ -273,6 +324,7 @@
 
 .cmd {
   font-family: var(--font-mono);
+  font-size: 13px;
   color: var(--text-primary);
   white-space: pre-wrap;
   overflow: hidden;
