@@ -132,6 +132,25 @@ git checkout -b my-feature
 npm run build
 ```
 
+### App icon
+
+Every icon asset — the macOS `.icns`, the Windows `.ico`, the tray templates, the
+site favicon — is generated from `scripts/icon-source.mjs`, which holds the mark's
+geometry and palette as plain data. Don't edit the PNGs by hand; they get
+overwritten. Change the source and regenerate:
+
+```bash
+npm run icons
+```
+
+The mark is two chevrons: the first in flat ink for your prompt, the second
+carrying the spectrum gradient for the model's reply. It ships in three
+hand-tuned geometry tiers rather than one path scaled down — below ~32px the
+chevrons pull apart and thin out, or the gap between them fills in.
+
+Building the `.icns` uses `iconutil` and so needs macOS; that step is skipped
+with a warning on other platforms and every other asset still builds.
+
 ---
 
 ## License
