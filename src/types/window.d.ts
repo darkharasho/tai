@@ -9,7 +9,7 @@ declare global {
         getProcess: (id: number) => Promise<string | null>;
         getCwd: (id: number) => Promise<string | null>;
         isAwaitingInput: (id: number) => Promise<boolean>;
-        tabComplete: (text: string, cwd: string) => Promise<string[]>;
+        tabComplete: (text: string, cwd: string, ptyId?: number) => Promise<string[]>;
         getShellHistory: (count: number) => Promise<string[]>;
         getRemoteShellHistory: (target: string, count: number) => Promise<string[]>;
         onData: (callback: (id: number, data: string) => void) => () => void;

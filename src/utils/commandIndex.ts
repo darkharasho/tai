@@ -81,15 +81,22 @@ export const W_FREQ = 1;
 export const W_RECENT = 2;
 export const W_CWD = 1.5;
 export const HALF_LIFE_MS = 1000 * 60 * 60 * 24 * 7;
+/** Demotion for a command whose last run failed. Large enough to sink it below
+ *  any sibling that last succeeded, small enough that it still ranks among the
+ *  other failures — a command that failed once (a flaky test, a typo'd path)
+ *  is worth remembering, just not worth suggesting first. */
+export const W_FAIL = 3;
 
 export function frecency(stat: CommandStat, now: number, cwd?: string): number {
   const ageMs = Math.max(0, now - stat.lastTs);
   const recency = Math.pow(0.5, ageMs / HALF_LIFE_MS); // 1 → 0 over half-lives
   const cwdHits = cwd ? (stat.cwdCounts[cwd] ?? 0) : 0;
+  const failed = stat.lastExitCode !== undefined && stat.lastExitCode !== 0;
   return (
     W_FREQ * Math.log(stat.count + 1) +
     W_RECENT * recency +
-    W_CWD * (cwdHits > 0 ? Math.log(cwdHits + 1) : 0)
+    W_CWD * (cwdHits > 0 ? Math.log(cwdHits + 1) : 0) -
+    (failed ? W_FAIL : 0)
   );
 }
 

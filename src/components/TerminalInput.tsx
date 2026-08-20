@@ -80,6 +80,9 @@ interface TerminalInputProps {
   onModeChange: (mode: InputMode) => void;
   disabled?: boolean;
   cwd: string;
+  /** Lets completion resolve the shell's live cwd instead of trusting `cwd`,
+   *  which is empty until the session's first command finalizes. */
+  ptyId?: number;
   commandIndex: CommandIndex;
   promptInfo?: { text: string; isRemote: boolean; sshTarget?: string } | null;
   shellIntegrated?: boolean;
@@ -140,7 +143,7 @@ export function RemoteAiPill({ view, onEnable, onSetMode, onDismiss }: RemoteAiP
   );
 }
 
-export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>(function TerminalInput({ onSubmit, mode, onModeChange, disabled, cwd, commandIndex, promptInfo, shellIntegrated, history = [], onClear, initialValue, remoteAiView, onEnableRemoteAi, onSetRemoteAiMode, onDismissRemoteAi, aiProvider, trustLevel, onTrustLevelChange, lastCommand, lastExitCode, aiNextCommandRefine, onRequestAiSuggestion }, ref) {
+export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>(function TerminalInput({ onSubmit, mode, onModeChange, disabled, cwd, ptyId, commandIndex, promptInfo, shellIntegrated, history = [], onClear, initialValue, remoteAiView, onEnableRemoteAi, onSetRemoteAiMode, onDismissRemoteAi, aiProvider, trustLevel, onTrustLevelChange, lastCommand, lastExitCode, aiNextCommandRefine, onRequestAiSuggestion }, ref) {
   const [value, setValue] = useState(initialValue || '');
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const historyIndexRef = useRef(-1);
@@ -278,15 +281,21 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
     }
     if (e.key === 'Tab' && !e.shiftKey && mode === 'shell') {
       e.preventDefault();
-      if (prediction) {
-        setValue(prediction);
-        setTabCompletions([]);
-        setTabIndex(-1);
-        tabPrefixRef.current = '';
+      // Tab means completion, the way it does in a shell — never ghost text.
+      // Ghost text is a whole remembered line, so accepting it on Tab wrote
+      // paths from wherever that line was first run into a directory that has
+      // no such entry. It is accepted with → (and Ctrl+E) instead.
+      const text = value;
+      if (!text) {
+        // Zero-state: nothing to complete, so the suggestion is all there is.
+        if (prediction) {
+          setValue(prediction);
+          setTabCompletions([]);
+          setTabIndex(-1);
+          tabPrefixRef.current = '';
+        }
         return;
       }
-      const text = value;
-      if (!text) return;
 
       if (tabCompletions.length > 1 && tabPrefixRef.current) {
         const next = (tabIndex + 1) % tabCompletions.length;
@@ -314,7 +323,8 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
         return;
       }
 
-      window.tai?.pty?.tabComplete(text, cwd).then((completions: string[]) => {
+      window.tai?.pty?.tabComplete(text, cwd, ptyId).then((completions: string[]) => {
+        // Nothing to complete: leave the line exactly as typed.
         if (completions.length === 0) return;
         const lastWord = text.split(/\s+/).pop() || '';
         const prefix = text.slice(0, text.length - lastWord.length);

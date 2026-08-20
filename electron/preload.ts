@@ -9,7 +9,7 @@ contextBridge.exposeInMainWorld('tai', {
     getProcess: (id: number) => ipcRenderer.invoke('pty:getProcess', id),
     getCwd: (id: number) => ipcRenderer.invoke('pty:getCwd', id),
     isAwaitingInput: (id: number) => ipcRenderer.invoke('pty:isAwaitingInput', id),
-    tabComplete: (text: string, cwd: string) => ipcRenderer.invoke('pty:tabComplete', text, cwd),
+    tabComplete: (text: string, cwd: string, ptyId?: number) => ipcRenderer.invoke('pty:tabComplete', text, cwd, ptyId),
     getShellHistory: (count: number) => ipcRenderer.invoke('pty:getShellHistory', count),
     getRemoteShellHistory: (target: string, count: number) => ipcRenderer.invoke('pty:getRemoteShellHistory', target, count),
     onData: (callback: (id: number, data: string) => void) => {

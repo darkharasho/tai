@@ -37,3 +37,19 @@ describe('predictCommandIndexed', () => {
     expect(predictCommandIndexed('zzz', createIndex(), 1)).toBeNull();
   });
 });
+
+describe('ghost text casing', () => {
+  it('does not offer a candidate that only matches case-insensitively', () => {
+    // The overlay draws the typed text plus the remainder, so this would render
+    // as `cd documents/GitHub/tai/` — a path that does not exist.
+    const idx = createIndex();
+    ingestBlock(idx, { command: 'cd Documents/GitHub/tai/', ts: Date.now() });
+    expect(predictCommandIndexed('cd docu', idx, Date.now())).toBeNull();
+  });
+
+  it('still offers a candidate once the casing matches', () => {
+    const idx = createIndex();
+    ingestBlock(idx, { command: 'cd Documents/GitHub/tai/', ts: Date.now() });
+    expect(predictCommandIndexed('cd Docu', idx, Date.now())).toBe('cd Documents/GitHub/tai/');
+  });
+});

@@ -85,3 +85,39 @@ describe('frecency ranking', () => {
     expect(rankPrefix(idx2, 'npm run', NOW, RESOLVED_CWD)[0]).toBe('npm run dev');
   });
 });
+
+describe('failed commands are demoted', () => {
+  it('ranks a command that last failed below one that last succeeded', () => {
+    const idx = createIndex();
+    // The failure is both more recent AND more frequent — only the exit-code
+    // demotion can put the working command first.
+    for (let i = 0; i < 3; i++) {
+      ingestBlock(idx, { command: 'cd .claude.json.backup', ts: NOW - 1000, exitCode: 1 });
+    }
+    ingestBlock(idx, { command: 'cd .claude', ts: NOW - 60_000, exitCode: 0 });
+    expect(rankPrefix(idx, 'cd .cl', NOW)[0]).toBe('cd .claude');
+  });
+
+  it('still remembers a failed command when it is the only match', () => {
+    const idx = createIndex();
+    ingestBlock(idx, { command: 'npm test', ts: NOW - 1000, exitCode: 1 });
+    expect(rankPrefix(idx, 'npm t', NOW)).toContain('npm test');
+  });
+
+  it('re-promotes a command once it succeeds again', () => {
+    const idx = createIndex();
+    ingestBlock(idx, { command: 'npm test', ts: NOW - 2000, exitCode: 1 });
+    const failed = frecency(idx.stats['npm test'], NOW);
+    ingestBlock(idx, { command: 'npm test', ts: NOW - 1000, exitCode: 0 });
+    expect(frecency(idx.stats['npm test'], NOW)).toBeGreaterThan(failed);
+  });
+
+  it('leaves commands with no recorded exit code alone', () => {
+    const idx = createIndex();
+    ingestBlock(idx, { command: 'vim notes.md', ts: NOW - 1000 });
+    const withoutExit = frecency(idx.stats['vim notes.md'], NOW);
+    const idx2 = createIndex();
+    ingestBlock(idx2, { command: 'vim notes.md', ts: NOW - 1000, exitCode: 0 });
+    expect(withoutExit).toBe(frecency(idx2.stats['vim notes.md'], NOW));
+  });
+});

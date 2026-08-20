@@ -6,7 +6,13 @@ export function predictCommandIndexed(
 ): string | null {
   if (!prefix || !prefix.trim()) return null;
   const ranked = rankPrefix(index, prefix, now, cwd);
-  return ranked.length > 0 ? ranked[0] : null;
+  // The ghost is drawn as the typed text plus the candidate's remainder, so a
+  // candidate that only matches case-insensitively renders in the user's own
+  // casing: `cd docu` + `ments/GitHub/tai/` reads as `cd documents/GitHub/tai/`,
+  // which is not the path that exists. The overlay cannot re-case what is
+  // already in the textarea, so only offer candidates the typed text is a
+  // literal prefix of. (Tab still re-cases the line — see completePathInsensitive.)
+  return ranked.find((c) => c.startsWith(prefix)) ?? null;
 }
 
 export function predictCommand(prefix: string, history: string[]): string | null {

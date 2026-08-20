@@ -14,6 +14,119 @@ import { credentialVault } from './credentialVault';
 import { resolveForegroundDetail } from './foregroundProcess';
 import { decideAutoFill } from './sudoAutoFill';
 
+/** Commands whose argument can only ever be a directory. */
+const DIR_ONLY_COMMANDS = new Set(['cd', 'pushd', 'rmdir']);
+
+/**
+ * Rewrites each segment of an already-typed path prefix to the real on-disk
+ * name, so completing `documents/gith` yields `Documents/GitHub/` rather than
+ * a path that only resolves on a case-insensitive volume. Segments that do not
+ * resolve are kept exactly as typed.
+ */
+function recasePath(cwd: string, head: string): string {
+  if (!head) return head;
+  const segments = head.split('/');
+  const trailing = segments.pop(); // '' for a head ending in '/'
+  let prefix = '';
+  let walk: string;
+  if (segments[0] === '~') {
+    prefix = '~/';
+    walk = os.homedir();
+    segments.shift();
+  } else if (segments[0] === '') {
+    prefix = '/';
+    walk = '/';
+    segments.shift();
+  } else {
+    walk = cwd;
+  }
+  const out: string[] = [];
+  for (const seg of segments) {
+    if (seg === '.' || seg === '..' || seg === '') {
+      out.push(seg);
+      walk = path.resolve(walk, seg || '.');
+      continue;
+    }
+    let real = seg;
+    try {
+      const lower = seg.toLowerCase();
+      const hit = fs.readdirSync(walk).find((n) => n.toLowerCase() === lower);
+      if (hit) real = hit;
+    } catch { /* unreadable — keep what was typed */ }
+    out.push(real);
+    walk = path.join(walk, real);
+  }
+  return prefix + [...out, trailing].join('/');
+}
+
+/**
+ * Rewrites a completion candidate to the real on-disk casing. Needed for
+ * compgen's output too: on a case-insensitive volume `compgen -d -- 'documents/git'`
+ * happily matches and echoes the *typed* casing back, so the line would keep a
+ * path that only resolves on this machine's filesystem.
+ *
+ * Exported for unit testing.
+ */
+export function recaseEntry(cwd: string, entry: string): string {
+  const isDir = entry.endsWith('/');
+  const body = isDir ? entry.slice(0, -1) : entry;
+  if (!body) return entry;
+  const recased = recasePath(cwd, `${body}/`);
+  return isDir ? recased : recased.slice(0, -1);
+}
+
+/**
+ * Case-insensitive path completion, done here because bash will not do it:
+ * `compgen -d -- 'docu'` returns nothing even under `nocaseglob`, so a typed
+ * `cd docu` has no candidate at all and Tab appears dead. Matching in Node and
+ * returning the entry's *real* name is also what re-cases the line — the user
+ * types `docu`, the line becomes `Documents/`.
+ *
+ * Exported for unit testing.
+ */
+export function completePathInsensitive(
+  cwd: string, token: string, opts: { dirsOnly: boolean; limit?: number } = { dirsOnly: false },
+): string[] {
+  const slash = token.lastIndexOf('/');
+  // 'Documents/Git' → head 'Documents/', base 'Git'.
+  const rawHead = slash === -1 ? '' : token.slice(0, slash + 1);
+  const base = slash === -1 ? token : token.slice(slash + 1);
+  let searchDir: string;
+  if (rawHead.startsWith('~')) {
+    searchDir = path.join(os.homedir(), rawHead.slice(1));
+  } else if (path.isAbsolute(rawHead)) {
+    searchDir = rawHead;
+  } else {
+    searchDir = path.resolve(cwd, rawHead || '.');
+  }
+  // Re-case the segments already typed, too. Completing only the last segment
+  // leaves `cd documents/gith` → `documents/GitHub/`: fine on a case-insensitive
+  // volume, but not the path that exists, and invalid anywhere else.
+  const head = recasePath(cwd, rawHead);
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(searchDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const lower = base.toLowerCase();
+  const out: string[] = [];
+  for (const e of entries) {
+    if (!e.name.toLowerCase().startsWith(lower)) continue;
+    // A bare token must not dump the directory's dotfiles, the way bash hides
+    // them until you type the leading dot yourself.
+    if (!base.startsWith('.') && e.name.startsWith('.')) continue;
+    let isDir = e.isDirectory();
+    if (!isDir && e.isSymbolicLink()) {
+      try { isDir = fs.statSync(path.join(searchDir, e.name)).isDirectory(); } catch {}
+    }
+    if (opts.dirsOnly && !isDir) continue;
+    out.push(head + e.name + (isDir ? '/' : ''));
+  }
+  out.sort((a, b) => a.localeCompare(b));
+  return out.slice(0, opts.limit ?? 50);
+}
+
 const BACKPRESSURE_HIGH = 512 * 1024;
 const BACKPRESSURE_LOW = 128 * 1024;
 
@@ -415,7 +528,8 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
     return term.process;
   });
 
-  ipcMain.handle('pty:getCwd', (_event, id: number) => {
+  /** The shell's actual working directory, straight from the process. */
+  function ptyCwd(id: number): string | null | Promise<string | null> {
     const entry = allTerminals.get(id);
     if (!entry) return null;
     const term = entry.term;
@@ -437,7 +551,9 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
       });
     }
     return null;
-  });
+  }
+
+  ipcMain.handle('pty:getCwd', (_event, id: number) => ptyCwd(id));
 
   ipcMain.handle('pty:isAwaitingInput', (_event, id: number) => {
     const entry = allTerminals.get(id);
@@ -456,27 +572,58 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
     }
   });
 
-  ipcMain.handle('pty:tabComplete', async (_event, text: string, cwd: string) => {
+  ipcMain.handle('pty:tabComplete', async (_event, text: string, cwd: string, ptyId?: number) => {
     if (isWindows) return [];
+    // Ask the shell process where it actually is, rather than trusting the
+    // renderer's copy: that copy is only refreshed when a command finalizes, so
+    // it is empty for a whole fresh session (Tab silently dead) and stale after
+    // any `cd` the block stream did not see. Guessing a directory is worse than
+    // completing nothing — it offers entries that do not exist where the user
+    // is — so an unusable cwd still returns [].
+    let dir = '';
+    if (ptyId !== undefined) {
+      try { dir = (await ptyCwd(ptyId)) ?? ''; } catch { /* fall through to cwd */ }
+    }
+    if (!dir) dir = cwd;
+    try {
+      if (!dir || !fs.statSync(dir).isDirectory()) return [];
+    } catch {
+      return [];
+    }
     const lastWord = text.split(/\s+/).pop() || '';
     const isFirstWord = !text.includes(' ');
-    const flags = isFirstWord ? '-c -f' : '-f -d';
+    // `cd`, `pushd` and `rmdir` only ever accept a directory, so completing
+    // plain files for them (bash never does) hands the user an argument that
+    // is guaranteed to fail — and, worse, lands it in history where the
+    // predictor then offers it back.
+    const firstWord = text.trimStart().split(/\s+/)[0] ?? '';
+    const flags = isFirstWord
+      ? '-c -f'
+      : DIR_ONLY_COMMANDS.has(firstWord) ? '-d' : '-f -d';
     const escaped = lastWord ? lastWord.replace(/'/g, "'\\''") : '';
     const cmd = escaped
       ? `shopt -s nocaseglob nocasematch; compgen ${flags} -- '${escaped}' 2>/dev/null | head -50`
       : `compgen ${flags} 2>/dev/null | head -50`;
+    const dirsOnly = !isFirstWord && DIR_ONLY_COMMANDS.has(firstWord);
     return new Promise<string[]>((resolve) => {
-      execFile('bash', ['-c', cmd], { cwd, timeout: 2000 }, (err, stdout) => {
-        if (err || !stdout.trim()) { resolve([]); return; }
+      execFile('bash', ['-c', cmd], { cwd: dir, timeout: 2000 }, (err, stdout) => {
+        if (err || !stdout.trim()) {
+          // compgen matches prefixes case-sensitively, so a lowercase token
+          // against a capitalised entry lands here rather than in a match.
+          resolve(isFirstWord ? [] : completePathInsensitive(dir, lastWord, { dirsOnly }));
+          return;
+        }
         const raw = [...new Set(stdout.trim().split('\n').filter(Boolean))];
         const results = raw.map(entry => {
-          const absPath = path.isAbsolute(entry) ? entry : path.resolve(cwd, entry);
+          const absPath = path.isAbsolute(entry) ? entry : path.resolve(dir, entry);
+          let marked = entry;
           try {
-            if (fs.statSync(absPath).isDirectory()) return entry + '/';
+            if (fs.statSync(absPath).isDirectory()) marked = entry + '/';
           } catch {}
-          return entry;
+          // Command names (first word) are not paths — leave them alone.
+          return isFirstWord ? marked : recaseEntry(dir, marked);
         });
-        resolve(results);
+        resolve([...new Set(results)]);
       });
     });
   });
