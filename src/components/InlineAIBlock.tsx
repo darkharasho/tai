@@ -120,9 +120,11 @@ export function InlineAIBlock({
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
   const [collapsed, setCollapsed] = useState(false);
 
+  const hasAnswer = !!(streaming || content || (entries && entries.length > 0));
   // A streaming turn has nothing to collapse to yet — the row would have to
-  // summarise an answer that is still arriving.
-  const canCollapse = !streaming;
+  // summarise an answer that is still arriving. A question still waiting on
+  // its first token has nothing to fold at all.
+  const canCollapse = !streaming && hasAnswer;
   const toggleCollapsed = useCallback(() => setCollapsed(c => !c), []);
 
   const summary = summarizeAnswer(entries, content);
@@ -187,66 +189,70 @@ export function InlineAIBlock({
   };
 
   return (
-    <div className={styles.wrapper}>
-      {question && (
-        <div className={`${styles.prompt}${isRemote ? ` ${styles.promptRemote}` : ''}`}>
-          {isFollowup && (
-            <span className={`${styles.promptLabel} ${styles.promptLabelFollowup}${isRemote ? ` ${styles.promptLabelRemote}` : ''}`}>
-              <CornerDownRight size={11} className={styles.promptLabelIcon} />
-            </span>
-          )}
-          <div className={styles.promptText}>
-            <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
-              {question}
-            </ReactMarkdown>
-          </div>
-        </div>
-      )}
-      {(streaming || content || (entries && entries.length > 0)) && (
-        <div
-          className={`${styles.block}${streaming ? ` ${styles.blockStreaming}` : ''}${isRemote ? ` ${styles.blockRemote}` : ''}${collapsed ? ` ${styles.blockCollapsed}` : ''}`}
-          data-ai-turn
-          data-streaming={streaming ? 'true' : undefined}
-          data-collapsed={collapsed ? 'true' : undefined}
-        >
-          <div className={styles.accent} />
-          <div className={styles.inner}>
-            {/* The meta line doubles as the collapse control, the way the
-                collapsed command row does: click anywhere on it to fold the
-                answer down to this single row. */}
-            <div
-              className={`${styles.header}${canCollapse ? ` ${styles.headerToggle}` : ''}`}
-              onClick={canCollapse ? toggleCollapsed : undefined}
-              data-ai-meta
-            >
-              <div className={styles.headerLeft}>
-                {canCollapse && (
-                  <span className={styles.headerChevron}>
-                    {collapsed ? <ChevronRight size={10} /> : <ChevronDown size={10} />}
-                  </span>
-                )}
-                <span
-                  className={styles.providerIcon}
-                  style={{ maskImage: `url(${PROVIDER_ICONS[aiProvider]})`, WebkitMaskImage: `url(${PROVIDER_ICONS[aiProvider]})` }}
-                />
-                <span className={styles.label}>{PROVIDER_NAMES[aiProvider]}</span>
-                {streaming && <span className={styles.streamingDot} />}
-              </div>
-              {collapsed && summary && (
-                <span className={styles.collapsedSummary}>{summary}</span>
-              )}
-              {streaming && onStop && (
-                <button className={styles.stopBtn} onClick={onStop} title="Stop response (Ctrl+C)">
-                  <Square size={10} />
-                  <span>Stop</span>
-                </button>
-              )}
-              {!streaming && duration != null && (
-                <span className={styles.duration}>{formatDuration(duration)}</span>
-              )}
+    <div
+      className={`${styles.wrapper}${isRemote ? ` ${styles.wrapperRemote}` : ''}`}
+      data-ai-turn
+      data-streaming={streaming ? 'true' : undefined}
+      data-collapsed={collapsed ? 'true' : undefined}
+    >
+      {/* The question row is the turn's header: it carries the fold control,
+          the provider mark and the duration, so the answer needs no chrome
+          line of its own. Clicking it folds the turn down to this one row. */}
+      <div
+        className={`${styles.head}${canCollapse ? ` ${styles.headToggle}` : ''}${collapsed ? ` ${styles.headCollapsed}` : ''}`}
+        onClick={canCollapse ? toggleCollapsed : undefined}
+        data-ai-meta
+      >
+        {/* Held even when there is nothing to fold, so gaining the chevron
+            never shifts the question sideways. */}
+        <span className={styles.headChevron}>
+          {canCollapse && (collapsed ? <ChevronRight size={10} /> : <ChevronDown size={10} />)}
+        </span>
+        {isFollowup && (
+          <span className={`${styles.promptLabel} ${styles.promptLabelFollowup}${isRemote ? ` ${styles.promptLabelRemote}` : ''}`}>
+            <CornerDownRight size={11} className={styles.promptLabelIcon} />
+          </span>
+        )}
+        <div className={styles.headQuestion}>
+          {question ? (
+            <div className={styles.promptText}>
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                {question}
+              </ReactMarkdown>
             </div>
-
-            {!collapsed && (<>
+          ) : (
+            /* No question to head the turn (a volunteered answer) — the
+               provider name stands in so the row is never empty. */
+            <span className={styles.label}>{PROVIDER_NAMES[aiProvider]}</span>
+          )}
+        </div>
+        {collapsed && summary && (
+          <span className={styles.collapsedSummary}>{summary}</span>
+        )}
+        <div className={styles.headMeta}>
+          {streaming && onStop && (
+            <button
+              className={styles.stopBtn}
+              onClick={(e) => { e.stopPropagation(); onStop(); }}
+              title="Stop response (Ctrl+C)"
+            >
+              <Square size={10} />
+              <span>Stop</span>
+            </button>
+          )}
+          {streaming && <span className={styles.streamingDot} />}
+          <span
+            className={styles.providerIcon}
+            title={PROVIDER_NAMES[aiProvider]}
+            style={{ maskImage: `url(${PROVIDER_ICONS[aiProvider]})`, WebkitMaskImage: `url(${PROVIDER_ICONS[aiProvider]})` }}
+          />
+          {!streaming && duration != null && (
+            <span className={styles.duration}>{formatDuration(duration)}</span>
+          )}
+        </div>
+      </div>
+      {hasAnswer && !collapsed && (
+        <div className={`${styles.answer}${streaming ? ` ${styles.answerLive}` : ''}`}>
             <div className={styles.body}>
               {entries && entries.length > 0 ? (
                 entries.map((entry, i) => {
@@ -344,8 +350,6 @@ export function InlineAIBlock({
                 ))}
               </div>
             )}
-            </>)}
-          </div>
         </div>
       )}
     </div>

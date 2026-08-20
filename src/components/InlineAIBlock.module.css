@@ -1,6 +1,7 @@
 .wrapper {
   /* Turns separate by whitespace, the way blocks do — there is no card edge
      left to do it. */
+  --accent-color: var(--color-ai);
   margin: 0 0 16px;
 }
 
@@ -8,14 +9,93 @@
   margin-bottom: 0;
 }
 
-.prompt {
-  /* The question is something you typed, so it renders like a command line:
-     no bubble, no `YOU` label, no border. The conversation rail already says
-     whose turn this is. */
+/* Remote (on-a-host) turns swap the AI purple for the agent orange used
+   across remote cards. */
+.wrapperRemote {
+  --accent-color: var(--color-agent);
+}
+
+/* ── The turn header ───────────────────────────────────────────────────────
+   The question you typed doubles as the turn's meta line: fold chevron on the
+   left, provider mark and duration on the right. One chrome row per turn —
+   the answer below it carries none of its own. */
+.head {
   display: flex;
   align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  border-radius: 4px;
+  transition: background 0.15s ease;
+}
+
+.headToggle {
+  cursor: pointer;
+  user-select: none;
+}
+
+.headToggle:hover {
+  background: rgba(255, 255, 255, 0.022);
+}
+
+/* Fixed slot: reserved whether or not the turn can fold, so the question
+   never shifts sideways when the chevron appears. */
+.headChevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
+  flex-shrink: 0;
+  align-self: center;
+  color: var(--text-muted);
+  opacity: 0.5;
+  transition: opacity 0.15s ease;
+}
+
+.headToggle:hover .headChevron {
+  opacity: 1;
+}
+
+.headQuestion {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Folded, the question gives up its wrap so the row stays one line and the
+   answer summary beside it gets room. */
+.headCollapsed .headQuestion {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.headCollapsed .promptText p {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.headMeta {
+  display: flex;
+  align-items: center;
   gap: 6px;
-  margin-bottom: 0;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+/* ── The answer ────────────────────────────────────────────────────────────
+   Hangs off the header on a thin rail — dim at rest, full accent while the
+   reply streams, the same language a running command block speaks. */
+.answer {
+  padding: 6px 0 0 18px;
+  margin-left: 2px;
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent-color) 22%, transparent);
+  transition: box-shadow 0.2s ease;
+}
+
+.answerLive {
+  box-shadow: inset 2px 0 0 var(--accent-color);
 }
 
 /* Holds the follow-up glyph. Empty on a first question, so the row collapses
@@ -33,12 +113,6 @@
 
 .promptLabelFollowup {
   /* same colour and size — class exists for future tweaks (e.g. lower opacity) */
-}
-
-/* Remote (on-a-host) variants: swap the default shell-green accent for the
-   agent-orange used across remote cards. */
-.promptRemote {
-  /* nothing to tint on a bare line; the turn below carries the remote colour */
 }
 
 .promptLabelRemote {
@@ -115,83 +189,10 @@
   text-decoration: underline;
 }
 
-/* Flat treatment: the answer is terminal output, not a card. State rides the
-   left rail — transparent at rest, accent while streaming — exactly the way a
-   running command block wears its accent. */
-.block {
-  --accent-color: var(--color-ai);
-  position: relative;
-  padding-top: 10px;
-  box-shadow: inset 3px 0 0 transparent;
-  transition: box-shadow 0.2s ease;
-}
-
-.blockStreaming {
-  box-shadow: inset 3px 0 0 var(--accent-color);
-}
-
-.blockRemote {
-  --accent-color: var(--color-agent);
-}
-
-/* Folded: the turn is one row, the way a collapsed command block is. Padded
-   like a row rather than a section, and hover-lit so it reads as clickable. */
-.blockCollapsed {
-  padding-top: 6px;
-  padding-bottom: 2px;
-  transition: background 0.15s ease, box-shadow 0.2s ease;
-}
-
-.blockCollapsed:hover {
-  background: rgba(255, 255, 255, 0.022);
-}
-
-.blockCollapsed .header {
-  margin-bottom: 0;
-}
-
-.accent {
-  display: none;
-}
-
-.inner {
-  /* Clear of the 3px rail, matching the indent the conversation gutter sets. */
-  padding: 0 0 0 13px;
-  position: relative;
-  z-index: 3;
-}
-
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 5px;
-  gap: 12px;
-}
-
-.headerToggle {
-  cursor: pointer;
-  user-select: none;
-}
-
-.headerChevron {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-  margin-left: -3px;
-  color: var(--text-muted);
-  opacity: 0.5;
-  transition: opacity 0.15s ease;
-}
-
-.headerToggle:hover .headerChevron {
-  opacity: 1;
-}
-
-/* Stands in for the folded answer. Takes the slack between the provider name
-   and the duration, and truncates rather than wrapping — one row, always. */
+/* Stands in for the folded answer: takes the slack between the question and
+   the meta cluster, and truncates rather than wrapping — one row, always. */
 .collapsedSummary {
-  flex: 1;
+  flex: 1 1 40%;
   min-width: 0;
   font-family: var(--font-mono);
   font-size: 11px;
@@ -202,11 +203,10 @@
   text-overflow: ellipsis;
 }
 
-.headerLeft {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
+/* Separates the folded summary from the question it belongs to. */
+.collapsedSummary::before {
+  content: '· ';
+  opacity: 0.6;
 }
 
 .providerIcon {

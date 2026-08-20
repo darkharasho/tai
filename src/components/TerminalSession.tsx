@@ -1810,6 +1810,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
             onRunCommand={(cmd) => { aiSuggestedCommands.current.add(cmd); handleRerun(cmd); }}
             onStopAI={handleStopAI}
             aiProvider={aiProvider}
+            sessionName={sessionForCard?.command}
+            sessionKind={sessionForCard?.kind}
           />
         )}
       </div>
@@ -1886,6 +1888,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
               onRunCommand={(cmd) => { aiSuggestedCommands.current.add(cmd); handleRerun(cmd); }}
               onStopAI={handleStopAI}
               aiProvider={aiProvider}
+              sessionName={pinnedBlock.block.command}
+              sessionKind={sessionForCard?.kind}
             />
           )}
         </div>

@@ -39,8 +39,10 @@ describe('InlineAIBlock resting state', () => {
     // The answer body is gone; its first line stands in for it.
     expect(turn.textContent).toContain('Rayleigh scattering.');
     expect(turn.textContent).not.toContain('The short version.');
-    // The meta line survives the fold.
-    expect(turn.textContent).toContain('Claude');
+    // The header row survives the fold: the question still heads the turn,
+    // and the provider mark (named by its tooltip) and duration ride with it.
+    expect(turn.textContent).toContain('why is the sky blue?');
+    expect(turn.querySelector('[title="Claude"]')).toBeInTheDocument();
     expect(turn.textContent).toContain('4.3s');
   });
 
