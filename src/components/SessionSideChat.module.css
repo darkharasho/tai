@@ -1,7 +1,7 @@
 /* SessionSideChat.module.css — the docked AI pane beside a live process.
-   Built from the same chrome as the tab sidebar and composer: a surface-toned
-   pane, hairline borders, tokenised colours. The AI role colour lands on a
-   single 2px accent along the top edge instead of a heavy left rail. */
+   The mirror of the tab sidebar on the other edge of the window: same surface,
+   same single hairline facing the content, square corners, flush to the frame.
+   A card floating in the pane would be the only rounded rail in the layout. */
 
 .panel {
   position: relative;
@@ -11,26 +11,8 @@
   flex-direction: column;
   min-height: 0;
   background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  margin-bottom: 8px;
+  border-left: 1px solid var(--border-subtle);
   overflow: hidden;
-}
-
-.panel::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 2px;
-  pointer-events: none;
-  background: linear-gradient(
-    90deg,
-    var(--color-ai),
-    color-mix(in srgb, var(--color-ai) 25%, transparent) 70%,
-    transparent
-  );
 }
 
 /* Header mirrors a session card's head row: glyph, name, muted scope, actions. */

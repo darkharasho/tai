@@ -1679,6 +1679,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const historyItems = (pinnedBlock || sideChatItems.length > 0)
     ? displayItems.filter(i => i !== pinnedBlock && !(sideChatItems as DisplayItem[]).includes(i))
     : displayItems;
+  // The pane runs flush to the window edge, so the row hosting it drops its
+  // right padding while it is up.
+  const sideChatVisible = sideChatOpen && sideChatItems.length > 0;
 
   const handleSessionAIPrompt = useCallback((text: string) => {
     const sess = activeSessionRef.current;
@@ -1756,8 +1759,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       )}
       {/* Rooted sessions live in the scrollback: one continuous scroll for
           history + live output. The session side conversation docks as a
-          right-hand column beside the whole stream. */}
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'stretch', gap: 10 }}>
+          right-hand column beside the whole stream — flush to the frame, the
+          way the tab sidebar docks on the left, so no gap here. */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'stretch' }}>
         <BlockList
           items={historyItems}
           activeBlockId={null}
@@ -1801,7 +1805,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
             />
           ) : undefined}
         />
-        {sessionInList && sideChatOpen && sideChatItems.length > 0 && (
+        {sessionInList && sideChatVisible && (
           <SessionSideChat
             items={sideChatItems}
             onAsk={handleSessionAIPrompt}
@@ -1843,8 +1847,13 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         /* Match the block list's geometry: 14px padding plus the 14px
            scrollbar gutter the list always reserves on the right, so the
            pinned live card's edges line up exactly with history cards.
-           Row layout: live card + optional AI side conversation. */
-        <div style={{ flexShrink: 0, display: 'flex', alignItems: 'stretch', gap: 10, minHeight: 0, maxHeight: '76vh', padding: '0 28px 0 14px' }}>
+           Row layout: live card + optional AI side conversation — and when
+           that pane is showing it runs flush to the frame like the tab
+           sidebar, so the row gives up its right padding. */
+        <div style={{
+          flexShrink: 0, display: 'flex', alignItems: 'stretch', minHeight: 0, maxHeight: '76vh',
+          padding: sideChatVisible ? '0 0 0 14px' : '0 28px 0 14px',
+        }}>
           <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <CommandBlock
             block={pinnedBlock.block}
@@ -1879,7 +1888,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
             }
           />
           </div>
-          {sideChatOpen && sideChatItems.length > 0 && (
+          {sideChatVisible && (
             <SessionSideChat
               items={sideChatItems}
               onAsk={handleSessionAIPrompt}
