@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { TabBar } from './components/TabBar';
+import { TopBar } from './components/TopBar';
+import { TabSidebar } from './components/TabSidebar';
 import { TerminalSession } from './components/TerminalSession';
 import { SettingsOverlay } from './components/SettingsOverlay';
 import { QuickSettings } from './components/QuickSettings';
@@ -187,6 +188,7 @@ export default function App() {
   const cardAccent = config['appearance.cardAccent'] || 'brackets';
   const noise = config['appearance.noise'] !== false;
   const theme = config['appearance.theme'] || 'default';
+  const sidebarOpen = config['appearance.sidebar'] !== false;
 
   // Push the theme into the registry so xterm instances (which can't read
   // CSS variables) swap their ANSI palettes live.
@@ -224,20 +226,30 @@ export default function App() {
           <div className="magma-embers-near" />
         </div>
       )}
-      <TabBar
-        tabs={tabs}
-        activeTabId={activeTabId}
-        onSelectTab={setActiveTabId}
+      <TopBar
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSetting('appearance.sidebar', !sidebarOpen)}
         onNewTab={handleNewTab}
-        onCloseTab={requestCloseTab}
-        onRenameTab={handleRenameTab}
         onOpenQuickSettings={() => setQuickSettingsOpen(true)}
+        onOpenPalette={() => window.dispatchEvent(new CustomEvent('tai:open-palette'))}
       />
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row' }}>
+      {sidebarOpen && (
+        <TabSidebar
+          tabs={tabs}
+          activeTabId={activeTabId}
+          onSelectTab={setActiveTabId}
+          onNewTab={handleNewTab}
+          onCloseTab={requestCloseTab}
+          onRenameTab={handleRenameTab}
+        />
+      )}
       {tabs.map(tab => (
         <div
           key={tab.id}
           style={{
             flex: 1,
+            minWidth: 0,
             minHeight: 0,
             display: tab.id === activeTabId ? 'flex' : 'none',
             flexDirection: 'column',
@@ -262,6 +274,7 @@ export default function App() {
           />
         </div>
       ))}
+      </div>
       <SettingsOverlay
         visible={settingsOpen}
         onClose={() => setSettingsOpen(false)}

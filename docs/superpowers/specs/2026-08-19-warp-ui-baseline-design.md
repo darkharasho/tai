@@ -2,7 +2,7 @@
 
 Date: 2026-08-19
 Branch: `feat/warp-ui-baseline`
-Status: P0–P2 approved for implementation; P3–P4 deferred pending review.
+Status: P0–P3 implemented; P4 deferred pending review.
 
 ## Problem
 
@@ -90,12 +90,31 @@ theme-driven.
 The AI/shell mode signal moves from the right-hand edge into the chip row so
 the input line itself stays clean.
 
-### P3 — Shell chrome (deferred)
+### P3 — Shell chrome
 
-Top bar plus left tab sidebar, retiring the horizontal `TabBar`. Highest risk
-of the set: `TabBar.tsx` carries overflow collapsing, inline rename, and the
-window controls, all of which must move rather than be rewritten. Also forces
-the README screenshots to be retaken.
+`TabBar` is retired and split in two:
+
+- `TopBar` — the drag region and the window's icon chrome: sidebar toggle and
+  new-tab on the left, a centred search pill, settings plus the non-mac window
+  controls on the right. The pill is a button, not a field: it opens the
+  existing command palette, which is already where TAI searches history,
+  commands and workflows. Giving it its own text input would have grown a
+  second search surface competing with the palette and `BlockFinder`.
+- `TabSidebar` — a vertical rail: index, title (ssh target when remote), the
+  cwd leaf beneath it, working dot, trust badge on the active row, close on
+  hover. Inline rename moves over unchanged (double-click, Enter/Escape).
+
+The old bar's width measuring, hidden measure container and overflow dropdown
+have **no counterpart** and are deleted rather than moved: a vertical list
+scrolls, so tabs no longer compete for horizontal space. This is the one place
+the plan said "move, don't rewrite" and the answer turned out to be "delete".
+
+The sidebar's visibility persists as `appearance.sidebar` (default on). No new
+keybinding: `Ctrl+B` and the obvious neighbours are readline bindings the shell
+owns, so the toggle is a button only.
+
+Still outstanding: the README screenshots show the old horizontal tab bar and
+need retaking.
 
 ### P4 — AI block at rest (deferred)
 
@@ -104,7 +123,10 @@ Collapse `InlineAIBlock`'s resting state to Warp's single row.
 ## Testing
 
 The theming system has no snapshot coverage and the change is visual, so the
-gate is: `tsc --noEmit` clean, the existing suite no worse than its baseline
-(41 pre-existing failed files from a `require is not defined` breakage in the
-jsdom mocking setup, unrelated to this work), and human verification in the
-running app against the reference screenshot.
+gate is: `tsc --noEmit` clean, the existing suite green, and human
+verification in the running app against the reference screenshot.
+
+(An earlier draft of this section claimed 41 pre-existing failed files. That
+was an artifact of running `vitest` without `--config tests/vitest.config.ts`.
+Under the project config the suite is 125 files / 922 tests, fully green, and
+there is no pre-existing breakage to discount against.)
