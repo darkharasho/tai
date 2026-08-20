@@ -134,6 +134,22 @@
   --accent-color: var(--color-agent);
 }
 
+/* Folded: the turn is one row, the way a collapsed command block is. Padded
+   like a row rather than a section, and hover-lit so it reads as clickable. */
+.blockCollapsed {
+  padding-top: 6px;
+  padding-bottom: 2px;
+  transition: background 0.15s ease, box-shadow 0.2s ease;
+}
+
+.blockCollapsed:hover {
+  background: rgba(255, 255, 255, 0.022);
+}
+
+.blockCollapsed .header {
+  margin-bottom: 0;
+}
+
 .accent {
   display: none;
 }
@@ -151,6 +167,39 @@
   justify-content: space-between;
   margin-bottom: 5px;
   gap: 12px;
+}
+
+.headerToggle {
+  cursor: pointer;
+  user-select: none;
+}
+
+.headerChevron {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-left: -3px;
+  color: var(--text-muted);
+  opacity: 0.5;
+  transition: opacity 0.15s ease;
+}
+
+.headerToggle:hover .headerChevron {
+  opacity: 1;
+}
+
+/* Stands in for the folded answer. Takes the slack between the provider name
+   and the duration, and truncates rather than wrapping — one row, always. */
+.collapsedSummary {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .headerLeft {

@@ -2,7 +2,7 @@
 
 Date: 2026-08-19
 Branch: `feat/warp-ui-baseline`
-Status: P0–P3 implemented plus a refinement pass; P4 deferred pending review.
+Status: P0–P4 implemented.
 
 ## Problem
 
@@ -149,9 +149,51 @@ gaps and two bugs the new chrome exposed:
   against a band partly hidden beneath it. The strip's height is now
   published as `--frame-inset` and the bar pads by it.
 
-### P4 — AI block at rest (deferred)
+### P3.2 — The AI exchange
 
-Collapse `InlineAIBlock`'s resting state to Warp's single row.
+An AI exchange carried four accent systems at once — the conversation's
+gradient rail, an elevated `YOU` bubble with its own left border, a bordered
+rounded card, and two masked corner accents — sitting directly beside command
+blocks P1 had already flattened to a single rail.
+
+The question now renders like a command line: bare mono text, no bubble and no
+label, with a `↳` glyph the only marking on a follow-up. The answer renders
+like output: no card, no border, no corner accents, and an 11px muted meta line
+carrying the provider swatch, name and duration. State rides the left rail —
+transparent at rest, accent while streaming.
+
+Two consequences worth recording:
+
+- Remote exchanges lost the orange `border-left` the bubble carried, so the
+  signal moves to `--accent-color` on the turn; the provider swatch and the
+  streaming dot both read it and follow automatically.
+- `data-card-surface` comes off the turn. It is no longer a card, so the
+  `data-card-accent` setting must stop decorating it — dropping the CSS alone
+  would have left stripes and glow painting a flat surface. `data-ai-turn` and
+  `data-streaming` replace it as the asserted contract.
+
+Three single-meta-line variants were mocked in-app and the bare-question one
+chosen. An earlier draft put a second meta line (`ask · claude`) above the
+question, which read as two headers per exchange.
+
+### P4 — AI block at rest
+
+Warp's screenshot shows a *restored* AI conversation folded to one row. TAI
+does not restore AI turns — only command blocks survive a session — so there is
+no equivalent state to collapse by default, and folding finished turns
+automatically would hide answers the user just asked for. P4 therefore ships
+the affordance without the default: a finished turn's meta line doubles as the
+collapse control, folding the answer down to that single row.
+
+The folded row is the meta line plus a summary: the first real line of the
+reply, markdown markers stripped, truncated rather than wrapped. A streaming
+turn offers no chevron, since the row would have to summarise an answer still
+arriving. Exposed as `data-collapsed` / `data-ai-meta`, mirroring the collapsed
+command row's contract.
+
+Collapse state is local to the component rather than lifted into `BlockList`'s
+`manualCollapsed` set: AI turns are not windowed and not restored, so nothing
+outside the turn needs to read or persist it.
 
 ## Testing
 
@@ -161,5 +203,5 @@ verification in the running app against the reference screenshot.
 
 (An earlier draft of this section claimed 41 pre-existing failed files. That
 was an artifact of running `vitest` without `--config tests/vitest.config.ts`.
-Under the project config the suite is 125 files / 922 tests, fully green, and
+Under the project config the suite is 126 files / 928 tests, fully green, and
 there is no pre-existing breakage to discount against.)
