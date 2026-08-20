@@ -28,7 +28,11 @@ function joinPath(base: string, ...parts: string[]): string {
  */
 export function isMuslLinux(
   platform: string = process.platform,
-  report: { getReport?: () => unknown } | undefined = process.report as any,
+  // `null` is how a caller says "no report API here". It cannot be `undefined`:
+  // passing that explicitly triggers the default, handing the caller the host's
+  // real process.report — on macOS that reports no glibc runtime, which reads
+  // as musl.
+  report: { getReport?: () => unknown } | null = process.report as any,
 ): boolean {
   if (platform !== 'linux') return false;
   const r = typeof report?.getReport === 'function' ? (report.getReport() as any) : null;

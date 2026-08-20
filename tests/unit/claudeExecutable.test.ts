@@ -66,7 +66,13 @@ describe('isMuslLinux', () => {
   });
 
   it('is false when the report API is unavailable', () => {
-    expect(isMuslLinux('linux', undefined as any)).toBe(false);
+    // Explicitly `null`: `undefined` would fall through to the parameter
+    // default and test the host's own process.report instead.
+    expect(isMuslLinux('linux', null)).toBe(false);
+  });
+
+  it('is false when the report object carries no getReport', () => {
+    expect(isMuslLinux('linux', {} as any)).toBe(false);
   });
 });
 
