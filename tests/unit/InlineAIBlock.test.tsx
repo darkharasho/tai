@@ -58,7 +58,49 @@ describe('InlineAIBlock resting state', () => {
     const { container } = renderTurn({ streaming: true, duration: undefined });
     const turn = container.querySelector('[data-ai-turn]')!;
     expect(turn).toHaveAttribute('data-streaming', 'true');
-    fireEvent.click(container.querySelector('[data-ai-meta]')!);
-    expect(container.querySelector('[data-ai-turn]')).not.toHaveAttribute('data-collapsed');
+    // There is nothing to fold to yet, so the control is not rendered at all.
+    expect(container.querySelector('[data-ai-meta]')).toBeNull();
+    expect(turn).not.toHaveAttribute('data-collapsed');
+  });
+
+  it('marks the question as the user\'s line and puts the answer after it', () => {
+    const { container } = renderTurn();
+    const turn = container.querySelector('[data-ai-turn]')!;
+    // The caret leads the question; the answer follows as its own block.
+    expect(turn.textContent).toContain('\u276Fwhy is the sky blue?');
+    expect(turn.textContent).toContain('Rayleigh scattering.');
+  });
+
+  it('still renders a long question, as markdown', () => {
+    const long = 'why is it '.repeat(30);
+    const { container } = renderTurn({ question: long });
+    const turn = container.querySelector('[data-ai-turn]')!;
+    expect(turn.textContent).toContain('why is it why is it');
+    expect(turn.querySelector('p')).toBeInTheDocument();
+  });
+});
+
+describe('InlineAIBlock turn layout', () => {
+  it('leads with the question even when the answer opens with a tool call', () => {
+    const { container } = render(
+      <InlineAIBlock
+        {...baseProps}
+        entries={[
+          { kind: 'tool', call: { id: 't1', name: 'Bash', input: '{"command":"ls"}', output: 'a\nb' } },
+          { kind: 'text', text: 'Two files.' },
+        ]}
+        duration={1200}
+      />,
+    );
+    const turn = container.querySelector('[data-ai-turn]')!;
+    expect(turn.textContent).toContain('\u276Fwhy is the sky blue?');
+    expect(turn.textContent).toContain('Two files.');
+  });
+
+  it('shows the question line from the first frame of a streaming answer', () => {
+    const { container } = render(
+      <InlineAIBlock {...baseProps} entries={[]} streaming content="" />,
+    );
+    expect(container.querySelector('[data-ai-turn]')!.textContent).toContain('\u276Fwhy is the sky blue?');
   });
 });

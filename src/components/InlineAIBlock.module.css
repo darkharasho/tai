@@ -15,87 +15,87 @@
   --accent-color: var(--color-agent);
 }
 
-/* ── The turn header ───────────────────────────────────────────────────────
-   The question you typed doubles as the turn's meta line: fold chevron on the
-   left, provider mark and duration on the right. One chrome row per turn —
-   the answer below it carries none of its own. */
-.head {
+/* ── The turn ──────────────────────────────────────────────────────────────
+   One run of text rather than a question row plus an answer row: the question
+   dim and mono, an accent caret, then the reply continuing on the same line.
+   The right gutter is held clear for the provider mark and duration. */
+.turn {
+  position: relative;
+  padding-right: 46px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* Your line: caret, then what you typed. Mono and muted so the answer below
+   is what carries weight. */
+.qLine {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  padding: 3px 0;
-  border-radius: 4px;
-  transition: background 0.15s ease;
+  gap: 6px;
 }
 
-.headToggle {
-  cursor: pointer;
-  user-select: none;
-}
-
-.headToggle:hover {
-  background: rgba(255, 255, 255, 0.022);
-}
-
-/* Fixed slot: reserved whether or not the turn can fold, so the question
-   never shifts sideways when the chevron appears. */
-.headChevron {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 10px;
+/* Carries the role colour — the one place the turn is tinted now that the
+   answer has no rail, and what separates your line from the reply. */
+.caret {
+  font-family: var(--font-mono);
+  color: var(--accent-color);
   flex-shrink: 0;
-  align-self: center;
+  line-height: 1;
+}
+
+.qText {
+  font-family: var(--font-mono);
   color: var(--text-muted);
-  opacity: 0.5;
-  transition: opacity 0.15s ease;
-}
-
-.headToggle:hover .headChevron {
-  opacity: 1;
-}
-
-.headQuestion {
-  flex: 1;
   min-width: 0;
 }
 
-/* Folded, the question gives up its wrap so the row stays one line and the
-   answer summary beside it gets room. */
-.headCollapsed .headQuestion {
-  flex: 0 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.headCollapsed .promptText p {
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.headMeta {
+.turnMeta {
+  position: absolute;
+  top: 2px;
+  right: 0;
   display: flex;
   align-items: center;
   gap: 6px;
-  flex-shrink: 0;
-  align-self: center;
+}
+
+/* Folding lives on its own control: clicking the text would fold the turn out
+   from under anyone selecting the answer. */
+.foldBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  margin-right: 4px;
+  vertical-align: -1px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0.35;
+  transition: opacity 0.15s ease;
+}
+
+.turn:hover .foldBtn,
+.foldBtn:focus-visible {
+  opacity: 1;
+}
+
+/* Same footprint as the button, so a streaming turn (nothing to fold yet)
+   does not sit 16px to the left of a settled one. */
+.foldSpacer {
+  display: inline-block;
+  width: 12px;
+  margin-right: 4px;
 }
 
 /* ── The answer ────────────────────────────────────────────────────────────
-   Hangs off the header on a thin rail — dim at rest, full accent while the
-   reply streams, the same language a running command block speaks. */
+   Its own line, flush with the question rather than indented behind a rail:
+   the caret above already says which line is whose, so the reply needs no
+   frame of its own. */
 .answer {
-  padding: 6px 0 0 18px;
-  margin-left: 2px;
-  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent-color) 22%, transparent);
-  transition: box-shadow 0.2s ease;
-}
-
-.answerLive {
-  box-shadow: inset 2px 0 0 var(--accent-color);
+  margin-top: 3px;
 }
 
 /* Holds the follow-up glyph. Empty on a first question, so the row collapses

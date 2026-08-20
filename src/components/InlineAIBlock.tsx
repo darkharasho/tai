@@ -21,6 +21,9 @@ const PROVIDER_ICONS: Record<AIProvider, string> = {
   gemini: './svg/Google-gemini-icon.svg',
 };
 
+/** Longest question still rendered as a plain line rather than markdown. */
+const PLAIN_QUESTION_MAX = 140;
+
 function formatDuration(ms: number): string {
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
   return `${Math.floor(ms / 60000)}m ${Math.round((ms % 60000) / 1000)}s`;
@@ -121,6 +124,10 @@ export function InlineAIBlock({
   const [collapsed, setCollapsed] = useState(false);
 
   const hasAnswer = !!(streaming || content || (entries && entries.length > 0));
+  // A short single-line question is rendered as plain text; anything longer —
+  // notably the framed prompts "Ask AI about this" builds, which carry a fenced
+  // command and its output — keeps its markdown.
+  const plainQuestion = !!question && question.length <= PLAIN_QUESTION_MAX && !question.includes('\n');
   // A streaming turn has nothing to collapse to yet — the row would have to
   // summarise an answer that is still arriving. A question still waiting on
   // its first token has nothing to fold at all.
@@ -188,6 +195,45 @@ export function InlineAIBlock({
     },
   };
 
+  const meta = (
+    <div className={styles.turnMeta}>
+      {streaming && onStop && (
+        <button
+          className={styles.stopBtn}
+          onClick={(e) => { e.stopPropagation(); onStop(); }}
+          title="Stop response (Ctrl+C)"
+        >
+          <Square size={10} />
+          <span>Stop</span>
+        </button>
+      )}
+      {streaming && <span className={styles.streamingDot} />}
+      <span
+        className={styles.providerIcon}
+        title={PROVIDER_NAMES[aiProvider]}
+        style={{ maskImage: `url(${PROVIDER_ICONS[aiProvider]})`, WebkitMaskImage: `url(${PROVIDER_ICONS[aiProvider]})` }}
+      />
+      {!streaming && duration != null && (
+        <span className={styles.duration}>{formatDuration(duration)}</span>
+      )}
+    </div>
+  );
+
+  const foldBtn = canCollapse ? (
+    <button
+      className={styles.foldBtn}
+      onClick={toggleCollapsed}
+      title={collapsed ? 'Expand answer' : 'Fold answer'}
+      aria-label={collapsed ? 'Expand answer' : 'Fold answer'}
+      data-ai-meta
+    >
+      {collapsed ? <ChevronRight size={10} /> : <ChevronDown size={10} />}
+    </button>
+  ) : (
+    /* Held open so gaining the control never shifts the text sideways. */
+    <span className={styles.foldSpacer} />
+  );
+
   return (
     <div
       className={`${styles.wrapper}${isRemote ? ` ${styles.wrapperRemote}` : ''}`}
@@ -195,64 +241,41 @@ export function InlineAIBlock({
       data-streaming={streaming ? 'true' : undefined}
       data-collapsed={collapsed ? 'true' : undefined}
     >
-      {/* The question row is the turn's header: it carries the fold control,
-          the provider mark and the duration, so the answer needs no chrome
-          line of its own. Clicking it folds the turn down to this one row. */}
-      <div
-        className={`${styles.head}${canCollapse ? ` ${styles.headToggle}` : ''}${collapsed ? ` ${styles.headCollapsed}` : ''}`}
-        onClick={canCollapse ? toggleCollapsed : undefined}
-        data-ai-meta
-      >
-        {/* Held even when there is nothing to fold, so gaining the chevron
-            never shifts the question sideways. */}
-        <span className={styles.headChevron}>
-          {canCollapse && (collapsed ? <ChevronRight size={10} /> : <ChevronDown size={10} />)}
-        </span>
-        {isFollowup && (
-          <span className={`${styles.promptLabel} ${styles.promptLabelFollowup}${isRemote ? ` ${styles.promptLabelRemote}` : ''}`}>
-            <CornerDownRight size={11} className={styles.promptLabelIcon} />
-          </span>
-        )}
-        <div className={styles.headQuestion}>
+      {/* Your line, then the answer's. The turn carries no meta row of its own:
+          an accent caret marks the question as the thing you typed, and the
+          provider mark and duration sit in the right gutter. */}
+      <div className={styles.turn}>
+        <div className={styles.qLine}>
+          {foldBtn}
+          {isFollowup && (
+            <span className={`${styles.promptLabel} ${styles.promptLabelFollowup}${isRemote ? ` ${styles.promptLabelRemote}` : ''}`}>
+              <CornerDownRight size={11} className={styles.promptLabelIcon} />
+            </span>
+          )}
           {question ? (
-            <div className={styles.promptText}>
-              <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
-                {question}
-              </ReactMarkdown>
-            </div>
+            <>
+              <span className={styles.caret} aria-hidden="true">❯</span>
+              {plainQuestion ? (
+                <span className={styles.qText}>{question}</span>
+              ) : (
+                <div className={`${styles.qText} ${styles.promptText}`}>
+                  <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                    {question}
+                  </ReactMarkdown>
+                </div>
+              )}
+            </>
           ) : (
-            /* No question to head the turn (a volunteered answer) — the
-               provider name stands in so the row is never empty. */
+            /* No question leading the turn (a volunteered answer) — the
+               provider name stands in so the line is never empty. */
             <span className={styles.label}>{PROVIDER_NAMES[aiProvider]}</span>
           )}
-        </div>
-        {collapsed && summary && (
-          <span className={styles.collapsedSummary}>{summary}</span>
-        )}
-        <div className={styles.headMeta}>
-          {streaming && onStop && (
-            <button
-              className={styles.stopBtn}
-              onClick={(e) => { e.stopPropagation(); onStop(); }}
-              title="Stop response (Ctrl+C)"
-            >
-              <Square size={10} />
-              <span>Stop</span>
-            </button>
-          )}
-          {streaming && <span className={styles.streamingDot} />}
-          <span
-            className={styles.providerIcon}
-            title={PROVIDER_NAMES[aiProvider]}
-            style={{ maskImage: `url(${PROVIDER_ICONS[aiProvider]})`, WebkitMaskImage: `url(${PROVIDER_ICONS[aiProvider]})` }}
-          />
-          {!streaming && duration != null && (
-            <span className={styles.duration}>{formatDuration(duration)}</span>
+          {collapsed && summary && (
+            <span className={styles.collapsedSummary}>{summary}</span>
           )}
         </div>
-      </div>
       {hasAnswer && !collapsed && (
-        <div className={`${styles.answer}${streaming ? ` ${styles.answerLive}` : ''}`}>
+        <div className={styles.answer}>
             <div className={styles.body}>
               {entries && entries.length > 0 ? (
                 entries.map((entry, i) => {
@@ -352,6 +375,10 @@ export function InlineAIBlock({
             )}
         </div>
       )}
+        {/* Last in the flow, painted into the right gutter: reading order gets
+            the exchange first, the bookkeeping after. */}
+        {meta}
+      </div>
     </div>
   );
 }
