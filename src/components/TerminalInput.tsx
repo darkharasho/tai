@@ -528,6 +528,7 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
                 onTrustLevelChange(levels[(idx + 1) % levels.length]);
               }}
               title={`Permissions: ${PERM_LABELS[aiProvider][trustLevel]}`}
+              data-perm-badge={trustLevel}
             >
               {trustLevel === 'bypass'
                 ? <ShieldOff size={12} />
@@ -547,6 +548,7 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
             <textarea
               ref={inputRef}
               className={styles.field}
+              data-composer
               value={value}
               onChange={handleChange}
               onKeyDown={handleKeyDown}
