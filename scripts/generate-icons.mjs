@@ -123,11 +123,12 @@ async function main() {
   await write(p('build', 'icon.ico'), encodeIco(icoImages));
 
   console.log('\ntray templates');
-  // Flat single-colour glyph, no tile. Nothing consumes these yet — the tray
-  // feature the README describes has no implementation in electron/.
+  // Flat single-colour glyph, no tile, at true menubar sizes. Electron picks
+  // the @2x file up automatically by filename convention, so these must be
+  // exact — a downscale from a larger render visibly softens at 16px.
   for (const [name, colour] of [['tai-black', '#000000'], ['tai-white', '#FFFFFF']]) {
-    await write(p('public', 'img', `${name}.png`), await raster(renderGlyph({ color: colour }), 44));
-    await write(p('public', 'img', `${name}@2x.png`), await raster(renderGlyph({ color: colour }), 88));
+    await write(p('public', 'img', `${name}.png`), await raster(renderGlyph({ color: colour }), 16));
+    await write(p('public', 'img', `${name}@2x.png`), await raster(renderGlyph({ color: colour }), 32));
   }
 
   console.log('\nweb');

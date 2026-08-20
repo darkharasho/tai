@@ -54,7 +54,9 @@ Open multiple terminal sessions in tabs. Each tab tracks its own working directo
 TAI runs a real PTY with full interactive shell support. Vim, htop, SSH sessions, curses apps — everything works. The hidden xterm instance handles all terminal state while the React UI renders the block view on top.
 
 ### System tray
-TAI lives in your system tray. Close the window and it keeps running. Click the tray icon to bring it back. On Mac and Windows, the tray icon automatically swaps between light and dark variants to match your system theme.
+TAI lives in your system tray. Close the window and it keeps running — your shells, your scrollback, and any in-flight AI request all survive. Click the tray icon to bring it back, or use **Show TAI** from its menu. Quitting for real is **Quit TAI** in the same menu, or `Cmd/Ctrl+Q`.
+
+The tray icon follows your system theme. On macOS it ships as a template image, so it tracks the menubar automatically — including while its menu is open. On Windows and Linux it swaps between light and dark glyphs when the theme changes.
 
 ---
 

@@ -16,6 +16,7 @@ import { purgeStaleTempFiles } from './services/tempCleanup';
 import { registerCommandIndexIpc } from './services/commandIndexStore';
 import { registerWorkflowIpc } from './services/workflowStore';
 import { registerRecordingSave } from './services/recordingSave';
+import { setupTray, destroyTray, isQuitting, quitApp } from './services/tray';
 
 if (process.env.VITE_DEV_SERVER_URL) {
   app.commandLine.appendSwitch('remote-debugging-port', '9222');
@@ -96,8 +97,14 @@ function createWindow() {
   mainWindow.on('maximize', () => mainWindow?.webContents.send('window:maximized-change', true));
   mainWindow.on('unmaximize', () => mainWindow?.webContents.send('window:maximized-change', false));
 
-  mainWindow.on('close', () => {
+  // Closing the window hides it to the tray and leaves the PTYs running; only
+  // an explicit quit tears the app down. Window state is saved either way, so
+  // the geometry survives both paths.
+  mainWindow.on('close', (event) => {
     saveWindowState();
+    if (isQuitting()) return;
+    event.preventDefault();
+    mainWindow?.hide();
   });
   mainWindow.on('resize', saveWindowState);
   mainWindow.on('move', saveWindowState);
@@ -127,6 +134,7 @@ app.whenReady().then(() => {
   setupGeminiService(() => mainWindow);
   setupNotifyService(() => mainWindow);
   setupGitService();
+  setupTray({ getWindow: () => mainWindow });
 });
 
 app.on('before-quit', () => {
@@ -135,10 +143,22 @@ app.on('before-quit', () => {
   destroyAllClaude();
   destroyAllCodex();
   destroyAllGemini();
+  destroyTray();
 });
 
-app.on('window-all-closed', () => {
-  app.quit();
+// The window hides rather than closes, so this normally never fires. If the
+// window is genuinely destroyed the tray is the only UI left, and quitting
+// would strand the user with no way back — so hold the app open instead.
+app.on('window-all-closed', () => {});
+
+// macOS: clicking the dock icon after a close-to-tray reopens the window.
+app.on('activate', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+    return;
+  }
+  mainWindow.show();
+  mainWindow.focus();
 });
 
 ipcMain.on('window:minimize', () => mainWindow?.minimize());
