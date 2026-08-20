@@ -182,10 +182,11 @@ export function InlineAIBlock({
     <div className={styles.wrapper}>
       {question && (
         <div className={`${styles.prompt}${isRemote ? ` ${styles.promptRemote}` : ''}`}>
-          <span className={`${styles.promptLabel}${isFollowup ? ` ${styles.promptLabelFollowup}` : ''}${isRemote ? ` ${styles.promptLabelRemote}` : ''}`}>
-            {isFollowup && <CornerDownRight size={10} className={styles.promptLabelIcon} />}
-            You
-          </span>
+          {isFollowup && (
+            <span className={`${styles.promptLabel} ${styles.promptLabelFollowup}${isRemote ? ` ${styles.promptLabelRemote}` : ''}`}>
+              <CornerDownRight size={11} className={styles.promptLabelIcon} />
+            </span>
+          )}
           <div className={styles.promptText}>
             <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
               {question}
@@ -194,7 +195,11 @@ export function InlineAIBlock({
         </div>
       )}
       {(streaming || content || (entries && entries.length > 0)) && (
-        <div className={styles.block} data-card-surface>
+        <div
+          className={`${styles.block}${streaming ? ` ${styles.blockStreaming}` : ''}${isRemote ? ` ${styles.blockRemote}` : ''}`}
+          data-ai-turn
+          data-streaming={streaming ? 'true' : undefined}
+        >
           <div className={styles.accent} />
           <div className={styles.inner}>
             <div className={styles.header}>
