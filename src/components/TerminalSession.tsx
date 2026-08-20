@@ -162,6 +162,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     onContextModeChange(mode);
   }, [onContextModeChange]);
   const [cwd, setCwd] = useState(initialCwd);
+  // Bumped on submit so the block list re-pins to the bottom (see BlockList).
+  const [submitToken, setSubmitToken] = useState(0);
   const [promptInfo, setPromptInfo] = useState<{ text: string; isRemote: boolean; sshTarget?: string } | null>(null);
   const [remoteAi, setRemoteAi] = useState(initialRemoteAi());
   // Per-host memory so re-entering a known host restores its mode without re-asking.
@@ -819,6 +821,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   // displayQuestion: what the AI card shows as the user's question (and what
   // history picks up) when the actual prompt carries framing/context.
   const handleAIRequest = useCallback((prompt: string, displayQuestion?: string) => {
+    // Covers the paths that never touch the composer — "Ask AI about this"
+    // from a block's context menu, session prompts — as well as a plain submit.
+    setSubmitToken(t => t + 1);
     handleInputModeChange('ai');
     const aiId = nextBlockId();
     const aiStartTime = Date.now();
@@ -1188,6 +1193,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const hasActiveBlock = displayItems.some(item => item.type === 'command' && item.active);
 
   const handleSubmit = useCallback((value: string) => {
+    // Every submit re-pins the block list, whichever mode it lands in.
+    setSubmitToken(t => t + 1);
     if (inputMode === 'shell') {
       // When remote-AI is active the composer is unlocked during a foreground
       // command, but shell submits must not write to the PTY mid-command
@@ -1784,6 +1791,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           onSessionStop={sessionInList ? handleSessionStop : undefined}
           onSessionRestart={sessionInList && sessionForCard?.kind !== 'agent' ? handleSessionRestart : undefined}
           onAIPrompt={sessionInList ? handleSessionAIPrompt : undefined}
+          submitToken={submitToken}
           activeHeaderExtra={sessionInList && eff.isRemote && remoteAi.target ? (
             <RemoteAiPill
               view={pillView(remoteAi)}

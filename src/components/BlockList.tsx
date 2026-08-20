@@ -52,6 +52,8 @@ interface BlockListProps {
   onSessionRestart?: () => void;
   onAIPrompt?: (text: string) => void;
   activeHeaderExtra?: ReactNode;
+  /** Bumped on every composer submit; re-pins the list to the bottom. */
+  submitToken?: number;
 }
 
 export function BlockList({
@@ -82,6 +84,7 @@ export function BlockList({
   onSessionRestart,
   onAIPrompt,
   activeHeaderExtra,
+  submitToken,
 }: BlockListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -101,6 +104,23 @@ export function BlockList({
     if (!pinnedRef.current) return;
     bottomRef.current?.scrollIntoView({ behavior: 'instant' });
   }, [items]);
+
+  // Submitting re-arms the follow, the way typing at a shell prompt jumps you
+  // back to the bottom. Without this, a list left unpinned (scrolled up to read
+  // earlier output, or knocked loose when a finishing card resized) stays where
+  // it is — so an AI answer streams in entirely below the fold and nothing ever
+  // brings it into view. The user asked for this output; show it to them.
+  useEffect(() => {
+    if (submitToken === undefined) return;
+    pinnedRef.current = true;
+    bottomRef.current?.scrollIntoView({ behavior: 'instant' });
+    // The turn renders (and then grows) over the following frames; the
+    // ResizeObserver takes over once there is height to follow.
+    const t = setTimeout(() => {
+      if (pinnedRef.current) bottomRef.current?.scrollIntoView({ behavior: 'instant' });
+    }, 120);
+    return () => clearTimeout(t);
+  }, [submitToken]);
 
   // The [items] effect only re-scrolls when the array identity changes, so it
   // misses content that grows in place: streaming output appended to an active
