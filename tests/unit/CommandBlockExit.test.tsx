@@ -50,10 +50,13 @@ describe('CommandBlock exit-code affordance', () => {
     expect(container.querySelector('[class*="exitTag"]')).toBeNull();
   });
 
-  it('shows the failure tag on collapsed cards too', () => {
+  // Collapsed rows drop the pill and carry failure on the left rail instead,
+  // the same way an expanded block does.
+  it('marks a collapsed card as failed without a tag', () => {
     const { container } = render(
       <CommandBlock block={makeBlock({ exitCode: 1 })} collapsed {...base} />,
     );
-    expect(container.querySelector('[class*="exitTag"]')).toBeTruthy();
+    expect(container.querySelector('[data-collapsed]')).toHaveAttribute('data-exit', 'failure');
+    expect(container.querySelector('[class*="exitTag"]')).toBeNull();
   });
 });

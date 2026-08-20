@@ -59,6 +59,12 @@ const SSH_CLOSED_RE = /Connection to \S+ closed|Connection closed by |client_loo
 const STREAM_TAIL_LINES = 600;
 const OSC6973_RE = /\x1b\]6973;([^\x07\x1b]*)(?:\x07|\x1b\\)/g;
 
+/** True when `text` contains a character that will actually draw on screen. */
+function hasVisibleText(text: string): boolean {
+  // eslint-disable-next-line no-control-regex
+  return /[^\s\u0000-\u001f\u007f\u200b-\u200f\ufeff]/.test(text);
+}
+
 export class BlockSegmenter {
   private _idCounter = 0;
   private _currentPrompt = '';
@@ -471,9 +477,17 @@ export class BlockSegmenter {
       return;
     }
 
+    // Before the first prompt there is nothing to strip a command off of, so
+    // whatever the shell printed lands in `command`. Control bytes and
+    // zero-width characters survive the trim above, so drop them here rather
+    // than render them as a command.
+    if (!hasVisibleText(command)) {
+      command = '';
+    }
+
     // Nothing ran: a bare Enter, a redrawn prompt, or pure echo noise.
     // Update prompt bookkeeping but don't emit a noise card.
-    if (!command && !output) {
+    if (!command && !hasVisibleText(output)) {
       if (this._inSshSession && newPromptText === this._initialPrompt) {
         this._setSshSession(false, null);
       }
@@ -490,8 +504,11 @@ export class BlockSegmenter {
       output,
       rawOutput,
       promptText: this._currentPrompt,
-      startTime: this._startTime,
-      duration: Date.now() - this._startTime,
+      // `_startTime` is 0 until the first prompt lands, so anything the shell
+      // prints before it (a MOTD banner) would otherwise be timed from the
+      // epoch. No start time means no duration, not a 56-year one.
+      startTime: this._startTime || Date.now(),
+      duration: this._startTime ? Date.now() - this._startTime : 0,
       isRemote: this._isRemotePrompt(this._currentPrompt),
       hooksAvailable: false,
     };

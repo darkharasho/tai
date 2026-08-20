@@ -5,6 +5,10 @@
   align-items: center;
   gap: 8px;
   padding: 0 8px;
+  /* The window frame paints a 2px animated strip across the top edge. It
+     overlays rather than displaces, so without matching padding the bar's
+     contents centre against a band 2px of which is covered. */
+  padding-top: var(--frame-inset, 0px);
   min-height: 38px;
   flex-shrink: 0;
   background: var(--bg-surface);
@@ -18,12 +22,13 @@
 /* macOS keeps its native traffic lights; leave room for them. */
 .barMac { padding-left: 78px; }
 
+/* `no-drag` belongs on the controls, not the clusters: the clusters stretch
+   to fill the bar, so opting them out left the window with no drag region. */
 .cluster {
   display: flex;
   align-items: center;
   gap: 2px;
   flex: 1 0 auto;
-  -webkit-app-region: no-drag;
 }
 .cluster:last-of-type { justify-content: flex-end; }
 
@@ -39,6 +44,7 @@
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
+  -webkit-app-region: no-drag;
   transition: background 0.15s ease, color 0.15s ease;
 }
 .iconBtn:hover {
@@ -107,6 +113,7 @@
 .windowBtn {
   display: flex;
   align-items: center;
+  -webkit-app-region: no-drag;
   padding: 5px 8px;
   border: none;
   border-radius: 4px;

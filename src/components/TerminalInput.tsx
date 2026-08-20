@@ -554,7 +554,7 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
                 ? 'Command running… (input queues)'
                 : isAI
                   ? 'Ask AI anything, e.g. why did the last build fail and how do I fix it?'
-                  : 'Run a command, or press Shift+Tab to ask AI'}
+                  : 'Run a command'}
               spellCheck={false}
               autoComplete="off"
               rows={1}

@@ -23,22 +23,38 @@
 }
 
 .tab {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
-  border-radius: 6px;
+  border-radius: 4px;
   cursor: pointer;
   font-family: var(--font-sans);
-  /* The rail carries the mode colour, the way a block's rail carries state. */
-  box-shadow: inset 2px 0 0 transparent;
-  transition: background 0.15s ease, box-shadow 0.15s ease;
+  transition: background 0.15s ease;
 }
 .tab:hover { background: var(--bg-hover); }
 
+/* The rail carries the mode colour, the way a block's rail carries state.
+   A real bar rather than an inset shadow: an inset shadow follows
+   `border-radius`, and on a row this short the whole 2px rail is curve. */
+.tab::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+
 .tabActive {
   background: var(--bg-elevated);
-  box-shadow: inset 2px 0 0 var(--tab-accent, var(--color-shell));
+}
+.tabActive::before {
+  background: var(--tab-accent, var(--color-shell));
 }
 
 .index {

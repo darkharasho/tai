@@ -364,21 +364,27 @@ export const CommandBlock = memo(function CommandBlock({
     document.body,
   ) : null;
 
+  // The collapsed row is a one-line version of the expanded header, not the
+  // old prompt echo: no glyph, no `❯`, no exit pill. State rides the same
+  // left rail the expanded block uses; cwd and duration sit muted on the right.
   if (collapsed) {
     return (
-      <div className={styles.collapsed} onClick={() => onToggleCollapse?.()} onContextMenu={openMenu}>
-        {statusGlyph}
-        {(isRemote || !path) && user && (
-          <span className={styles.promptUser} style={{ color: modeColor }}>{user}</span>
+      <div
+        className={styles.collapsed + (exitClass === 'failure' ? ` ${styles.collapsedFailed}` : '')}
+        data-collapsed
+        data-exit={exitClass}
+        onClick={() => onToggleCollapse?.()}
+        onContextMenu={openMenu}
+      >
+        {isRemote && user && (
+          <span className={styles.collapsedHost} style={{ color: modeColor }}>{user}</span>
         )}
-        {path && <span className={styles.promptPath}>{path}</span>}
-        <span className={styles.promptSep} style={{ color: modeColor }}>❯</span>
-        <span className={styles.cmdDim}>{block.command}</span>
-        {exitTag}
-        {block.duration >= DURATION_VISIBLE_MS && (
-          <span className={styles.meta}>{formatDuration(block.duration)}</span>
-        )}
+        <span className={styles.collapsedCmd}>{block.command}</span>
         {block.summaryLine && <span className={styles.summaryLine}>{block.summaryLine}</span>}
+        <span className={styles.collapsedMeta}>
+          {path && <span className={styles.collapsedPath}>{path}</span>}
+          {block.duration >= DURATION_VISIBLE_MS && <span>{formatDuration(block.duration)}</span>}
+        </span>
         {contextMenu}
       </div>
     );

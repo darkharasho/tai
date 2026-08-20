@@ -893,6 +893,11 @@ html, body {
   background-color: var(--scrollbar-thumb-active);
 }
 
+.window-frame {
+  /* Height of the ::before strip below, so chrome can pad clear of it. */
+  --frame-inset: 2px;
+}
+
 .window-frame::before {
   content: '';
   position: absolute;

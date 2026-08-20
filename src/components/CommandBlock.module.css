@@ -11,7 +11,9 @@
 .block {
   position: relative;
   font-size: 13px;
-  padding: 8px 16px 10px;
+  /* Warp separates blocks with whitespace rather than borders — the padding
+     is the separator, so it has to be generous. */
+  padding: 12px 16px 14px;
   transition: background 0.25s ease, box-shadow 0.25s ease;
   animation: blockIn 0.16s ease-out;
   /* Flat by default, the way Warp renders a finished command: no card, no
@@ -149,24 +151,60 @@
 .active {
 }
 
+/* One-line form of the expanded header: same rail, same rhythm, same muted
+   meta — just folded onto a single row. */
 .collapsed {
+  position: relative;
   font-size: 13px;
-  padding: 3px 12px;
-  opacity: 0.55;
+  padding: 7px 16px;
   cursor: pointer;
   display: flex;
-  align-items: center;
-  gap: 6px;
-  border-radius: 6px;
-  transition: opacity 0.15s, background 0.15s;
+  align-items: baseline;
+  gap: 8px;
+  box-shadow: inset 3px 0 0 transparent;
+  transition: background 0.15s ease, box-shadow 0.25s ease;
 }
 
 .collapsed:hover {
-  background: rgba(255, 255, 255, 0.025);
+  background: rgba(255, 255, 255, 0.022);
 }
 
-.collapsed:hover {
-  opacity: 0.85;
+.collapsedFailed {
+  box-shadow: inset 3px 0 0 var(--color-error);
+}
+
+.collapsedCmd {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.collapsedHost {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+/* Mirrors the expanded block's meta line: right-aligned, muted, mono. */
+.collapsedMeta {
+  margin-left: auto;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.collapsedPath {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .blockHead {
@@ -256,12 +294,6 @@
   font-family: var(--font-mono);
   font-weight: 500;
   flex-shrink: 0;
-}
-
-/* The collapsed row keeps the old single-line prompt chrome, so it still
-   needs the blue path it always had. */
-.collapsed .promptPath {
-  color: var(--color-info);
 }
 
 .promptPath {

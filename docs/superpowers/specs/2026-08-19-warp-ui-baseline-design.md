@@ -2,7 +2,7 @@
 
 Date: 2026-08-19
 Branch: `feat/warp-ui-baseline`
-Status: P0–P3 implemented; P4 deferred pending review.
+Status: P0–P3 implemented plus a refinement pass; P4 deferred pending review.
 
 ## Problem
 
@@ -115,6 +115,39 @@ owns, so the toggle is a button only.
 
 Still outstanding: the README screenshots show the old horizontal tab bar and
 need retaking.
+
+### P3.1 — Refinement pass
+
+Review of the running app against the reference turned up four fit-and-finish
+gaps and two bugs the new chrome exposed:
+
+- **Epoch durations.** The legacy segmenter path timed a block from
+  `_startTime`, which is `0` until the first prompt lands — so a MOTD banner
+  reported `29786422m 36s`. No start time now means no duration. (The
+  OSC-133 path already guarded this.)
+- **Empty cards.** Before the first prompt there is no prompt to strip a
+  command off of, so control bytes and zero-width characters landed in
+  `command`, survived the trim, and rendered as a bare prompt row. Both
+  command and output must now contain a printable character.
+- **Collapsed rows.** P1 restyled only the expanded header, but restored
+  blocks render collapsed — so most of what a returning user sees was still
+  the old chrome. The collapsed row is now a one-line version of the new
+  header: no status glyph, no `❯`, no exit pill; command left, cwd and
+  duration muted on the right, failure on the same left rail the expanded
+  block uses. Exposed as `data-collapsed` / `data-exit` so tests can assert
+  the contract without matching on hashed class names.
+- **Block rhythm.** Warp separates blocks with whitespace instead of borders,
+  so the padding has to carry the separation: `8px 16px 10px` → `12px 16px 14px`.
+- **Composer.** `Shift+Tab` was advertised twice, in the placeholder and in
+  the hint line beneath it. The hint line keeps it.
+- **Drag region lost.** `.cluster` carried both `flex: 1 0 auto` and
+  `-webkit-app-region: no-drag`, so the two clusters stretched across the
+  whole bar and left the window undraggable. `no-drag` moved onto the
+  controls themselves.
+- **Top bar centring.** `.window-frame::before` paints a 2px animated strip
+  over the top edge without displacing anything, so bar contents centred
+  against a band partly hidden beneath it. The strip's height is now
+  published as `--frame-inset` and the bar pads by it.
 
 ### P4 — AI block at rest (deferred)
 
