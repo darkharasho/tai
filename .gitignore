@@ -6,3 +6,7 @@ dist-electron/
 .DS_Store
 .worktrees/
 graphify-out/
+
+# Runtime artifacts from the zsh shell-integration shim
+electron/shell-integration/zsh-shim/.zcompdump
+electron/shell-integration/zsh-shim/.zsh_history
