@@ -91,18 +91,21 @@ export function completePathInsensitive(
   // 'Documents/Git' → head 'Documents/', base 'Git'.
   const rawHead = slash === -1 ? '' : token.slice(0, slash + 1);
   const base = slash === -1 ? token : token.slice(slash + 1);
-  let searchDir: string;
-  if (rawHead.startsWith('~')) {
-    searchDir = path.join(os.homedir(), rawHead.slice(1));
-  } else if (path.isAbsolute(rawHead)) {
-    searchDir = rawHead;
-  } else {
-    searchDir = path.resolve(cwd, rawHead || '.');
-  }
-  // Re-case the segments already typed, too. Completing only the last segment
-  // leaves `cd documents/gith` → `documents/GitHub/`: fine on a case-insensitive
-  // volume, but not the path that exists, and invalid anywhere else.
+  // Re-case the segments already typed before doing anything with them. Two
+  // reasons, and the second is the one that bites: completing only the last
+  // segment leaves `cd documents/gith` → `documents/GitHub/`, which is not the
+  // path that exists; and reading the directory back requires the real name on
+  // a case-sensitive filesystem, so searching the typed path finds nothing on
+  // Linux however well it works on macOS.
   const head = recasePath(cwd, rawHead);
+  let searchDir: string;
+  if (head.startsWith('~')) {
+    searchDir = path.join(os.homedir(), head.slice(1));
+  } else if (path.isAbsolute(head)) {
+    searchDir = head;
+  } else {
+    searchDir = path.resolve(cwd, head || '.');
+  }
   let entries: fs.Dirent[];
   try {
     entries = fs.readdirSync(searchDir, { withFileTypes: true });

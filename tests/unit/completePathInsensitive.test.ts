@@ -107,3 +107,9 @@ describe('recaseEntry (applied to bash\'s own output)', () => {
     expect(recaseEntry(root, 'nosuch/thing')).toBe('nosuch/thing');
   });
 });
+
+// NOTE: the "re-casing already-typed segments" cases above are the guard for
+// case-sensitive filesystems. They pass on macOS whether or not the search
+// directory is re-cased, because the volume resolves `documents/` to
+// `Documents/` itself — on Linux they fail unless it is. CI is what enforces
+// them; do not "simplify" them away because they look redundant here.
