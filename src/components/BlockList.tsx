@@ -85,6 +85,7 @@ export function BlockList({
 }: BlockListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   // Warp-style auto-follow: only track new output while the user is pinned to
   // the bottom. Scrolling up into history releases the pin; returning to the
   // bottom re-arms it. Defaults pinned so fresh sessions follow output.
@@ -100,6 +101,22 @@ export function BlockList({
     if (!pinnedRef.current) return;
     bottomRef.current?.scrollIntoView({ behavior: 'instant' });
   }, [items]);
+
+  // The [items] effect only re-scrolls when the array identity changes, so it
+  // misses content that grows in place: streaming output appended to an active
+  // card (e.g. `ls`), or a finishing card expanding to its full height. Follow
+  // the actual content box instead — while pinned, any height change re-pins to
+  // the bottom. Scrolling up releases the pin (handleScroll), so history stays
+  // put.
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      if (pinnedRef.current) bottomRef.current?.scrollIntoView({ behavior: 'instant' });
+    });
+    ro.observe(content);
+    return () => ro.disconnect();
+  }, []);
 
   // Re-scroll after layout settles whenever the active card transitions:
   //  - entering 'interactive' (alt-screen) → body grows to 72vh
@@ -276,21 +293,23 @@ export function BlockList({
         </div>
       )}
 
-      {groupConversations(items).map((group) => {
-        if (group.kind === 'passthrough') {
-          return renderItem(group.item);
-        }
-        // Key by the first item only: appending a follow-up must not change
-        // the key, or the whole conversation remounts (flicker, lost state).
-        const key = group.items[0].id;
-        return (
-          <AIConversation key={key}>
-            {group.items.map((aiItem, i) => renderItem(aiItem, { isFollowup: i > 0 }))}
-          </AIConversation>
-        );
-      })}
+      <div ref={contentRef}>
+        {groupConversations(items).map((group) => {
+          if (group.kind === 'passthrough') {
+            return renderItem(group.item);
+          }
+          // Key by the first item only: appending a follow-up must not change
+          // the key, or the whole conversation remounts (flicker, lost state).
+          const key = group.items[0].id;
+          return (
+            <AIConversation key={key}>
+              {group.items.map((aiItem, i) => renderItem(aiItem, { isFollowup: i > 0 }))}
+            </AIConversation>
+          );
+        })}
 
-      <div ref={bottomRef} style={{ overflowAnchor: 'auto' }} />
+        <div ref={bottomRef} style={{ overflowAnchor: 'auto' }} />
+      </div>
     </div>
   );
 }
