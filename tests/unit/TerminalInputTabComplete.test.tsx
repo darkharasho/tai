@@ -42,7 +42,7 @@ let tabComplete: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   tabComplete = vi.fn();
-  (window as any).tai = { pty: { tabComplete } };
+  (window as any).tai = { pty: { tabComplete }, shell: { pathBinaries: vi.fn().mockResolvedValue([]) } };
 });
 
 afterEach(() => {

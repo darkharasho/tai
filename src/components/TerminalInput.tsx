@@ -2,7 +2,8 @@ import { useState, useRef, useEffect, useImperativeHandle, forwardRef, useMemo }
 import { predictCommandIndexed } from '@/hooks/useGhostText';
 import type { CommandIndex } from '@/utils/commandIndex';
 import { predictNextCommand, type NextCommandCtx } from '@/utils/nextCommand';
-import { classifyInput, FLIP_THRESHOLD } from '@/utils/commandDetector';
+import { classifyInput, FLIP_THRESHOLD, type ClassificationResult } from '@/utils/commandDetector';
+import { loadLearnedVerdicts, recordCorrection } from '@/utils/classifierMemory';
 import { stripForceShellPrefix, shouldShowAutoBadge } from '@/utils/inputModeUx';
 import { buildNextCommandPrompt, extractCommand } from '@/utils/aiNextCommand';
 import styles from './TerminalInput.module.css';
@@ -149,6 +150,17 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
   const historyIndexRef = useRef(-1);
   const savedInputRef = useRef('');
   const [manualOverride, setManualOverride] = useState(false);
+  // What the user has taught the classifier. Loaded once per mount: the map is
+  // small, and a correction made in this composer is applied on the next
+  // keystroke via the ref below rather than by re-reading storage.
+  const learnedRef = useRef(loadLearnedVerdicts(localStorage));
+  // Local PATH binaries. Left null on a remote prompt — over ssh these names
+  // describe the wrong machine — which disables the rung by omission.
+  const [pathBinaries, setPathBinaries] = useState<ReadonlySet<string> | null>(null);
+  // The decision the last keystroke produced, so a Shift-Tab knows which rung
+  // it is correcting. `recordCorrection` discards corrections against rungs
+  // that sit above `learned` in the cascade.
+  const lastDecisionRef = useRef<{ input: string; result: ClassificationResult } | null>(null);
   const [tabCompletions, setTabCompletions] = useState<CompletionItem[]>([]);
   const [tabIndex, setTabIndex] = useState(-1);
   const tabPrefixRef = useRef('');
@@ -205,6 +217,14 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
   useEffect(() => {
     inputRef.current?.focus();
   }, [mode]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void window.tai.shell.pathBinaries().then(names => {
+      if (!cancelled) setPathBinaries(new Set(names));
+    }).catch(() => { /* the rung simply stays disabled */ });
+    return () => { cancelled = true; };
+  }, []);
 
   // Debounced AI refine: only fires when the flag is on, composer is empty (zero-state),
   // a heuristic suggestion exists, and a callback is provided. Cancels on any keystroke /
@@ -275,8 +295,23 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Tab' && e.shiftKey) {
       e.preventDefault();
+      const corrected: InputMode = mode === 'shell' ? 'ai' : 'shell';
+      const last = lastDecisionRef.current;
+      // Three clauses, each load-bearing:
+      //   !manualOverride  — teach only on the FIRST toggle for this input.
+      //                      After it is set the classifier stops running, so
+      //                      the retained decision is stale and repeated
+      //                      presses would pump the counts on one input.
+      //   last.input === … — the retained decision must describe what is in
+      //                      the field right now, not an earlier keystroke.
+      //   type !== corrected — only record when the classifier actually held
+      //                      the opposing opinion; agreeing is not a correction.
+      if (!manualOverride && last && last.input === value.trim() && last.result.type !== corrected) {
+        recordCorrection(last.input, corrected, last.result.source, localStorage);
+        learnedRef.current = loadLearnedVerdicts(localStorage);
+      }
       setManualOverride(true);
-      onModeChange(mode === 'shell' ? 'ai' : 'shell');
+      onModeChange(corrected);
       return;
     }
     if (e.key === 'Tab' && !e.shiftKey && mode === 'shell') {
@@ -455,9 +490,16 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
       return;
     }
     if (!manualOverride) {
-      const { type, confidence } = classifyInput(trimmed, { currentMode: mode });
-      if (confidence >= FLIP_THRESHOLD && type !== mode) {
-        onModeChange(type);
+      const result = classifyInput(trimmed, {
+        currentMode: mode,
+        learned: learnedRef.current,
+        // Omitted on a remote prompt: PATH was scanned locally, so over ssh
+        // these names belong to the wrong computer.
+        pathBinaries: promptInfo?.isRemote ? undefined : (pathBinaries ?? undefined),
+      });
+      lastDecisionRef.current = { input: trimmed, result };
+      if (result.confidence >= FLIP_THRESHOLD && result.type !== mode) {
+        onModeChange(result.type);
       }
     }
   };

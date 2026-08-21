@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import '@testing-library/jest-dom';
 import { render, act } from '@testing-library/react';
 import { createRef } from 'react';
@@ -8,6 +8,15 @@ import type { CommandIndex } from '../../src/utils/commandIndex';
 
 const noop = () => {};
 const emptyIndex: CommandIndex = { commands: [], byName: {} };
+
+beforeEach(() => {
+  // The composer fetches PATH binaries on mount to feed the classifier.
+  (window as any).tai = { shell: { pathBinaries: vi.fn().mockResolvedValue([]) } };
+});
+
+afterEach(() => {
+  delete (window as any).tai;
+});
 
 function renderInput(ref: React.RefObject<TerminalInputHandle>) {
   return render(
