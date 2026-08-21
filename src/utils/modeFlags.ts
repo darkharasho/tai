@@ -13,6 +13,7 @@ export function sameModeState(a: ModeState, b: ModeState): boolean {
   return a.inputOwner === b.inputOwner
     && a.provenance === b.provenance
     && a.degradedReason === b.degradedReason
+    && a.hooksGap === b.hooksGap
     && a.passwordPrompt === b.passwordPrompt
     && a.commandRunning === b.commandRunning;
 }

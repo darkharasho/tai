@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import styles from './DaemonInstallCard.module.css';
+import { rememberRemoteProbe } from '@/utils/remoteIntegration';
+import styles from './ShellIntegrationInstallCard.module.css';
 
 interface Props {
   target: string;
@@ -9,6 +10,14 @@ interface Props {
 
 type Status = 'idle' | 'installing' | 'verifying' | 'success' | 'error';
 
+/**
+ * The offer to install shell integration on a remote host.
+ *
+ * Renders as a strip inside the session's own block, above the live terminal.
+ * The previous standalone card rendered into the scroll history — which the
+ * docked xterm covers for the entire duration of an ssh session, i.e. exactly
+ * when this offer is the one thing worth seeing.
+ */
 export function ShellIntegrationInstallCard({ target, onInstalled, onDismiss }: Props) {
   const [status, setStatus] = useState<Status>('idle');
   const [errorMsg, setErrorMsg] = useState('');
@@ -24,6 +33,10 @@ export function ShellIntegrationInstallCard({ target, onInstalled, onDismiss }: 
 
     setStatus('verifying');
     const check = await window.tai.shellIntegration.checkRemote(target);
+    // Clears the remembered "no integration here" verdict, so the next connect
+    // to this host does not pre-emptively take the pane over and then hand it
+    // straight back when the first hook arrives.
+    rememberRemoteProbe(target, check, localStorage);
     if (!check.installed) {
       setStatus('error');
       setErrorMsg('Install completed but files not found — try again');
@@ -37,52 +50,59 @@ export function ShellIntegrationInstallCard({ target, onInstalled, onDismiss }: 
 
   if (status === 'success') {
     return (
-      <div className={`${styles.card} ${styles.cardSuccess}`}>
-        <div className={styles.statusRow}>
-          <span className={styles.successIcon}>✓</span>
-          <span className={styles.statusText}>
-            Shell integration installed on {target}. Reconnect to activate.
-          </span>
-        </div>
+      <div className={`${styles.strip} ${styles.stripSuccess}`}>
+        <span className={`${styles.icon} ${styles.iconSuccess}`}>✓</span>
+        <span className={styles.text}>
+          <b>Shell integration installed on {target}.</b> <span>Reconnect to activate.</span>
+        </span>
       </div>
     );
   }
 
   if (status === 'error') {
     return (
-      <div className={`${styles.card} ${styles.cardError}`}>
-        <div className={styles.title}>Install failed</div>
-        <div className={styles.errorMsg}>{errorMsg}</div>
-        <div className={styles.actions}>
-          <button className={styles.installButton} onClick={handleInstall}>Retry</button>
-          <button className={styles.dismissButton} onClick={onDismiss}>Dismiss</button>
-        </div>
+      <div className={`${styles.strip} ${styles.stripError}`}>
+        <span className={`${styles.icon} ${styles.iconError}`}>⚠</span>
+        <span className={styles.text}><b>Install failed.</b></span>
+        <span className={styles.errorMsg}>{errorMsg}</span>
+        <span className={styles.grow} />
+        <button type="button" className={styles.action} onClick={handleInstall}>Retry</button>
+        <button type="button" className={styles.dismiss} onClick={onDismiss}>Dismiss</button>
       </div>
     );
   }
 
-  const busy = status === 'installing' || status === 'verifying';
-  const busyLabel = status === 'installing' ? 'Installing…' : 'Verifying…';
+  if (status === 'installing' || status === 'verifying') {
+    return (
+      <div className={styles.strip}>
+        <span className={styles.spinner} />
+        <span className={styles.text}>
+          <span>{status === 'installing' ? `Installing on ${target}…` : 'Verifying…'}</span>
+        </span>
+      </div>
+    );
+  }
 
   return (
-    <div className={styles.card}>
-      <div className={styles.title}>Install shell integration on {target}?</div>
-      <div className={styles.description}>
-        Adds deterministic block segmentation (OSC 133) for this host. Writes
-        ~/.config/tai/shell-integration.sh and a guarded source line to
-        ~/.bashrc / ~/.zshrc. Takes effect on next login.
-      </div>
-      {busy ? (
-        <div className={styles.statusRow}>
-          <span className={styles.spinner} />
-          <span className={styles.statusText}>{busyLabel}</span>
-        </div>
-      ) : (
-        <div className={styles.actions}>
-          <button className={styles.installButton} onClick={handleInstall}>Install</button>
-          <button className={styles.dismissButton} onClick={onDismiss}>Not now</button>
-        </div>
-      )}
+    <div className={styles.strip}>
+      <span className={styles.icon}>⚠</span>
+      <span className={styles.text}>
+        <b>No shell integration on this host.</b>{' '}
+        <span>Blocks and exit codes are inferred, not observed.</span>
+      </span>
+      <span className={styles.grow} />
+      <button
+        type="button"
+        className={styles.action}
+        onClick={handleInstall}
+        title={
+          `Writes ~/.config/tai/shell-integration.sh on ${target} and a guarded source line ` +
+          'to ~/.bashrc / ~/.zshrc. Takes effect on next login.'
+        }
+      >
+        Install
+      </button>
+      <button type="button" className={styles.dismiss} onClick={onDismiss}>Not now</button>
     </div>
   );
 }

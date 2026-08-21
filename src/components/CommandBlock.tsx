@@ -90,6 +90,18 @@ interface CommandBlockProps {
   onRestart?: () => void;
   /** Natural-language input in the session stdin routes here (side chat). */
   onAIPrompt?: (text: string) => void;
+  /**
+   * `user@host` for a remote session. Replaces the echoed `ssh user@host`
+   * command in the session header: on a host with no integration the command
+   * string is the ONLY thing the header can say, and it says it twice.
+   */
+  remoteHost?: string | null;
+  /**
+   * Rendered directly under the session header, above the live terminal — the
+   * shell-integration offer. It belongs here rather than in the scroll history
+   * because the docked xterm covers the history for the whole session.
+   */
+  headerNotice?: ReactNode;
 }
 
 /** Ticking elapsed-time chip for a live session card. */
@@ -157,6 +169,8 @@ export const CommandBlock = memo(function CommandBlock({
   onStop,
   onRestart,
   onAIPrompt,
+  remoteHost,
+  headerNotice,
 }: CommandBlockProps) {
   const [showAll, setShowAll] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -398,6 +412,9 @@ export const CommandBlock = memo(function CommandBlock({
   const blockClass =
     styles.block +
     (cardChrome ? ` ${styles.blockCard}` : '') +
+    // A live raw terminal drops the accent outline/brackets: TAI is not
+    // parsing what is on that surface, so it should not frame it as if it were.
+    (cardChrome && bodyMode === 'interactive' && isActive ? ` ${styles.blockCardFlat}` : '') +
     (sessionChrome ? ` ${styles.blockSession}` : '') +
     (!cardChrome && !sessionChrome && exitClass === 'failure' ? ` ${styles.blockFailed}` : '') +
     (!cardChrome && !sessionChrome && active ? ` ${styles.blockActive}` : '') +
@@ -423,7 +440,13 @@ export const CommandBlock = memo(function CommandBlock({
       {sessionLive ? (
         <div className={styles.sessionHead}>
           <span className={styles.sessionDot} style={{ background: modeColor, boxShadow: `0 0 7px ${modeColor}` }} />
-          <span className={styles.sessionName}>{block.command}</span>
+          <span
+            className={styles.sessionName}
+            style={remoteHost ? { color: modeColor, fontWeight: 500 } : undefined}
+            title={remoteHost ? block.command : undefined}
+          >
+            {remoteHost ?? block.command}
+          </span>
           <span className={styles.kindChip}>
             {sessionKind === 'agent' ? 'agent session' : sessionKind === 'oneshot' ? 'session' : sessionKind}
           </span>
@@ -544,6 +567,8 @@ export const CommandBlock = memo(function CommandBlock({
       </div>
       )}
 
+      {headerNotice}
+
       {!sessionLive && cmdRest && (
         <pre className={styles.cmdContinuation}>{cmdRest}</pre>
       )}
@@ -557,16 +582,24 @@ export const CommandBlock = memo(function CommandBlock({
 
       {bodyMode === 'interactive' && (
         <>
-          <div className={styles.separator} style={isRemote ? SEPARATOR_STYLE_REMOTE : SEPARATOR_STYLE_LOCAL} />
           {isActive ? (
-            <div
-              ref={onInteractiveContainerRef}
-              className={`${styles.interactiveBody}${docked ? ` ${styles.dockedInteractiveBody}` : ''}`}
-            />
+            <>
+              <div className={styles.rawLabel}>
+                <span>live terminal</span>
+                <span className={styles.rawTag}>raw passthrough</span>
+              </div>
+              <div
+                ref={onInteractiveContainerRef}
+                className={`${styles.interactiveBody} ${styles.interactiveInset}${docked ? ` ${styles.dockedInteractiveBody}` : ''}`}
+              />
+            </>
           ) : (
-            <div className={styles.interactiveBody} style={{ minHeight: 80, padding: '10px 16px', opacity: 0.6, fontStyle: 'italic', fontSize: 12 }}>
-              (interactive program running…)
-            </div>
+            <>
+              <div className={styles.separator} style={isRemote ? SEPARATOR_STYLE_REMOTE : SEPARATOR_STYLE_LOCAL} />
+              <div className={styles.interactiveBody} style={{ minHeight: 80, padding: '10px 16px', opacity: 0.6, fontStyle: 'italic', fontSize: 12 }}>
+                (interactive program running…)
+              </div>
+            </>
           )}
         </>
       )}

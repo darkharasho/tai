@@ -1,0 +1,113 @@
+/* An inline strip, not a floating card.
+   The offer applies to a specific host, so it rides inside that host's block
+   between the session header and the live terminal. As a standalone card it
+   rendered into the scroll history, where the docked xterm sat on top of it. */
+.strip {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  /* Aligned with .sessionHead's geometry so the strip reads as a second row
+     of the header rather than a separate element floating in the card. */
+  padding: 7px 13px;
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  background: linear-gradient(90deg, rgba(199, 145, 12, 0.10), rgba(199, 145, 12, 0.02) 65%);
+  /* No border-top: .sessionHead already draws the divider directly above. */
+  border-bottom: 1px solid var(--border-card);
+  animation: stripIn 0.15s ease;
+}
+
+.stripSuccess {
+  background: linear-gradient(90deg, rgba(0, 168, 132, 0.10), rgba(0, 168, 132, 0.02) 65%);
+}
+
+.stripError {
+  background: linear-gradient(90deg, rgba(227, 85, 53, 0.10), rgba(227, 85, 53, 0.02) 65%);
+}
+
+.icon {
+  flex: none;
+  font-size: 12px;
+  color: var(--color-warning);
+}
+
+.iconSuccess {
+  color: var(--color-shell);
+  font-weight: 700;
+}
+
+.iconError {
+  color: var(--color-error);
+}
+
+.text b {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.text span {
+  color: var(--text-muted);
+}
+
+.grow {
+  flex: 1;
+}
+
+/* Links, not buttons. The strip is a quiet aside inside a live session card;
+   filled buttons here compete with STOP/RESTART for the eye. */
+.action {
+  flex: none;
+  font-size: 11.5px;
+  font-family: var(--font-sans);
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-info);
+  border-bottom: 1px solid rgba(17, 183, 212, 0.3);
+  cursor: pointer;
+}
+
+.action:hover {
+  border-bottom-color: var(--color-info);
+}
+
+.dismiss {
+  flex: none;
+  font-size: 11.5px;
+  font-family: var(--font-sans);
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.dismiss:hover {
+  color: var(--text-secondary);
+}
+
+.errorMsg {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-error);
+}
+
+.spinner {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--border-card);
+  border-top-color: var(--color-info);
+  border-radius: 50%;
+  animation: stripSpin 0.7s linear infinite;
+}
+
+@keyframes stripSpin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes stripIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

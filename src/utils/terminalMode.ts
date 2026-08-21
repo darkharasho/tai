@@ -56,6 +56,15 @@ export interface ModeState {
   inputOwner: InputOwner;
   provenance: Provenance;
   degradedReason?: DegradedReason;
+  /**
+   * Is the `hooks` source specifically still missing?
+   *
+   * `degradedReason` cannot answer this: it reports ONE gap and prefers
+   * 'no-termios', so a session that also lacks termios reports 'no-termios'
+   * while the hooks gap stays wide open. Consumers that care about shell
+   * integration in particular — not about degradation in general — read this.
+   */
+  hooksGap: boolean;
   passwordPrompt: boolean;
   commandRunning: boolean;
 }
@@ -69,6 +78,7 @@ export interface ModeResolver {
 export const INITIAL_MODE_STATE: ModeState = {
   inputOwner: 'shell',
   provenance: 'authoritative',
+  hooksGap: false,
   passwordPrompt: false,
   commandRunning: false,
 };
@@ -143,7 +153,7 @@ export function createModeResolver(): ModeResolver {
   }
 
   function set(next: Partial<ModeState>): ModeState {
-    state = { ...state, ...next, degradedReason: openGap() };
+    state = { ...state, ...next, degradedReason: openGap(), hooksGap: unavailable.has('hooks') };
     return state;
   }
 

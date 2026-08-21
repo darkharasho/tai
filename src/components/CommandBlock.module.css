@@ -426,7 +426,10 @@
 .interactiveBody {
   /* Most interactive programs (vim, htop, less, claude) expect a near-full
      screen. Sizing to ~72vh keeps the prompt header visible above and leaves
-     a sliver of context below so the card doesn't feel disconnected. */
+     a sliver of context below so the card doesn't feel disconnected.
+     This CANNOT be content-sized: the xterm host measures its container to
+     decide how many rows the PTY gets, so a height derived from the content
+     would resolve to zero rows. */
   min-height: 72vh;
   display: flex;
   width: 100%;
@@ -434,6 +437,40 @@
   background: var(--bg-card);
   border-radius: 6px;
   overflow: hidden;
+}
+
+/* The xterm's own palette sets `background` to the theme's --bg-card so the
+   terminal merges with its card. That merge is what made a mostly-blank
+   remote shell read as a hole in the card rather than as a terminal: same
+   colour, no edge, no explanation. A border and inset padding delineate the
+   live surface without touching the nine xterm palettes. */
+.interactiveInset {
+  border: 1px solid var(--border-card);
+  padding: 8px 10px;
+  margin-top: 6px;
+}
+
+/* Quiet "TAI is not parsing this" label above the live surface. Honest for
+   every docked program, not only for un-integrated ssh. */
+.rawLabel {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-top: 8px;
+  font-family: var(--font-sans);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.rawTag {
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  border: 1px solid var(--border-card);
+  border-radius: 3px;
+  padding: 1px 5px;
+  margin-left: auto;
 }
 
 /* Pushes CardInput to the bottom of a REPL-active card (python, node, psql).
@@ -889,4 +926,23 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* A docked raw terminal is not a card of TAI-parsed content — it is a window
+   onto another machine. Full .blockCard chrome (accent outline, 2px corner
+   brackets, 10px radius, glow shadow) frames it as though TAI understood what
+   is inside it. It does not; that is the entire point of the RAW PASSTHROUGH
+   label. Flat 1px border, tight radius, no brackets.
+
+   Must appear after .blockCard::before/::after in source order — CSS modules
+   preserve it, and both selectors are single-class, so order is the tiebreak. */
+.blockCardFlat {
+  border: 1px solid var(--border-card);
+  border-radius: 5px;
+  box-shadow: none;
+}
+
+.blockCardFlat::before,
+.blockCardFlat::after {
+  content: none;
 }

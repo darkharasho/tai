@@ -657,12 +657,20 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
   // when an SSH session is detected without OSC 133 markers, so we can offer
   // the user one-click install of the integration over there.
   const SSH_TARGET_RE = /^[\w.-]+(@[\w.-]+)?$/;
+  //
+  // `reachable` is reported separately from `installed` because this probe runs
+  // with BatchMode=yes: a host that wants a password or a passphrase fails it
+  // outright, and is indistinguishable from a host that answered "no files
+  // here" if both collapse into `installed: false`. Callers may treat an
+  // unreachable host as un-integrated for the session — that is revocable —
+  // but must not remember the verdict. The check command itself always exits
+  // 0, so a non-zero exit means ssh never got to run it.
   ipcMain.handle('shellIntegration:checkRemote', async (_event, target: string) => {
-    if (!SSH_TARGET_RE.test(target)) return { installed: false };
-    return new Promise<{ installed: boolean }>((resolve) => {
+    if (!SSH_TARGET_RE.test(target)) return { installed: false, reachable: false };
+    return new Promise<{ installed: boolean; reachable: boolean }>((resolve) => {
       const check = 'if [ -f "$HOME/.config/tai/shell-integration.sh" ] || [ -f "$HOME/.config/tai/shell-integration.zsh" ]; then echo OK; fi';
       execFile('ssh', ['-o', 'ConnectTimeout=3', '-o', 'BatchMode=yes', target, check], { timeout: 5000 }, (err, stdout) => {
-        resolve({ installed: !err && stdout.trim() === 'OK' });
+        resolve({ installed: !err && stdout.trim() === 'OK', reachable: !err });
       });
     });
   });

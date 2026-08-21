@@ -9,6 +9,13 @@ import { CommandBlock } from './CommandBlock';
 import {
   deriveInputSurface, focusTargetFor, composerVisible, pinnedActiveBlock, shouldShowXterm,
 } from '@/utils/inputSurface';
+import {
+  shouldOfferRemoteIntegration,
+  isRemoteRawSession,
+  isKnownUnintegrated,
+  rememberRemoteProbe,
+} from '@/utils/remoteIntegration';
+import { TakeoverBar } from './TakeoverBar';
 import { DaemonInstallCard } from './DaemonInstallCard';
 import { ShellIntegrationInstallCard } from './ShellIntegrationInstallCard';
 import { DAEMON_VERSION } from '../daemonVersion';
@@ -747,35 +754,49 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     };
   }, [ptyId, refreshCwd]);
 
-  // When an SSH session has been active for a couple seconds without OSC 133
-  // markers arriving from the remote shell, offer to install integration there.
-  // Per-target "don't ask again" lives in localStorage.
+  // An ssh session on a host with no OSC 133 is opaque end to end: no command
+  // boundaries, no exit codes, nothing for a block to frame. Declare the hooks
+  // gap (which hands the whole pane to the session) and offer to install
+  // integration over there. Per-target "don't ask again" lives in localStorage.
   useEffect(() => {
     if (!sshSessionActive || !sshSessionTarget) {
       setShellIntegrationCard(null);
       return;
     }
-    const dismissKey = `tai:si:dismissed:${sshSessionTarget}`;
-    if (localStorage.getItem(dismissKey)) return;
+    // Dismissal silences the OFFER only. It used to return early and skip the
+    // probe altogether, which meant saying "don't ask again" also quietly gave
+    // up the takeover and left the session wrapped in block chrome forever.
+    const dismissed = !!localStorage.getItem(`tai:si:dismissed:${sshSessionTarget}`);
+    const declareGap = () => {
+      // No remote hooks, so no OSC 133 will ever arrive from this host: every
+      // command-boundary and foreground fact for the rest of the session is a
+      // guess. Declared as an observation, not as "we are in SSH" — if the
+      // host later gains integration the first hook self-heals it.
+      applyModeSignal({ kind: 'sourceUnavailable', source: 'hooks' });
+      if (!dismissed) setShellIntegrationCard({ target: sshSessionTarget });
+    };
+
+    // A host we have already probed and found bare gets the gap declared NOW,
+    // before the remote prompt has even painted. Waiting on the round trip
+    // wrapped a couple of seconds of block chrome around a session that was
+    // never going to be blockable. See isKnownUnintegrated for why acting on a
+    // remembered verdict is safe.
+    if (isKnownUnintegrated(sshSessionTarget, localStorage)) declareGap();
 
     let cancelled = false;
-    // 2.5s delay so we don't prompt during one-shot ssh commands (e.g.
-    // `ssh host whoami`). checkRemote is authoritative — if the host already
-    // has integration, the card stays hidden.
-    const t = setTimeout(async () => {
-      if (cancelled) return;
+    // Probed on every connect regardless, to keep the remembered verdict
+    // honest. There is no debounce in front of this: the 2.5s one that used to
+    // be here existed to avoid prompting during one-shot `ssh host whoami`,
+    // but parseInteractiveSshCommand rejects those outright (a second
+    // positional argument means it is not an interactive session), so they
+    // never reach this effect in the first place.
+    void (async () => {
       const result = await window.tai.shellIntegration.checkRemote(sshSessionTarget);
       if (cancelled) return;
-      if (!result.installed) {
-        // No remote hooks, so no OSC 133 will ever arrive from this host: every
-        // command-boundary and foreground fact for the rest of the session is a
-        // guess. Declared as an observation, not as "we are in SSH" — if the
-        // host later gains integration the first hook self-heals it.
-        applyModeSignal({ kind: 'sourceUnavailable', source: 'hooks' });
-        setShellIntegrationCard({ target: sshSessionTarget });
-      }
-    }, 2500);
-    return () => { cancelled = true; clearTimeout(t); };
+      rememberRemoteProbe(sshSessionTarget, result, localStorage);
+      if (!result.installed) declareGap();
+    })();
+    return () => { cancelled = true; };
   }, [sshSessionActive, sshSessionTarget, applyModeSignal]);
 
   const handleSaveRecording = useCallback(async () => {
@@ -1497,6 +1518,10 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     // precisely where this fallback is the only thing keeping the user able to
     // type.
     commandRunning: hasActiveBlock,
+    // An ssh session whose host never sends OSC 133: raw passthrough end to
+    // end, so it takes over the pane rather than docking into a card that has
+    // no boundaries to draw.
+    remoteRaw: isRemoteRawSession({ sshActive: sshSessionActive, hooksGap: modeState.hooksGap }),
   });
 
   // Session chrome only for genuinely rooted/agent sessions — a quick oneshot
@@ -1634,12 +1659,35 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   // rendered the fallback xterm over the PasswordPrompt widget and stole its
   // keystrokes (masked dots never updated).
   const showXterm = shouldShowXterm(surface);
+  // Whether to offer remote shell integration — a tested pure function rather
+  // than an inline JSX condition, which is how the previous one broke silently.
+  const offerIntegration = shouldOfferRemoteIntegration({
+    offer: shellIntegrationCard,
+    hooksGap: modeState.hooksGap,
+  });
+  const integrationOffer = offerIntegration && shellIntegrationCard ? (
+    <ShellIntegrationInstallCard
+      target={shellIntegrationCard.target}
+      onInstalled={() => { /* Will activate on the user's next reconnect. */ }}
+      onDismiss={() => {
+        localStorage.setItem(`tai:si:dismissed:${shellIntegrationCard.target}`, '1');
+        setShellIntegrationCard(null);
+      }}
+    />
+  ) : null;
   // When remote-AI is active, keep the composer usable during a foreground
   // command (e.g. the interactive ssh) — AI input is out-of-band from the PTY.
   // Shell submits still queue (handled in the submit path); password/awaiting locks stay.
   const remoteAiActive = remoteAi.mode === 'watch' || remoteAi.mode === 'run';
   // The active interactive block (Tier 2 / Tier 1) is pinned to the bottom region.
   const isPinned = pinnedActiveBlock(surface);
+  // Tier 3 takeover: the xterm gets the whole session pane. Scrollback is not
+  // rendered while it is up — a full-screen program sharing the pane 50/50 with
+  // history (both were `flex: 1` siblings) gave neither enough room, and for a
+  // raw ssh session it pushed the remote prompt off the bottom edge with no way
+  // to scroll to it, since the region is overflow:hidden and xterm owns its own
+  // scrollback.
+  const takeover = surface === 'fullscreen';
   const showComposer = composerVisible(surface) && !showXterm;
   const blockInputLocked = awaitingInput || passwordPrompt;
   const inputDisabled = blockInputLocked || (hasActiveBlock && !passwordPrompt && !remoteAiActive);
@@ -1734,33 +1782,33 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           onDismiss={handleDaemonDismiss}
         />
       )}
-      {/* The quiet chip for degraded mode. It is deliberately gated on the
-          RESOLVER's observation as well as on the SSH timer that raised it:
-          the card is the affordance for "no hooks here", so the moment a hook
-          proves otherwise the resolver clears the reason and the card goes
-          away on its own. Not extended to local no-integration shells — the
-          card's only action is shellIntegration.installRemote(target) and a
-          local shell has no target, so it would offer a button that cannot
-          work. A local shell with no integration is deliberately not declared
-          as a gap either: with no hooks locally EVERY command would be
-          degraded, which would dock the input for all of them and coarsen
-          every block. That needs its own design, not a reused remote card. */}
-      {!showXterm && shellIntegrationCard && modeState.degradedReason === 'no-hooks' && (
-        <ShellIntegrationInstallCard
-          target={shellIntegrationCard.target}
-          onInstalled={() => { /* Will activate on the user's next reconnect. */ }}
-          onDismiss={() => {
-            if (shellIntegrationCard) {
-              localStorage.setItem(`tai:si:dismissed:${shellIntegrationCard.target}`, '1');
-            }
-            setShellIntegrationCard(null);
-          }}
-        />
-      )}
+      {/* The shell-integration offer for a remote host.
+          It is deliberately gated on the RESOLVER's observation as well as on
+          the SSH timer that raised it: the offer's whole claim is "no hooks
+          here", so the moment a hook proves otherwise the gap closes and the
+          offer withdraws itself. `hooksGap`, not `degradedReason` — the latter
+          reports one gap and prefers 'no-termios', which suppressed this for
+          any session that also lacked termios.
+
+          Not extended to local no-integration shells: the only action here is
+          shellIntegration.installRemote(target) and a local shell has no
+          target, so it would offer a button that cannot work. A local shell
+          with no integration is deliberately not declared as a gap either —
+          with no hooks locally EVERY command would be degraded, docking the
+          input for all of them and coarsening every block. That needs its own
+          design, not a reused remote card.
+
+          Rendered here only as the fallback for when there is no live block to
+          host it; normally it rides inside the session's own card (see
+          `headerNotice` below), because the docked xterm covers this region
+          for the entire duration of an ssh session — which is precisely when
+          the offer applies. That is how it went unseen for two months. */}
+      {integrationOffer && !(isPinned && pinnedBlock) && !takeover && integrationOffer}
       {/* Rooted sessions live in the scrollback: one continuous scroll for
           history + live output. The session side conversation docks as a
           right-hand column beside the whole stream — flush to the frame, the
           way the tab sidebar docks on the left, so no gap here. */}
+      {!takeover && (
       <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'stretch' }}>
         <BlockList
           items={historyItems}
@@ -1819,6 +1867,30 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           />
         )}
       </div>
+      )}
+      {/* The takeover's entire chrome: one bar, plus the integration offer when
+          the host has none. No card — a takeover exists because TAI cannot see
+          boundaries on that surface, and card padding would be pixels stolen
+          from the terminal for a structure that is not there. */}
+      {takeover && (
+        <>
+          <TakeoverBar
+            label={sshSessionTarget ?? lastActiveCommand?.block.command ?? 'terminal'}
+            tag={sshSessionTarget ? 'raw passthrough' : 'fullscreen'}
+            remote={!!sshSessionTarget}
+            onStop={sessionForCard ? handleSessionStop : undefined}
+            extra={eff.isRemote && remoteAi.target ? (
+              <RemoteAiPill
+                view={pillView(remoteAi)}
+                onEnable={handleEnableRemoteAi}
+                onSetMode={handleSetRemoteAiMode}
+                onDismiss={handleDismissRemoteAi}
+              />
+            ) : undefined}
+          />
+          {integrationOffer}
+        </>
+      )}
       {/* Stable home for the xterm DOM. HiddenXterm always renders here so its
           xterm.js instance is never disposed/remounted. When alt-screen is active
           and the active card exposes a portal container, we imperatively relocate
@@ -1865,6 +1937,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
             ptyId={ptyId ?? undefined}
             docked={pinnedActiveBlock(surface)}
             sessionRemote={eff.isRemote}
+            remoteHost={sshSessionTarget}
+            headerNotice={integrationOffer}
             onCopy={handleCopy}
             onAskAI={handleAskAI}
             onRerun={handleRerun}

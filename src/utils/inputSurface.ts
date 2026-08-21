@@ -12,7 +12,10 @@
  *                The card lives IN the scrollback (one continuous scroll
  *                with history, auto-following), stdin line inside it, no
  *                xterm (cooked-mode output stays on the HTML path).
- *  - fullscreen: Tier 3 — a full TUI takes over its own surface (alt-screen).
+ *  - fullscreen: Tier 3 — takeover. A full TUI (alt-screen) or a raw ssh
+ *                session with no remote hooks gets the whole session pane:
+ *                scrollback history is not rendered while it is up. TAI cannot
+ *                parse what is on that surface, so it does not frame it.
  */
 export type InputSurface = 'composer' | 'tier1' | 'docked' | 'rooted' | 'fullscreen';
 
@@ -35,6 +38,10 @@ export interface InteractiveSignals {
   degraded?: boolean;
   /** A command is currently executing in the foreground (not the idle shell). */
   commandRunning?: boolean;
+  /** An ssh session on a host with no shell integration — see
+   *  remoteIntegration's isRemoteRawSession. Every byte is passthrough, so
+   *  there is no block structure for a card to display. */
+  remoteRaw?: boolean;
 }
 
 export function deriveInputSurface(s: InteractiveSignals): InputSurface {
@@ -42,6 +49,20 @@ export function deriveInputSurface(s: InteractiveSignals): InputSurface {
   // (the password path also flips interactiveMode) but need the light line input.
   if (s.passwordPrompt || s.awaitingInput) return 'tier1';
   if (s.altScreenVisible || (s.interactiveMode && s.interactiveFullscreen)) return 'fullscreen';
+  // A raw ssh session takes over too. It is not alt-screen, but it is just as
+  // opaque: no hooks means no boundaries, no exit codes, nothing to put in a
+  // card. Below the alt-screen rung only for tidiness — both land here.
+  //
+  // Deliberately NOT gated on interactiveMode. That gate is what made quitting
+  // htop inside an un-integrated ssh drop the takeover for the rest of the
+  // session: the alt-screen exit is authoritative about the screen only, so it
+  // resolves inputOwner to 'shell' and clears interactiveMode, and no termios
+  // event ever restores it because the local tty never left raw mode (the
+  // poller is edge-triggered, and ssh's state is byte-identical to htop's).
+  // remoteRaw is the honest signal here: it is bracketed by the LOCAL shell's
+  // OSC 133 frame, so it is true for exactly as long as ssh is live and says
+  // nothing about which child happens to be foreground inside it.
+  if (s.remoteRaw) return 'fullscreen';
   if (s.interactiveMode) return 'docked';
   // Termios signals outrank rooting: a server that drops to raw mode or asks
   // a cooked question gets the richer surface for that moment.

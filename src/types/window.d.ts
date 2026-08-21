@@ -52,7 +52,7 @@ declare global {
         install: (target: string) => Promise<{ success: boolean; error?: string }>;
       };
       shellIntegration: {
-        checkRemote: (target: string) => Promise<{ installed: boolean }>;
+        checkRemote: (target: string) => Promise<{ installed: boolean; reachable: boolean }>;
         installRemote: (target: string) => Promise<{ ok: boolean; error?: string }>;
       };
       codex: {

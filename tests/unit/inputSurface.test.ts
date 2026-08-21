@@ -133,3 +133,65 @@ describe('predicates', () => {
     expect(shouldShowXterm('composer')).toBe(false);
   });
 });
+
+describe('deriveInputSurface — raw ssh takeover', () => {
+  const RAW = {
+    altScreenVisible: false,
+    interactiveMode: true,
+    interactiveFullscreen: false,
+    awaitingInput: false,
+    passwordPrompt: false,
+  };
+
+  // The regression this fixes: an un-integrated ssh docked into a pinned card
+  // capped at 76vh, wrapping an xterm with min-height 72vh plus card padding, a
+  // header and a notice strip — the remote prompt ended up below the region's
+  // bottom edge with nothing to scroll.
+  it('takes over the pane for an ssh host with no shell integration', () => {
+    expect(deriveInputSurface({ ...RAW, remoteRaw: true })).toBe('fullscreen');
+  });
+
+  it('still docks a raw-mode program on an integrated host', () => {
+    expect(deriveInputSurface({ ...RAW, remoteRaw: false })).toBe('docked');
+    expect(deriveInputSurface(RAW)).toBe('docked');
+  });
+
+  // A password or line prompt outranks the takeover: those need the light
+  // tier1 widget, and a live xterm over them steals their keystrokes.
+  it('yields to a single-answer prompt', () => {
+    expect(deriveInputSurface({ ...RAW, remoteRaw: true, passwordPrompt: true })).toBe('tier1');
+    expect(deriveInputSurface({ ...RAW, remoteRaw: true, awaitingInput: true })).toBe('tier1');
+  });
+
+  // Was: 'does not take over when no program is in the foreground'.
+  //
+  // interactiveMode is a termios inference about who owns the tty at this
+  // instant. It is the wrong gate for the takeover, and this is the bug it
+  // caused: run htop inside an un-integrated ssh, press q, and the alt-screen
+  // exit resolves inputOwner to 'shell' (terminalMode's altScreen branch is
+  // authoritative about the SCREEN only). interactiveMode goes false, the
+  // takeover is released mid-session, and it never returns — the termios poller
+  // is edge-triggered and the local tty is STILL raw, byte-identical to before,
+  // so no event ever fires again. The user was left in the block UI with the
+  // ssh block's stdin CardInput floating under a live remote prompt.
+  //
+  // Whether a child program is foreground says nothing about whether ssh is
+  // still live. remoteRaw already knows that independently (sshActive is
+  // bracketed by the LOCAL shell's OSC 133 frame), so it stands alone.
+  it('holds the takeover after a TUI inside the session exits', () => {
+    expect(deriveInputSurface({ ...RAW, interactiveMode: false, remoteRaw: true })).toBe('fullscreen');
+  });
+
+  it('holds it through the alt-screen enter/exit cycle without a termios event', () => {
+    const ssh = { ...RAW, remoteRaw: true };
+    expect(deriveInputSurface(ssh)).toBe('fullscreen');
+    // htop up
+    expect(deriveInputSurface({ ...ssh, altScreenVisible: true, interactiveFullscreen: true })).toBe('fullscreen');
+    // q — alt screen gone, inputOwner back to 'shell', no termios edge
+    expect(deriveInputSurface({ ...ssh, interactiveMode: false })).toBe('fullscreen');
+  });
+
+  it('releases it when the ssh session itself ends', () => {
+    expect(deriveInputSurface({ ...RAW, interactiveMode: false, remoteRaw: false })).toBe('composer');
+  });
+});
