@@ -72,6 +72,7 @@ declare global {
       };
       shell: {
         openExternal: (url: string) => Promise<boolean>;
+        pathBinaries: () => Promise<string[]>;
       };
       notify: {
         setActiveTab: (tabId: string) => void;

@@ -113,6 +113,7 @@ contextBridge.exposeInMainWorld('tai', {
   },
   shell: {
     openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
+    pathBinaries: () => ipcRenderer.invoke('shell:pathBinaries'),
   },
   notify: {
     setActiveTab: (tabId: string) => ipcRenderer.send('notify:setActiveTab', tabId),

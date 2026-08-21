@@ -9,6 +9,7 @@ import { credentialVault } from './services/credentialVault';
 import { setupClaudeService, destroyAllClaude } from './services/claude';
 import { setupCodexService, destroyAllCodex } from './services/codex';
 import { setupGitService } from './services/git';
+import { setupPathBinariesService } from './services/pathBinaries';
 import { setupGeminiService, destroyAllGemini } from './services/gemini';
 import { initFocusTracking, setupNotifyService } from './services/notify';
 import { registerUpdater } from './services/updater';
@@ -171,6 +172,7 @@ app.whenReady().then(() => {
   setupGeminiService(() => mainWindow);
   setupNotifyService(() => mainWindow);
   setupGitService();
+  setupPathBinariesService();
   // Registered whether or not a tray is built: every quit route (Cmd+Q, the
   // application menu, a system logout) has to flip the flag or the close
   // handler would veto it.
