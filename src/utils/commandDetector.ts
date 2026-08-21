@@ -92,13 +92,26 @@ export type InputType = 'shell' | 'ai';
 export interface ClassifyContext {
   /** Current input mode, used for asymmetric stickiness. */
   currentMode?: InputType;
+  /**
+   * Verdicts learned from the user's pre-submit corrections, keyed on the
+   * lowercased first token. Already thresholded by `classifierMemory` — this
+   * is a lookup, so `classifyInput` stays pure. Absent disables the rung.
+   */
+  learned?: ReadonlyMap<string, InputType>;
+  /**
+   * Basenames of every executable on the LOCAL PATH. Absent disables the rung,
+   * which is how remote sessions suppress it: over ssh these names describe
+   * the wrong machine.
+   */
+  pathBinaries?: ReadonlySet<string>;
 }
 
 export type DecisionSource =
   | 'empty' | 'agent-cli' | 'shell-syntax' | 'known-command'
   | 'ambiguous-command'
-  | 'nl-starter' | 'nl-pronoun' | 'question-mark'
-  | 'nl-word-score' | 'shell-token-score' | 'short-token' | 'sticky-fallback';
+  | 'nl-starter' | 'nl-pronoun' | 'question-mark' | 'learned'
+  | 'nl-word-score' | 'shell-token-score' | 'path-binary'
+  | 'short-token' | 'sticky-fallback';
 
 export interface ClassificationResult {
   type: InputType;
@@ -183,6 +196,14 @@ export function classifyInput(input: string, ctx?: ClassifyContext): Classificat
   // Question mark is a strong natural-language signal.
   if (trimmed.includes('?')) return { type: 'ai', confidence: H, source: 'question-mark' };
 
+  // What the user has taught us, above every other vocabulary rung and below
+  // every syntax rung. A correction is a claim about a WORD: it has to beat
+  // `known-command`, `ambiguous-command` and `nl-starter` (that is the whole
+  // feature) but it must not beat a pipe or a question mark, which are facts
+  // about the string.
+  const taught = ctx?.learned?.get(firstWord);
+  if (taught) return { type: taught, confidence: H, source: 'learned' };
+
   // Known command as the first token.
   if (KNOWN_COMMANDS.has(firstWord)) {
     // `find`/`make`/`which` are commands AND English verbs. Judge them on what
@@ -215,6 +236,19 @@ export function classifyInput(input: string, ctx?: ClassifyContext): Classificat
 
   if (shellScore(tokens) >= shellThreshold(tokens.length)) {
     return { type: 'shell', confidence: M, source: 'shell-token-score' };
+  }
+
+  // PATH membership, deliberately this low. It looks like a strong shell signal
+  // and is not: `write`, `convert`, `compare` and `who` are all real binaries
+  // AND natural-language starters, so a high placement would turn "write the
+  // tests" into a command. (`find`, `make` and `which` collide too, but they
+  // are in KNOWN_COMMANDS and handled by AMBIGUOUS_COMMANDS above.) Down here
+  // it is not a shell signal at all — it is a confidence upgrade for input
+  // every other rung declined, moving `Rscript analyse.R` from LOW (no
+  // auto-flip) to MED (auto-flip). Raw token first: binaries are
+  // case-sensitive.
+  if (ctx?.pathBinaries?.has(tokens[0]) || ctx?.pathBinaries?.has(firstWord)) {
+    return { type: 'shell', confidence: M, source: 'path-binary' };
   }
 
   // A lone unknown token is probably a command.

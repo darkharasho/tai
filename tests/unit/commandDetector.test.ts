@@ -205,3 +205,97 @@ describe('ambiguous commands that are also English verbs', () => {
     expect(classifyInput('cat the summary').source).toBe('known-command');
   });
 });
+
+describe('learned corrections', () => {
+  const learned = (m: Record<string, 'shell' | 'ai'>) =>
+    ({ learned: new Map(Object.entries(m)) as ReadonlyMap<string, 'shell' | 'ai'> });
+
+  it('overrides the ambiguous-command verdict when the user has taught it otherwise', () => {
+    const r = classifyInput('find the config', learned({ find: 'shell' }));
+    expect(r.type).toBe('shell');
+    expect(r.source).toBe('learned');
+    expect(r.confidence).toBe(CONFIDENCE.HIGH);
+  });
+
+  it('overrides a known command in the other direction', () => {
+    // A personal script named `explain`, or a habit of asking AI to `find`.
+    const r = classifyInput('cat the summary', learned({ cat: 'ai' }));
+    expect(r.type).toBe('ai');
+    expect(r.source).toBe('learned');
+  });
+
+  it('leaves untaught tokens on their original rung', () => {
+    expect(classifyInput('find the config', learned({ grep: 'ai' })).source).toBe('ambiguous-command');
+    expect(classifyInput('explain this to me', learned({ grep: 'ai' })).source).toBe('nl-starter');
+  });
+
+  it('keys on the first token only', () => {
+    const r = classifyInput('ls find', learned({ find: 'ai' }));
+    expect(r.source).toBe('known-command');
+    expect(r.type).toBe('shell');
+  });
+
+  // The syntax rungs assert facts about the string. `learned` asserts a
+  // preference about a vocabulary item, and must never beat a fact.
+  it('never beats shell syntax, an agent CLI, or a question mark', () => {
+    expect(classifyInput('git log | grep foo', learned({ git: 'ai' })).source).toBe('shell-syntax');
+    expect(classifyInput('./deploy now', learned({ deploy: 'ai' })).source).toBe('shell-syntax');
+    expect(classifyInput('what is find?', learned({ what: 'shell' })).source).toBe('question-mark');
+    expect(classifyInput('claude fix this', learned({ claude: 'ai' })).source).toBe('agent-cli');
+  });
+});
+
+describe('PATH binaries', () => {
+  const onPath = (...names: string[]) => ({ pathBinaries: new Set(names) as ReadonlySet<string> });
+
+  // The point of the rung. KNOWN_COMMANDS covers 184 of the ~4000 binaries on
+  // PATH; the rest reach sticky-fallback at LOW (0.55), under FLIP_THRESHOLD,
+  // so the composer never auto-flips for them. Note `Rscript` also pins the
+  // case-sensitivity of the lookup.
+  it('lifts an unknown binary from LOW to MED so the composer auto-flips', () => {
+    const before = classifyInput('Rscript analyse.R');
+    expect(before.source).toBe('sticky-fallback');
+    expect(before.confidence).toBeLessThan(FLIP_THRESHOLD);
+
+    const after = classifyInput('Rscript analyse.R', onPath('Rscript'));
+    expect(after.type).toBe('shell');
+    expect(after.source).toBe('path-binary');
+    expect(after.confidence).toBe(CONFIDENCE.MED);
+    expect(after.confidence).toBeGreaterThanOrEqual(FLIP_THRESHOLD);
+  });
+
+  // The reason the rung sits BELOW every natural-language rung. These four
+  // words are real binaries on a stock Linux box AND natural-language starters,
+  // and unlike find/make/which (Task 2) they are classified CORRECTLY today.
+  // A high placement would break all four.
+  it.each([
+    'write the tests for this module',
+    'convert this to typescript',
+    'compare these two files for me',
+    'who owns this service',
+  ])('leaves an English sentence alone even when its verb is on PATH: %s', (input) => {
+    const r = classifyInput(input, onPath('write', 'convert', 'compare', 'who'));
+    expect(r.type).toBe('ai');
+    expect(r.source).toBe('nl-starter');
+  });
+
+  // Task 2's three verbs must also survive the new rung.
+  it('does not let PATH membership undo the ambiguous-command fix', () => {
+    const r = classifyInput('find the bug in auth.ts', onPath('find', 'make', 'which'));
+    expect(r.type).toBe('ai');
+    expect(r.source).toBe('ambiguous-command');
+  });
+
+  it('does not fire for a token that is not on PATH', () => {
+    expect(classifyInput('Rscript analyse.R', onPath('docker')).source).toBe('sticky-fallback');
+  });
+});
+
+describe('additive-ness', () => {
+  it('behaves identically with an empty context and with none at all', () => {
+    for (const input of ['ls -la', 'how do I rebase', 'Rscript analyse.R', 'find the bug']) {
+      expect(classifyInput(input, { learned: new Map(), pathBinaries: new Set() }))
+        .toEqual(classifyInput(input));
+    }
+  });
+});
