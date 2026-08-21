@@ -5,6 +5,7 @@ const DEFAULTS = {
   'general.startDir': '',
   'general.fontSize': 14,
   'general.cursorStyle': 'bar',
+  'general.tray': true,
   'ai.provider': 'claude',
   'ai.model': 'sonnet',
   'claude.model': 'sonnet',

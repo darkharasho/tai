@@ -44,6 +44,8 @@ import {
   isQuitting,
   destroyTray,
   resetTrayState,
+  registerQuitTracking,
+  closeAction,
 } from '../../electron/services/tray';
 
 const fire = (key: string) => (listeners[key] || []).forEach((fn) => fn());
@@ -148,10 +150,26 @@ describe('quit handling', () => {
   // The regression that makes Cmd+Q silently stop working: app.quit() bypasses
   // quitApp(), so without a before-quit hook the window vetoes its own close.
   it('flags quitting when something else calls app.quit (Cmd+Q, logout)', () => {
-    setupTray({ getWindow: () => null });
+    // registerQuitTracking, not setupTray: the hook has to exist even with the
+    // tray setting off, or Cmd+Q would be vetoed by the window's close handler.
+    registerQuitTracking();
     expect(isQuitting()).toBe(false);
     fire('app:before-quit');
     expect(isQuitting()).toBe(true);
+  });
+
+  // Toggling the tray setting off and on rebuilds the tray; the quit hook must
+  // not stack up one listener per rebuild.
+  it('registers the before-quit hook exactly once', () => {
+    registerQuitTracking();
+    registerQuitTracking();
+    registerQuitTracking();
+    expect((listeners['app:before-quit'] || []).length).toBe(1);
+  });
+
+  it('no longer ties the quit hook to the tray existing', () => {
+    setupTray({ getWindow: () => null });
+    expect(listeners['app:before-quit']).toBeUndefined();
   });
 
   it('destroys the tray only when it is still alive', () => {
@@ -160,5 +178,23 @@ describe('quit handling', () => {
     expect(trayInstance.destroy).toHaveBeenCalledTimes(1);
     destroyTray();
     expect(trayInstance.destroy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('closeAction', () => {
+  it('hides to the tray on a plain close', () => {
+    expect(closeAction({ quitting: false, trayEnabled: true })).toBe('hide');
+  });
+
+  // Without a tray there is no way back to a hidden window, and
+  // window-all-closed is a deliberate no-op — allowing the close would leave
+  // the app running with no window and no icon.
+  it('quits on close when the tray is switched off', () => {
+    expect(closeAction({ quitting: false, trayEnabled: false })).toBe('quit');
+  });
+
+  it('lets a real quit through either way', () => {
+    expect(closeAction({ quitting: true, trayEnabled: true })).toBe('allow');
+    expect(closeAction({ quitting: true, trayEnabled: false })).toBe('allow');
   });
 });

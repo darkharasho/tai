@@ -40,6 +40,7 @@ export function isTemplateImage(platform: NodeJS.Platform): boolean {
 
 let tray: Tray | null = null;
 let quitting = false;
+let quitTracked = false;
 
 /** True once a real quit is underway, so `close` handlers stop hiding the window. */
 export function isQuitting(): boolean {
@@ -50,6 +51,38 @@ export function isQuitting(): boolean {
 export function quitApp(): void {
   quitting = true;
   app.quit();
+}
+
+/**
+ * Every quit route has to flip the quitting flag, not just our menu item: Cmd+Q,
+ * the application menu, and a system logout all call app.quit() directly, and
+ * without this the window's close handler would veto them — the app would
+ * appear to ignore Cmd+Q entirely.
+ *
+ * Lives outside setupTray because it is needed whether or not a tray exists,
+ * and because toggling the tray setting off and on would otherwise stack a new
+ * listener per rebuild.
+ */
+export function registerQuitTracking(): void {
+  if (quitTracked) return;
+  quitTracked = true;
+  app.on('before-quit', () => {
+    quitting = true;
+  });
+}
+
+export type CloseAction = 'allow' | 'hide' | 'quit';
+
+/**
+ * What a window `close` event should do.
+ *
+ * 'hide' is close-to-tray. With no tray there is nothing to restore from, so
+ * close means quit: `window-all-closed` is deliberately a no-op, and allowing
+ * the close would leave the app running with no window and no icon.
+ */
+export function closeAction(s: { quitting: boolean; trayEnabled: boolean }): CloseAction {
+  if (s.quitting) return 'allow';
+  return s.trayEnabled ? 'hide' : 'quit';
 }
 
 function iconPath(variant: TrayVariant): string {
@@ -80,14 +113,6 @@ export function revealWindow(win: BrowserWindow | null) {
 
 export function setupTray({ getWindow }: TrayDeps): Tray | null {
   if (tray) return tray;
-
-  // Every quit route has to flip this, not just our menu item: Cmd+Q, the
-  // application menu, and a system logout all call app.quit() directly. Without
-  // this the window's close handler would veto them and the app would appear
-  // to ignore Cmd+Q entirely.
-  app.on('before-quit', () => {
-    quitting = true;
-  });
 
   tray = new Tray(buildIcon());
   tray.setToolTip('TAI — Terminally AI');
@@ -122,4 +147,5 @@ export function destroyTray(): void {
 export function resetTrayState(): void {
   tray = null;
   quitting = false;
+  quitTracked = false;
 }

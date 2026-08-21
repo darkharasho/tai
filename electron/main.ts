@@ -16,7 +16,21 @@ import { purgeStaleTempFiles } from './services/tempCleanup';
 import { registerCommandIndexIpc } from './services/commandIndexStore';
 import { registerWorkflowIpc } from './services/workflowStore';
 import { registerRecordingSave } from './services/recordingSave';
-import { setupTray, destroyTray, isQuitting, quitApp, revealWindow } from './services/tray';
+import { setupTray, destroyTray, isQuitting, quitApp, revealWindow, registerQuitTracking, closeAction } from './services/tray';
+
+// A dev run and the installed build share app.getPath('userData'), and the
+// single-instance lock keys on that path. Once close-to-tray landed, the
+// installed app stopped exiting when its window closed — so `npm run dev` lost
+// the lock, quit itself, and its launch was handed to the AppImage sitting
+// hidden in the tray, which dutifully revealed its window. It looked like dev
+// was launching the installed app; it was.
+//
+// MUST run before requestSingleInstanceLock(): the lock key is derived from
+// this path. Dev consequently gets its own settings.json and window state too,
+// which is the point — a dev build should not mutate the real install's config.
+if (process.env.VITE_DEV_SERVER_URL) {
+  app.setPath('userData', `${app.getPath('userData')}-dev`);
+}
 
 // Closing the window only hides it, so a second launch would otherwise start a
 // whole new app — its own PTYs, its own tray icon — while the first sat hidden.
@@ -109,9 +123,17 @@ function createWindow() {
   // the geometry survives both paths.
   mainWindow.on('close', (event) => {
     saveWindowState();
-    if (isQuitting()) return;
-    event.preventDefault();
-    mainWindow?.hide();
+    // With the tray switched off there is no way back to a hidden window, so
+    // close has to mean quit: `window-all-closed` is a deliberate no-op, and
+    // simply letting the close through would strand the app running with no
+    // window and no icon.
+    switch (closeAction({ quitting: isQuitting(), trayEnabled: trayEnabled() })) {
+      case 'allow': return;
+      case 'quit': quitApp(); return;
+      case 'hide':
+        event.preventDefault();
+        mainWindow?.hide();
+    }
   });
   mainWindow.on('resize', saveWindowState);
   mainWindow.on('move', saveWindowState);
@@ -149,7 +171,11 @@ app.whenReady().then(() => {
   setupGeminiService(() => mainWindow);
   setupNotifyService(() => mainWindow);
   setupGitService();
-  setupTray({ getWindow: () => mainWindow });
+  // Registered whether or not a tray is built: every quit route (Cmd+Q, the
+  // application menu, a system logout) has to flip the flag or the close
+  // handler would veto it.
+  registerQuitTracking();
+  if (trayEnabled()) setupTray({ getWindow: () => mainWindow });
 });
 
 app.on('before-quit', () => {
@@ -183,6 +209,8 @@ ipcMain.on('window:maximize', () => {
 });
 ipcMain.on('window:close', () => mainWindow?.close());
 
+const TRAY_SETTING = 'general.tray';
+
 const configPath = () => path.join(app.getPath('userData'), 'settings.json');
 
 function readConfig(): Record<string, any> {
@@ -193,6 +221,11 @@ function readConfig(): Record<string, any> {
     if (!fs.existsSync(file)) return {};
     return JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch { return {}; }
+}
+
+/** Default on: the setting only exists to turn the tray off. */
+function trayEnabled(): boolean {
+  return readConfig()[TRAY_SETTING] !== false;
 }
 
 function writeConfig(config: Record<string, any>) {
@@ -215,6 +248,11 @@ ipcMain.handle('config:set', (_event, key: string, value: any) => {
   const config = readConfig();
   config[key] = value;
   writeConfig(config);
+  // Applied live rather than on next launch — a setting whose effect you cannot
+  // see until you restart reads as broken.
+  if (key === TRAY_SETTING) {
+    if (value === false) destroyTray(); else setupTray({ getWindow: () => mainWindow });
+  }
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('config:changed', config);
   return config;
 });

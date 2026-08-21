@@ -76,6 +76,10 @@ export function SettingsOverlay({ visible, onClose, config, onSet }: SettingsOve
                     <option value="underline">Underline</option>
                   </select>
                 } />
+                <SettingRow label="Keep running in the system tray when the window is closed" value={
+                  <Toggle checked={config['general.tray'] !== false}
+                    onChange={v => onSet('general.tray', v)} />
+                } />
                 <SettingRow label="System notifications on completion" value={
                   <Toggle checked={!!config['systemNotifications']}
                     onChange={v => onSet('systemNotifications', v)} />
