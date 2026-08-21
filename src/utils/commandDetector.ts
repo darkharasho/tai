@@ -26,6 +26,17 @@ const KNOWN_COMMANDS = new Set([
   'systemctl', 'journalctl', 'lsof', 'strace',
 ]);
 
+/**
+ * Known commands that are also ordinary English verbs.
+ *
+ * `known-command` sits above `nl-starter`, so without this "find the bug in
+ * auth.ts" and "make it faster" classify as shell. Demoting these three below
+ * `nl-starter` is the obvious fix and the wrong one: it breaks `make build`,
+ * `find src` and `which node`. The first token cannot decide — the rest of the
+ * input has to.
+ */
+const AMBIGUOUS_COMMANDS = new Set(['find', 'make', 'which']);
+
 // CLI agents that TAI wraps as AI providers. When typed as the first token
 // these are real shell commands (launching the CLI), but their natural-language
 // arguments ("claude how do I fix this") would otherwise classify as AI and
@@ -85,6 +96,7 @@ export interface ClassifyContext {
 
 export type DecisionSource =
   | 'empty' | 'agent-cli' | 'shell-syntax' | 'known-command'
+  | 'ambiguous-command'
   | 'nl-starter' | 'nl-pronoun' | 'question-mark'
   | 'nl-word-score' | 'shell-token-score' | 'short-token' | 'sticky-fallback';
 
@@ -172,7 +184,17 @@ export function classifyInput(input: string, ctx?: ClassifyContext): Classificat
   if (trimmed.includes('?')) return { type: 'ai', confidence: H, source: 'question-mark' };
 
   // Known command as the first token.
-  if (KNOWN_COMMANDS.has(firstWord)) return { type: 'shell', confidence: H, source: 'known-command' };
+  if (KNOWN_COMMANDS.has(firstWord)) {
+    // `find`/`make`/`which` are commands AND English verbs. Judge them on what
+    // follows: a natural-language word or a pronoun anywhere after the first
+    // token means this is a sentence, not an invocation. MED rather than HIGH
+    // because it is a genuine judgement call, not a fact about the string.
+    if (AMBIGUOUS_COMMANDS.has(firstWord)
+        && tokens.slice(1).some(t => nlMatch(t) || PRONOUNS.has(t.toLowerCase()))) {
+      return { type: 'ai', confidence: M, source: 'ambiguous-command' };
+    }
+    return { type: 'shell', confidence: H, source: 'known-command' };
+  }
 
   // Leading natural-language starter ("how", "explain", "please", ...).
   if (NL_STARTERS.test(trimmed)) return { type: 'ai', confidence: H, source: 'nl-starter' };

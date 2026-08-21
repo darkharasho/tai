@@ -164,3 +164,44 @@ describe('classifyInput', () => {
     expect(CONFIDENCE.LOW).toBeLessThan(FLIP_THRESHOLD);
   });
 });
+
+describe('ambiguous commands that are also English verbs', () => {
+  it.each([
+    'find the bug in auth.ts',
+    'find my keys',
+    'make it faster',
+    'make a backup of this',
+    'which approach is better',
+    'which of these is faster',
+  ])('reads as AI when the rest of the input is a sentence: %s', (input) => {
+    const r = classifyInput(input);
+    expect(r.type).toBe('ai');
+    expect(r.source).toBe('ambiguous-command');
+    expect(r.confidence).toBe(CONFIDENCE.MED);
+  });
+
+  // The reason these three cannot simply be demoted below `nl-starter`.
+  it.each([
+    'find src',
+    'make build',
+    'make clean',
+    'which node',
+  ])('stays a shell command when the rest of the input is not: %s', (input) => {
+    const r = classifyInput(input);
+    expect(r.type).toBe('shell');
+    expect(r.source).toBe('known-command');
+  });
+
+  // Flags and paths are caught several rungs earlier and never reach here.
+  it.each(['find . -name "*.ts"', 'make -j8', 'find src -type f'])(
+    'is decided by syntax before ambiguity matters: %s',
+    (input) => {
+      expect(classifyInput(input).source).toBe('shell-syntax');
+    },
+  );
+
+  it('leaves the other 181 known commands untouched', () => {
+    expect(classifyInput('git the thing').source).toBe('known-command');
+    expect(classifyInput('cat the summary').source).toBe('known-command');
+  });
+});
