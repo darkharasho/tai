@@ -9,8 +9,8 @@
 `classifyInput` (`src/utils/commandDetector.ts:152`) decides whether what you
 typed is a shell command or a question for the AI. It does so from a fixed
 thirteen-rung cascade over two hardcoded vocabularies: `KNOWN_COMMANDS`, a
-hand-written set of about thirty binaries, and `NL_STARTERS`, a regex of
-imperative and interrogative openers.
+hand-written set of 184 binaries, and `NL_STARTERS`, a regex of imperative and
+interrogative openers.
 
 Two structural weaknesses follow from that, and neither is fixable by adding
 more words to the sets.
@@ -22,11 +22,18 @@ whose habits sit on the wrong side of a rung — a personal script named
 `explain`, or a routine of asking the AI to `find` things — fights the same
 fight forever.
 
-**It knows about thirty commands.** This machine has **3957 executables on
-PATH**. Everything outside `KNOWN_COMMANDS` with no shell syntax attached falls
-through to `sticky-fallback` and returns `shell` at `CONFIDENCE.LOW` (0.55) —
-below `FLIP_THRESHOLD` (0.7), so the composer does not auto-flip. `kubectl get
-pods` is a shell command that the classifier declines to commit to.
+**It knows 184 commands out of 3957.** That is how many executables are on PATH
+on this machine. Everything outside `KNOWN_COMMANDS` with no shell syntax
+attached falls through to `sticky-fallback` and returns `shell` at
+`CONFIDENCE.LOW` (0.55) — below `FLIP_THRESHOLD` (0.7), so the composer does not
+auto-flip. `Rscript analyse.R` is a shell command the classifier declines to
+commit to.
+
+**And three of the 184 are English verbs.** `find`, `make` and `which` are in
+`KNOWN_COMMANDS`, and `known-command` (rung 6) sits above `nl-starter` (rung 7),
+so `find the bug in auth.ts` and `make it faster` classify as **shell** today.
+This is a pre-existing bug, not one this work introduces, and it is the single
+most likely correction a user of this classifier ever makes.
 
 ## Constraints and prior decisions
 
@@ -65,19 +72,21 @@ a vocabulary item.
 above `short-token`.**
 
 PATH membership looks like a strong shell signal and is not. Seven PATH
-binaries on this machine are also `NL_STARTERS`:
+binaries on this machine are also `NL_STARTERS`. Three of them — `find`, `make`,
+`which` — are already in `KNOWN_COMMANDS` and already misclassify (see Problem).
+The other four are classified **correctly** today and would break:
 
 ```
-compare  convert  find  make  which  who  write
+compare  convert  who  write
 ```
 
-Placed high, the rung would classify `find the bug in auth.ts`, `make it
-faster`, `convert this to typescript` and `write the tests` as shell commands.
-The colliding words are precisely the imperative verbs that open AI requests,
-and a 3957-name set is a wide net.
+Placed high, the rung would turn `convert this to typescript`, `write the tests`
+and `who owns this service` into shell commands. The colliding words are
+precisely the imperative verbs that open AI requests, and a 3957-name net catches
+them all.
 
 Placed low, it is not a shell signal at all — it is a **confidence upgrade for
-inputs that every other rung declined**. `kubectl get pods` moves from
+inputs that every other rung declined**. `Rscript analyse.R` moves from
 `sticky-fallback`/LOW to `path-binary`/MED (0.75), crossing `FLIP_THRESHOLD` and
 auto-flipping the composer. The effect is confined to inputs nothing else had an
 opinion about.
@@ -175,9 +184,10 @@ vocabulary, not the machine.
 
 - `learned` overrides `known-command` and `nl-starter` in both directions.
 - `learned` never beats `shell-syntax`, `agent-cli` or `question-mark`.
-- `kubectl get pods` moves LOW → MED and therefore begins auto-flipping.
-- All seven collision words still classify as AI in sentence form
-  (`find the bug in auth.ts`, `make it faster`, `write the tests`, ...).
+- `Rscript analyse.R` moves LOW → MED and therefore begins auto-flipping.
+- The four path-only collision words still classify as AI in sentence form
+  (`convert this to typescript`, `write the tests`, `who owns this service`,
+  `compare these two files`).
 - With neither context field supplied, every pre-existing test passes unchanged.
 
 **Store (`tests/unit/classifierMemory.test.ts`)**
