@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useImperativeHandle, forwardRef, useMemo }
 import { predictCommandIndexed } from '@/hooks/useGhostText';
 import type { CommandIndex } from '@/utils/commandIndex';
 import { predictNextCommand, type NextCommandCtx } from '@/utils/nextCommand';
-import { classifyInput, FLIP_THRESHOLD, type ClassificationResult } from '@/utils/commandDetector';
+import { classifyInput, FLIP_THRESHOLD, type ClassificationResult, type InputType } from '@/utils/commandDetector';
 import { loadLearnedVerdicts, recordCorrection } from '@/utils/classifierMemory';
 import { stripForceShellPrefix, shouldShowAutoBadge } from '@/utils/inputModeUx';
 import { buildNextCommandPrompt, extractCommand } from '@/utils/aiNextCommand';
@@ -150,10 +150,14 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
   const historyIndexRef = useRef(-1);
   const savedInputRef = useRef('');
   const [manualOverride, setManualOverride] = useState(false);
-  // What the user has taught the classifier. Loaded once per mount: the map is
-  // small, and a correction made in this composer is applied on the next
+  // What the user has taught the classifier. Loaded once per mount via lazy
+  // ref init (a bare `useRef(loadLearnedVerdicts(...))` would re-evaluate the
+  // initializer, and its synchronous getItem + JSON.parse + Map build, on
+  // EVERY render — this is a controlled textarea that re-renders per
+  // keystroke). A correction made in this composer is applied on the next
   // keystroke via the ref below rather than by re-reading storage.
-  const learnedRef = useRef(loadLearnedVerdicts(localStorage));
+  const learnedRef = useRef<ReadonlyMap<string, InputType> | null>(null);
+  if (learnedRef.current === null) learnedRef.current = loadLearnedVerdicts(localStorage);
   // Local PATH binaries. Left null on a remote prompt — over ssh these names
   // describe the wrong machine — which disables the rung by omission.
   const [pathBinaries, setPathBinaries] = useState<ReadonlySet<string> | null>(null);
@@ -220,7 +224,7 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
 
   useEffect(() => {
     let cancelled = false;
-    void window.tai.shell.pathBinaries().then(names => {
+    void window.tai?.shell.pathBinaries().then(names => {
       if (!cancelled) setPathBinaries(new Set(names));
     }).catch(() => { /* the rung simply stays disabled */ });
     return () => { cancelled = true; };
@@ -492,7 +496,7 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
     if (!manualOverride) {
       const result = classifyInput(trimmed, {
         currentMode: mode,
-        learned: learnedRef.current,
+        learned: learnedRef.current ?? undefined,
         // Omitted on a remote prompt: PATH was scanned locally, so over ssh
         // these names belong to the wrong computer.
         pathBinaries: promptInfo?.isRemote ? undefined : (pathBinaries ?? undefined),

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { looksLikeShellCommand } from '@/utils/commandDetector';
 import { classifyInput, CONFIDENCE, FLIP_THRESHOLD } from '@/utils/commandDetector';
+import { UNLEARNABLE_SOURCES } from '@/utils/classifierMemory';
 
 describe('looksLikeShellCommand', () => {
   it('recognizes known commands', () => {
@@ -243,6 +244,37 @@ describe('learned corrections', () => {
     expect(classifyInput('what is find?', learned({ what: 'shell' })).source).toBe('question-mark');
     expect(classifyInput('claude fix this', learned({ claude: 'ai' })).source).toBe('agent-cli');
   });
+
+  // Pins the relationship UNLEARNABLE_SOURCES encodes: those rungs sit above
+  // `learned` in the cascade and can never be overridden by it, while
+  // `known-command`, `ambiguous-command` and `nl-starter` sit below it and
+  // always can. If the cascade order ever changes, one of these two loops
+  // should fail.
+  it('cannot be overridden for any UNLEARNABLE_SOURCES rung, and can for every rung below `learned`', () => {
+    const unlearnableExamples: Record<string, { input: string; taught: Record<string, 'shell' | 'ai'> }> = {
+      empty: { input: '', taught: {} },
+      'agent-cli': { input: 'claude fix this', taught: { claude: 'ai' } },
+      'shell-syntax': { input: './deploy now', taught: { deploy: 'ai' } },
+      'question-mark': { input: 'what is find?', taught: { what: 'shell' } },
+    };
+    expect(Object.keys(unlearnableExamples).sort()).toEqual([...UNLEARNABLE_SOURCES].sort());
+    for (const source of UNLEARNABLE_SOURCES) {
+      const { input, taught } = unlearnableExamples[source];
+      const r = classifyInput(input, learned(taught));
+      expect(r.source).toBe(source);
+    }
+
+    const overridableExamples: Record<string, { input: string; taught: Record<string, 'shell' | 'ai'>; flippedTo: 'shell' | 'ai' }> = {
+      'known-command': { input: 'cat the summary', taught: { cat: 'ai' }, flippedTo: 'ai' },
+      'ambiguous-command': { input: 'find the config', taught: { find: 'shell' }, flippedTo: 'shell' },
+      'nl-starter': { input: 'how do I deploy', taught: { how: 'shell' }, flippedTo: 'shell' },
+    };
+    for (const [, { input, taught, flippedTo }] of Object.entries(overridableExamples)) {
+      const r = classifyInput(input, learned(taught));
+      expect(r.source).toBe('learned');
+      expect(r.type).toBe(flippedTo);
+    }
+  });
 });
 
 describe('PATH binaries', () => {
@@ -250,8 +282,7 @@ describe('PATH binaries', () => {
 
   // The point of the rung. KNOWN_COMMANDS covers 184 of the ~4000 binaries on
   // PATH; the rest reach sticky-fallback at LOW (0.55), under FLIP_THRESHOLD,
-  // so the composer never auto-flips for them. Note `Rscript` also pins the
-  // case-sensitivity of the lookup.
+  // so the composer never auto-flips for them.
   it('lifts an unknown binary from LOW to MED so the composer auto-flips', () => {
     const before = classifyInput('Rscript analyse.R');
     expect(before.source).toBe('sticky-fallback');
@@ -288,6 +319,15 @@ describe('PATH binaries', () => {
 
   it('does not fire for a token that is not on PATH', () => {
     expect(classifyInput('Rscript analyse.R', onPath('docker')).source).toBe('sticky-fallback');
+  });
+
+  // The lookup is forgiving about case: it tries the raw token first, then
+  // falls back to the lowercased one, so a PATH set recorded in lowercase
+  // (as pathBinaries always is) still matches a differently-cased command.
+  it('falls back to the lowercased token when the raw token is not on PATH', () => {
+    const r = classifyInput('Rscript analyse.R', onPath('rscript'));
+    expect(r.type).toBe('shell');
+    expect(r.source).toBe('path-binary');
   });
 });
 

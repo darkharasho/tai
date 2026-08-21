@@ -35,7 +35,7 @@ const LEARNABLE_TOKEN = /^[a-z0-9_][\w.-]*$/i;
  * these can never be acted on, so recording it would be dead weight that also
  * skews the token's counts for the inputs where `learned` does get a say.
  */
-const UNLEARNABLE_SOURCES: ReadonlySet<DecisionSource> = new Set<DecisionSource>([
+export const UNLEARNABLE_SOURCES: ReadonlySet<DecisionSource> = new Set<DecisionSource>([
   'empty', 'agent-cli', 'shell-syntax', 'question-mark',
 ]);
 
@@ -106,7 +106,16 @@ export function recordCorrection(
 
   const tokens = Object.keys(map);
   if (tokens.length > MAX_TOKENS) {
-    const total = (t: string) => map[t].ai + map[t].shell;
+    // A malformed entry (e.g. `{"foo": null}`, or non-numeric counts from a
+    // corrupt store) is treated as total 0 so it sorts first for eviction
+    // rather than throwing or poisoning the sort with NaN. `read()` only
+    // validates the top level is an object, so entries this deep are not
+    // guaranteed well-formed by the time eviction runs.
+    const total = (t: string) => {
+      const c = map[t];
+      if (!c || typeof c.ai !== 'number' || typeof c.shell !== 'number') return 0;
+      return c.ai + c.shell;
+    };
     tokens
       .filter(t => t !== token)
       .sort((a, b) => total(a) - total(b))

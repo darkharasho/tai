@@ -692,8 +692,11 @@ export const CommandBlock = memo(function CommandBlock({
 
 function CardInput({ ptyId, autoFocus, onAIPrompt }: { ptyId: number; autoFocus?: boolean; onAIPrompt?: (text: string) => void }) {
   const [value, setValue] = useState('');
-  // Same smarts as the composer: natural language routes to the AI side
-  // conversation instead of the process stdin.
+  // Calls classifyInput with no context, so it gets the syntax/vocabulary
+  // rungs (including the ambiguous-command fix) but NOT the composer's
+  // `learned` corrections or `path-binary` PATH lookup — those need context
+  // this call site doesn't have. Natural language still routes to the AI
+  // side conversation instead of the process stdin.
   const aiDetected = !!onAIPrompt && value.trim().length > 0 && (() => {
     const r = classifyInput(value);
     return r.type === 'ai' && r.confidence >= FLIP_THRESHOLD;

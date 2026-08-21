@@ -106,10 +106,13 @@ export interface ClassifyContext {
   pathBinaries?: ReadonlySet<string>;
 }
 
+// Ordered to match the actual cascade in classifyInput, top rung first, so
+// this reads as the cascade again rather than needing to be cross-checked
+// against it.
 export type DecisionSource =
-  | 'empty' | 'agent-cli' | 'shell-syntax' | 'known-command'
-  | 'ambiguous-command'
-  | 'nl-starter' | 'nl-pronoun' | 'question-mark' | 'learned'
+  | 'empty' | 'agent-cli' | 'shell-syntax' | 'question-mark' | 'learned'
+  | 'known-command' | 'ambiguous-command'
+  | 'nl-starter' | 'nl-pronoun'
   | 'nl-word-score' | 'shell-token-score' | 'path-binary'
   | 'short-token' | 'sticky-fallback';
 
@@ -245,8 +248,10 @@ export function classifyInput(input: string, ctx?: ClassifyContext): Classificat
   // are in KNOWN_COMMANDS and handled by AMBIGUOUS_COMMANDS above.) Down here
   // it is not a shell signal at all — it is a confidence upgrade for input
   // every other rung declined, moving `Rscript analyse.R` from LOW (no
-  // auto-flip) to MED (auto-flip). Raw token first: binaries are
-  // case-sensitive.
+  // auto-flip) to MED (auto-flip). The lookup tries the raw token first, then
+  // the lowercased one, so `RSCRIPT`/`Rscript` still match a PATH entry
+  // recorded as `rscript` — deliberately forgiving, since this is a
+  // confidence upgrade rather than a fact about the string.
   if (ctx?.pathBinaries?.has(tokens[0]) || ctx?.pathBinaries?.has(firstWord)) {
     return { type: 'shell', confidence: M, source: 'path-binary' };
   }

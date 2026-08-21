@@ -29,11 +29,13 @@ attached falls through to `sticky-fallback` and returns `shell` at
 auto-flip. `Rscript analyse.R` is a shell command the classifier declines to
 commit to.
 
-**And three of the 184 are English verbs.** `find`, `make` and `which` are in
+**And three of the 184 were English verbs.** `find`, `make` and `which` are in
 `KNOWN_COMMANDS`, and `known-command` (rung 6) sits above `nl-starter` (rung 7),
-so `find the bug in auth.ts` and `make it faster` classify as **shell** today.
-This is a pre-existing bug, not one this work introduces, and it is the single
-most likely correction a user of this classifier ever makes.
+so `find the bug in auth.ts` and `make it faster` classified as **shell** before
+this work. This was a pre-existing bug, not one this work introduces, and it
+was the single most likely correction a user of this classifier ever made.
+Fixed by the new `ambiguous-command` rung, nested inside `known-command`: see
+below.
 
 ## Constraints and prior decisions
 
@@ -73,8 +75,9 @@ above `short-token`.**
 
 PATH membership looks like a strong shell signal and is not. Seven PATH
 binaries on this machine are also `NL_STARTERS`. Three of them — `find`, `make`,
-`which` — are already in `KNOWN_COMMANDS` and already misclassify (see Problem).
-The other four are classified **correctly** today and would break:
+`which` — are in `KNOWN_COMMANDS` and are handled by the new `ambiguous-command`
+rung nested inside it (see Problem). The other four are classified
+**correctly** today and would break:
 
 ```
 compare  convert  who  write
@@ -91,7 +94,9 @@ inputs that every other rung declined**. `Rscript analyse.R` moves from
 auto-flipping the composer. The effect is confined to inputs nothing else had an
 opinion about.
 
-Resulting cascade:
+Resulting cascade (14 rungs; `ambiguous-command` is nested inside
+`known-command` rather than a separate first-token check, since it only fires
+for the three collision words):
 
 | # | Source | Change |
 |---|---|---|
@@ -101,6 +106,7 @@ Resulting cascade:
 | 4 | `question-mark` | |
 | 5 | **`learned`** | new |
 | 6 | `known-command` | |
+| 6a | **`ambiguous-command`** | new, nested in `known-command` |
 | 7 | `nl-starter` | |
 | 8 | `nl-pronoun` | |
 | 9 | `nl-word-score` | |

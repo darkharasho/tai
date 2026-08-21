@@ -109,6 +109,21 @@ describe('recordCorrection — caps', () => {
     expect(Object.keys(raw).length).toBeLessThanOrEqual(MAX_TOKENS);
     expect(raw.weak).toBeUndefined();
   });
+
+  it('tolerates a malformed entry sitting alongside valid ones during eviction', () => {
+    const s = store();
+    // Seed a corrupt entry directly, as if written by a different code path
+    // or an older schema. `read()` only checks the top level is an object,
+    // so this survives into `recordCorrection`'s eviction sweep.
+    s.setItem(LEARN_KEY, JSON.stringify({ foo: null }));
+    for (let i = 0; i < MAX_TOKENS; i++) {
+      expect(() => recordCorrection(`tok${i} x`, 'ai', 'nl-starter', s)).not.toThrow();
+    }
+    const raw = s.raw();
+    expect(Object.keys(raw).length).toBeLessThanOrEqual(MAX_TOKENS);
+    // The malformed entry is treated as total 0, so it is evicted first.
+    expect(raw.foo).toBeUndefined();
+  });
 });
 
 describe('recordCorrection — what is not worth learning', () => {
