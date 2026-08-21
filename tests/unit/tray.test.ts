@@ -54,14 +54,24 @@ describe('trayVariantFor', () => {
     expect(trayVariantFor('darwin', true)).toBe('black');
   });
 
-  it('swaps to white on a dark theme elsewhere', () => {
-    expect(trayVariantFor('win32', true)).toBe('white');
-    expect(trayVariantFor('linux', true)).toBe('white');
+  it('uses the light-panel accent glyph on a dark theme elsewhere', () => {
+    expect(trayVariantFor('win32', true)).toBe('accent-on-dark');
+    expect(trayVariantFor('linux', true)).toBe('accent-on-dark');
   });
 
-  it('uses black on a light theme elsewhere', () => {
-    expect(trayVariantFor('win32', false)).toBe('black');
-    expect(trayVariantFor('linux', false)).toBe('black');
+  it('uses the dark-panel accent glyph on a light theme elsewhere', () => {
+    expect(trayVariantFor('win32', false)).toBe('accent-on-light');
+    expect(trayVariantFor('linux', false)).toBe('accent-on-light');
+  });
+
+  // Off macOS nothing recolours the glyph for us, so a flat mono variant would
+  // vanish whenever the panel disagrees with the colour-scheme hint.
+  it('never picks a flat mono glyph off macOS', () => {
+    for (const platform of ['win32', 'linux'] as const) {
+      for (const dark of [true, false]) {
+        expect(['black', 'white']).not.toContain(trayVariantFor(platform, dark));
+      }
+    }
   });
 });
 

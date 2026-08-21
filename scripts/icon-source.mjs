@@ -100,28 +100,48 @@ export function renderIcon({ variant = 'dark', tier = 'lg' } = {}) {
 </svg>`;
 }
 
-// Tray templates are a single flat colour with no tile behind them, so they
-// carry more stroke weight than the app icon at the same pixel size.
+// Tray glyphs carry no tile behind them, so they need more stroke weight than
+// the app icon at the same pixel size.
 const TRAY_STROKE = 26;
 const TRAY_TIER = 'md';
 
-/** Tight-cropped monochrome glyph for menubar / tray template images. */
-export function renderGlyph({ color = '#000000' } = {}) {
+// Fraction of the canvas the mark itself occupies. A glyph cropped flush to its
+// own bounding box reads oversized in a panel, because every neighbouring icon
+// is drawn with an inset — matching that inset is what makes it sit level.
+const TRAY_FILL = 0.74;
+
+/**
+ * Chevron glyph for menubar / tray icons, inset inside its canvas.
+ *
+ * With `accent` the second chevron takes the spectrum gradient, same as the app
+ * icon — a mid-tone saturated stroke stays legible even when the surrounding
+ * panel turns out to be the opposite of what the colour-scheme hint promised.
+ * Flat mono (the default) is for macOS, whose template images must be a single
+ * colour plus alpha for the OS to recolour them.
+ *
+ * @param {{color?: string, accent?: boolean}} opts
+ */
+export function renderGlyph({ color = '#000000', accent = false } = {}) {
   const g = TIERS[TRAY_TIER];
   const half = TRAY_STROKE / 2;
-  // Bounding box of both stroked chevrons, so the glyph sits flush in its canvas.
+  // Bounding box of both stroked chevrons, squared off and then padded out.
   const xs = [...g.primary.filter((_, i) => i % 2 === 0), ...g.accent.filter((_, i) => i % 2 === 0)];
   const ys = [...g.primary.filter((_, i) => i % 2 === 1), ...g.accent.filter((_, i) => i % 2 === 1)];
   const minX = Math.min(...xs) - half;
   const minY = Math.min(...ys) - half;
   const w = Math.max(...xs) + half - minX;
   const h = Math.max(...ys) + half - minY;
-  const side = Math.max(w, h);
+  const mark = Math.max(w, h);
+  const side = mark / TRAY_FILL;
   const ox = minX - (side - w) / 2;
   const oy = minY - (side - h) / 2;
 
+  const defs = accent
+    ? `<defs><linearGradient id="accent" gradientUnits="userSpaceOnUse" x1="${ACCENT_AXIS.x1}" y1="${ACCENT_AXIS.y1}" x2="${ACCENT_AXIS.x2}" y2="${ACCENT_AXIS.y2}">${stops()}</linearGradient></defs>\n`
+    : '';
+
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${ox} ${oy} ${side} ${side}" width="${side}" height="${side}">
-<path d="${chevron(g.primary)}" fill="none" stroke="${color}" stroke-width="${TRAY_STROKE}" stroke-linejoin="round" stroke-linecap="round"/>
-<path d="${chevron(g.accent)}" fill="none" stroke="${color}" stroke-width="${TRAY_STROKE}" stroke-linejoin="round" stroke-linecap="round"/>
+${defs}<path d="${chevron(g.primary)}" fill="none" stroke="${color}" stroke-width="${TRAY_STROKE}" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="${chevron(g.accent)}" fill="none" stroke="${accent ? 'url(#accent)' : color}" stroke-width="${TRAY_STROKE}" stroke-linejoin="round" stroke-linecap="round"/>
 </svg>`;
 }

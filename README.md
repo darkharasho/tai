@@ -56,7 +56,9 @@ TAI runs a real PTY with full interactive shell support. Vim, htop, SSH sessions
 ### System tray
 TAI lives in your system tray. Close the window and it keeps running — your shells, your scrollback, and any in-flight AI request all survive. Click the tray icon to bring it back, or use **Show TAI** from its menu. Quitting for real is **Quit TAI** in the same menu, or `Cmd/Ctrl+Q`.
 
-The tray icon follows your system theme. On macOS it ships as a template image, so it tracks the menubar automatically — including while its menu is open. On Windows and Linux it swaps between light and dark glyphs when the theme changes.
+TAI only ever runs one instance. Launching it again while it is hidden in the tray brings the existing window back rather than starting a second app with a second tray icon.
+
+The tray icon follows your system theme. On macOS it ships as a template image, so it tracks the menubar automatically — including while its menu is open. On Windows and Linux it carries the brand's accent chevron and swaps its lead chevron with the theme, so it stays legible even on panels whose colour disagrees with the system light/dark preference.
 
 ---
 

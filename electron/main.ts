@@ -16,7 +16,14 @@ import { purgeStaleTempFiles } from './services/tempCleanup';
 import { registerCommandIndexIpc } from './services/commandIndexStore';
 import { registerWorkflowIpc } from './services/workflowStore';
 import { registerRecordingSave } from './services/recordingSave';
-import { setupTray, destroyTray, isQuitting, quitApp } from './services/tray';
+import { setupTray, destroyTray, isQuitting, quitApp, revealWindow } from './services/tray';
+
+// Closing the window only hides it, so a second launch would otherwise start a
+// whole new app — its own PTYs, its own tray icon — while the first sat hidden.
+// The icons stacked up one per launch. Hand the launch to the running instance
+// instead.
+const gotInstanceLock = app.requestSingleInstanceLock();
+if (!gotInstanceLock) app.quit();
 
 if (process.env.VITE_DEV_SERVER_URL) {
   app.commandLine.appendSwitch('remote-debugging-port', '9222');
@@ -116,7 +123,15 @@ function createWindow() {
   }
 }
 
+app.on('second-instance', () => {
+  revealWindow(mainWindow);
+});
+
 app.whenReady().then(() => {
+  // A losing second instance still reaches whenReady before app.quit() lands;
+  // building a window and a tray here is exactly what we are avoiding.
+  if (!gotInstanceLock) return;
+
   purgeStaleTempFiles(os.tmpdir());
   registerCommandIndexIpc();
   registerWorkflowIpc();

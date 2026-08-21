@@ -12,7 +12,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { renderIcon, renderGlyph, tierFor } from './icon-source.mjs';
+import { renderIcon, renderGlyph, tierFor, PALETTE } from './icon-source.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const p = (...s) => path.join(root, ...s);
@@ -122,13 +122,23 @@ async function main() {
   }
   await write(p('build', 'icon.ico'), encodeIco(icoImages));
 
-  console.log('\ntray templates');
-  // Flat single-colour glyph, no tile, at true menubar sizes. Electron picks
-  // the @2x file up automatically by filename convention, so these must be
-  // exact — a downscale from a larger render visibly softens at 16px.
-  for (const [name, colour] of [['tai-black', '#000000'], ['tai-white', '#FFFFFF']]) {
-    await write(p('public', 'img', `${name}.png`), await raster(renderGlyph({ color: colour }), 16));
-    await write(p('public', 'img', `${name}@2x.png`), await raster(renderGlyph({ color: colour }), 32));
+  console.log('\ntray');
+  // True menubar sizes, rendered exactly rather than downsampled — Electron
+  // picks the @2x file up by filename convention, and a downscale from a larger
+  // render visibly softens at 16px.
+  const trayPng = (opts, size) => raster(renderGlyph(opts), size);
+  const TRAY = [
+    // macOS templates: flat mono plus alpha, recoloured by the OS.
+    ['tai-black', { color: '#000000' }],
+    ['tai-white', { color: '#FFFFFF' }],
+    // Windows/Linux: the accent chevron survives a panel whose actual colour
+    // disagrees with the system colour-scheme hint.
+    ['tai-tray-on-dark', { color: PALETTE.primaryOnDark, accent: true }],
+    ['tai-tray-on-light', { color: PALETTE.primaryOnLight, accent: true }],
+  ];
+  for (const [name, opts] of TRAY) {
+    await write(p('public', 'img', `${name}.png`), await trayPng(opts, 16));
+    await write(p('public', 'img', `${name}@2x.png`), await trayPng(opts, 32));
   }
 
   console.log('\nweb');
