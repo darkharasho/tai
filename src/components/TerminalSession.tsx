@@ -32,7 +32,7 @@ import { SessionSideChat } from './SessionSideChat';
 import { SudoCacheBadge, useSudoCacheState } from './SudoCacheBadge';
 import { buildSessionAiPrompt } from '@/utils/sessionAiPrompt';
 import { assembleInputHistory } from '@/utils/inputHistory';
-import { persistBlocks, loadBlocks } from '@/utils/sessionRestore';
+import { persistBlocks, loadSession } from '@/utils/sessionRestore';
 import { classifySessionCommand, shouldRootSession, detectPort, LONG_RUN_PROMOTE_MS, type SessionKind } from '@/utils/sessionKind';
 import { summarizeSession } from '@/utils/sessionSummary';
 import { preserveStreamedOutput } from '@/utils/finalizeOutput';
@@ -106,10 +106,14 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const claudeEffort = config['claude.effort'] || 'auto';
   const claudeShowReasoning = config['claude.showReasoning'] !== false;
   const aiNextCommandRefine = !!config['aiNextCommandRefine'];
-  // Seed with the previous session's finished blocks (rendered collapsed);
-  // best-effort, so a corrupt payload just yields an empty session.
+  // Seed with the previous session's finished blocks (rendered collapsed
+  // under the resume rail); best-effort, so a corrupt payload just yields an
+  // empty session. Read once — persisting during this session must not
+  // re-date the rail's header.
+  const restoredRef = useRef<ReturnType<typeof loadSession> | null>(null);
+  if (restoredRef.current === null) restoredRef.current = loadSession(tabId);
   const [displayItems, setDisplayItems] = useState<DisplayItem[]>(() =>
-    loadBlocks(tabId).map(block => ({ type: 'command' as const, block, restored: true })));
+    restoredRef.current!.blocks.map(block => ({ type: 'command' as const, block, restored: true })));
   const [findOpen, setFindOpen] = useState(false);
   const [sideChatOpen, setSideChatOpen] = useState(false);
   const displayItemsRef = useRef<DisplayItem[]>([]);
@@ -1583,6 +1587,20 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     }
   }, [surface]);
 
+  // Welcome-card actions. Each one does exactly what its keybinding does —
+  // the card is a second door onto the same room, not a separate feature.
+  const handleWelcomeShell = useCallback(() => {
+    handleInputModeChange('shell');
+    inputRef.current?.focus();
+  }, [handleInputModeChange]);
+
+  const handleWelcomeAI = useCallback(() => {
+    handleInputModeChange('ai');
+    inputRef.current?.focus();
+  }, [handleInputModeChange]);
+
+  const handleWelcomePalette = useCallback(() => setPaletteOpen(true), []);
+
   const isRemote = promptInfo?.isRemote ?? false;
   const sessionHistory = displayItems
     .filter(item => {
@@ -1844,6 +1862,10 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           onSessionRestart={sessionInList && sessionForCard?.kind !== 'agent' ? handleSessionRestart : undefined}
           onAIPrompt={sessionInList ? handleSessionAIPrompt : undefined}
           submitToken={submitToken}
+          restoredSavedAt={restoredRef.current?.savedAt ?? null}
+          onFocusComposer={handleWelcomeShell}
+          onStartAI={handleWelcomeAI}
+          onOpenPalette={handleWelcomePalette}
           activeHeaderExtra={sessionInList && eff.isRemote && remoteAi.target ? (
             <RemoteAiPill
               view={pillView(remoteAi)}

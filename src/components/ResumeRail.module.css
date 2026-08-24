@@ -1,0 +1,126 @@
+/* The previous session as one object: a header you can fold, and rows that
+   hang off a timeline rail so they read as archive rather than as output the
+   shell just produced. */
+.resume {
+  margin-bottom: 22px;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  cursor: pointer;
+  padding: 7px 10px 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.bar:hover {
+  background: rgba(255, 255, 255, 0.025);
+  border-color: var(--border-subtle);
+}
+
+.chev {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.18s ease;
+}
+
+.open .chev {
+  transform: rotate(90deg);
+}
+
+.label {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.meta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.dot {
+  opacity: 0.5;
+}
+
+/* Duration sparkline: shape of the session at a glance, failures in red. */
+.sparks {
+  margin-left: auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.sparks i {
+  width: 3px;
+  border-radius: 1px;
+  background: var(--text-muted);
+  opacity: 0.35;
+}
+
+.sparks i.sparkFail {
+  background: var(--color-error);
+  opacity: 0.6;
+}
+
+.rule {
+  height: 1px;
+  background: linear-gradient(90deg, var(--border-subtle), transparent);
+  margin: 0 10px;
+}
+
+/* The timeline itself. Rows are ordinary blocks; the rail and the tick that
+   joins each one to it live here so CommandBlock stays unaware. */
+.rows {
+  padding: 6px 0 2px 8px;
+  margin-left: 14px;
+  border-left: 1px solid var(--border-subtle);
+}
+
+.rows > *:not(.groupHead) {
+  position: relative;
+}
+
+.rows > *:not(.groupHead)::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 15px;
+  width: 7px;
+  height: 1px;
+  background: var(--border-subtle);
+  pointer-events: none;
+}
+
+.rows [data-collapsed] {
+  padding-left: 12px;
+}
+
+.groupHead {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-muted);
+  padding: 9px 0 3px 12px;
+  letter-spacing: 0.04em;
+  /* No uppercasing — these are paths, and case is meaningful. */
+  opacity: 0.65;
+}
+
+/* The cwd lives in the group head above, so rows inside the rail don't
+   repeat it. */
+.rows [data-collapsed] [data-collapsed-path] {
+  display: none;
+}

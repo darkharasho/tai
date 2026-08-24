@@ -17,6 +17,10 @@
   --text-primary: #bec6d0;
   --text-secondary: #a0acbb;
   --text-muted: #5a6a7a;
+  /* One step brighter than --text-primary, reserved for the command line so
+     it outranks the output beneath it. Derived, so every [data-theme] block
+     below inherits it by overriding --text-primary alone. */
+  --text-command: color-mix(in srgb, var(--text-primary) 78%, white);
   --color-shell: #00a884;
   --color-ai: #8b5cf6;
   --color-agent: #ea580c;

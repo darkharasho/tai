@@ -15,46 +15,107 @@
   overflow-anchor: none;
 }
 
+/* First open: the wordmark plus the three ways in, each carrying the accent
+   of the mode it opens (shell green, ai purple, palette cyan). */
 .welcome {
-  font-family: var(--font-sans);
-  font-size: 13px;
-  color: var(--text-muted);
-  line-height: 1.8;
-  margin-bottom: 16px;
-  padding-left: 8px;
+  padding: 0 2px 18px;
 }
 
-.welcomeTitle {
-  font-family: var(--font-sans);
-  color: var(--color-shell);
-  font-size: 14px;
+.welcomeMark {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 14px;
+}
+
+.welcomeGlyph {
+  font-family: var(--font-mono);
+  font-size: 15px;
   font-weight: 600;
-  margin-bottom: 8px;
-  opacity: 0.7;
+  background: linear-gradient(90deg, var(--color-shell), var(--color-ai));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
-.welcomeSection {
-  margin-bottom: 6px;
+/* No cards: on first open you are looking at a terminal, so the three ways in
+   are shaped like prompt lines rather than like a dashboard. Each row runs the
+   same action as the keybinding printed at its right. */
+.welcomeRows {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-width: 680px;
 }
 
 .welcomeRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 10px;
+  transition: background 0.15s ease;
+}
+
+.welcomeRow:hover,
+.welcomeRow:focus-visible {
+  background: rgba(255, 255, 255, 0.028);
+  outline: none;
+}
+
+.welcomeRowShell { --welcome-accent: var(--color-shell); }
+.welcomeRowAi { --welcome-accent: var(--color-ai); }
+.welcomeRowFind { --welcome-accent: var(--color-info); }
+
+/* Fixed cell so the ❯ and the two lucide glyphs share one optical column. */
+.welcomeGlyphCell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--welcome-accent);
+}
+
+.welcomeName {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-command);
+  flex-shrink: 0;
+}
+
+.welcomeDesc {
   font-family: var(--font-sans);
-  margin-bottom: 1px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .welcomeKey {
-  font-family: var(--font-sans);
+  margin-left: auto;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 10px;
   color: var(--text-secondary);
-  font-size: 12px;
-  margin-right: 8px;
-}
-
-.welcomeHint {
-  font-family: var(--font-sans);
-  color: var(--text-muted);
-  font-size: 12px;
-  margin-top: 4px;
-  opacity: 0.6;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 5px;
 }
 
 .toolApproval {
@@ -165,4 +226,18 @@
 
 .cardWindow > :first-child {
   margin-bottom: 0;
+}
+
+/* Definition between consecutive blocks. Whitespace alone left the stream
+   reading as one undifferentiated wall; a hairline says where one command
+   ends and the next begins without turning every block into a card (card
+   chrome still means "this hosts live UI"). Only between command blocks —
+   AI turns and approvals bring their own framing. */
+.cardWindow + .cardWindow {
+  border-top: 1px solid rgba(255, 255, 255, 0.045);
+}
+
+/* Inside the resume rail the tick marks do this job. */
+[data-resume-rows] .cardWindow + .cardWindow {
+  border-top: none;
 }

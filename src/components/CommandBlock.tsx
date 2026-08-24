@@ -27,7 +27,7 @@ function formatDuration(ms: number): string {
 // timing once it says something about the command.
 const DURATION_VISIBLE_MS = 1000;
 
-function shortenHome(p: string): string {
+export function shortenHome(p: string): string {
   return p.replace(/^\/var\/home\/[^/]+/, '~').replace(/^\/home\/[^/]+/, '~').replace(/^\/Users\/[^/]+/, '~');
 }
 
@@ -396,7 +396,7 @@ export const CommandBlock = memo(function CommandBlock({
         <span className={styles.collapsedCmd}>{block.command}</span>
         {block.summaryLine && <span className={styles.summaryLine}>{block.summaryLine}</span>}
         <span className={styles.collapsedMeta}>
-          {path && <span className={styles.collapsedPath}>{path}</span>}
+          {path && <span className={styles.collapsedPath} data-collapsed-path>{path}</span>}
           {block.duration >= DURATION_VISIBLE_MS && <span>{formatDuration(block.duration)}</span>}
         </span>
         {contextMenu}
@@ -479,8 +479,10 @@ export const CommandBlock = memo(function CommandBlock({
          block. Collapse lives in the context menu; collapsed rows still
          expand on click. */
       /* Warp's two-row header: a muted meta line (cwd, branch, duration)
-         over the command standing alone. The block's left rail carries
-         success/failure, so no glyph and no prompt separator here. */
+         over the command standing alone. The command carries an accent `❯`
+         and heavier, brighter type than its output — without it the two are
+         the same 13px mono and the block reads as one undifferentiated
+         paragraph. The left rail still carries success/failure. */
       <div className={styles.blockHead} ref={headerRef}>
         <div className={styles.metaLine}>
           <div className={styles.promptLeft}>
@@ -562,6 +564,7 @@ export const CommandBlock = memo(function CommandBlock({
           </div>
         </div>
         <div className={styles.cmdLine}>
+          <span className={styles.cmdGlyph} aria-hidden="true">❯</span>
           <span className={styles.cmd}>{cmdFirst}</span>
         </div>
       </div>

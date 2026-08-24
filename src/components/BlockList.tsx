@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { Wrench, Check, X } from 'lucide-react';
+import { Wrench, Check, X, Sparkles, Search } from 'lucide-react';
 import { CommandBlock } from './CommandBlock';
 import { InlineAIBlock } from './InlineAIBlock';
 import { AIConversation } from './AIConversation';
@@ -11,7 +11,12 @@ import type { SessionKind } from '@/utils/sessionKind';
 import type { ReactNode } from 'react';
 import { groupConversations } from '@/utils/groupConversations';
 import { isPinnedToBottom } from '@/utils/scrollPolicy';
+import { ResumeRail, ResumeGroupHead, type ResumeStat } from './ResumeRail';
 import styles from './BlockList.module.css';
+
+// Matches the palette binding in TerminalSession (Cmd/Ctrl+K).
+const PALETTE_KEY =
+  typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent) ? '⌘K' : 'Ctrl+K';
 
 export type DisplayItem =
   | { type: 'command'; block: SegmentedBlock; aiSuggested?: boolean; active?: boolean; awaitingInput?: boolean; restored?: boolean; defaultCollapsed?: boolean }
@@ -54,6 +59,14 @@ interface BlockListProps {
   activeHeaderExtra?: ReactNode;
   /** Bumped on every composer submit; re-pins the list to the bottom. */
   submitToken?: number;
+  /** Epoch ms the restored blocks were persisted — dates the resume rail. */
+  restoredSavedAt?: number | null;
+  /** Focus the composer in shell mode (welcome card). */
+  onFocusComposer?: () => void;
+  /** Focus the composer in AI mode (welcome card). */
+  onStartAI?: () => void;
+  /** Open the command palette (welcome card). */
+  onOpenPalette?: () => void;
 }
 
 export function BlockList({
@@ -85,6 +98,10 @@ export function BlockList({
   onAIPrompt,
   activeHeaderExtra,
   submitToken,
+  restoredSavedAt,
+  onFocusComposer,
+  onStartAI,
+  onOpenPalette,
 }: BlockListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -294,27 +311,86 @@ export function BlockList({
     return null;
   }
 
+  // Restored blocks arrive as a run at the head of the list; everything after
+  // the first live item belongs to this session and renders normally.
+  let restoredCount = 0;
+  while (
+    restoredCount < items.length &&
+    items[restoredCount].type === 'command' &&
+    (items[restoredCount] as DisplayItem & { type: 'command' }).restored
+  ) restoredCount++;
+  const restoredItems = items.slice(0, restoredCount) as Array<DisplayItem & { type: 'command' }>;
+  const liveItems = items.slice(restoredCount);
+
+  const resumeStats: ResumeStat[] = restoredItems.map(i => ({
+    duration: i.block.duration,
+    failed: i.block.exitCode != null && i.block.exitCode !== 0,
+  }));
+
+  // Nothing has run yet in this session — show the hero regardless of how
+  // much history was restored. Opening onto a wall of yesterday's output with
+  // no orientation was the thing that made first launch feel dead.
+  const showWelcome = liveItems.length === 0;
+
   return (
     <div className={styles.blockList} ref={listRef} onScroll={handleScroll}>
       <div className={styles.spacer} />
 
-      {items.length === 0 && (
+      {restoredItems.length > 0 && (
+        <ResumeRail stats={resumeStats} savedAt={restoredSavedAt ?? null}>
+          {restoredItems.flatMap((item, i) => {
+            const path = item.block.cwd ?? '';
+            const prevPath = i > 0 ? (restoredItems[i - 1].block.cwd ?? '') : '';
+            const row = renderItem(item);
+            return path && path !== prevPath
+              ? [<ResumeGroupHead key={`g:${item.block.id}`} path={path} />, row]
+              : [row];
+          })}
+        </ResumeRail>
+      )}
+
+      {showWelcome && (
         <div className={styles.welcome}>
-          <div className={styles.welcomeTitle}>tai</div>
-          <div className={styles.welcomeSection}>
-            <div className={styles.welcomeRow}>
-              <span className={styles.welcomeKey}>Enter</span> Run shell command
-            </div>
-            <div className={styles.welcomeRow}>
-              <span className={styles.welcomeKey}>Shift+Tab</span> Toggle AI mode
-            </div>
+          <div className={styles.welcomeMark}>
+            <span className={styles.welcomeGlyph}>》tai</span>
           </div>
-          <div className={styles.welcomeHint}>Type a command or ask AI a question</div>
+          <div className={styles.welcomeRows}>
+            <button
+              type="button"
+              className={`${styles.welcomeRow} ${styles.welcomeRowShell}`}
+              onClick={onFocusComposer}
+            >
+              <span className={styles.welcomeGlyphCell} aria-hidden="true">❯</span>
+              <span className={styles.welcomeName}>run a command</span>
+              <span className={styles.welcomeDesc}>your shell, blocked and searchable</span>
+              <span className={styles.welcomeKey}>Enter</span>
+            </button>
+            <button
+              type="button"
+              className={`${styles.welcomeRow} ${styles.welcomeRowAi}`}
+              onClick={onStartAI}
+            >
+              <span className={styles.welcomeGlyphCell} aria-hidden="true"><Sparkles size={12} /></span>
+              <span className={styles.welcomeName}>ask the ai</span>
+              <span className={styles.welcomeDesc}>or just type a question — tai routes it</span>
+              <span className={styles.welcomeKey}>Shift+Tab</span>
+            </button>
+            <button
+              type="button"
+              className={`${styles.welcomeRow} ${styles.welcomeRowFind}`}
+              onClick={onOpenPalette}
+            >
+              <span className={styles.welcomeGlyphCell} aria-hidden="true"><Search size={12} /></span>
+              <span className={styles.welcomeName}>commands &amp; history</span>
+              <span className={styles.welcomeDesc}>jump to anything you've run</span>
+              <span className={styles.welcomeKey}>{PALETTE_KEY}</span>
+            </button>
+          </div>
         </div>
       )}
 
       <div ref={contentRef}>
-        {groupConversations(items).map((group) => {
+        {groupConversations(liveItems).map((group) => {
           if (group.kind === 'passthrough') {
             return renderItem(group.item);
           }

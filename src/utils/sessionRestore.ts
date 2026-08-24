@@ -69,25 +69,39 @@ function scrubBlock(b: SegmentedBlock): SegmentedBlock | null {
   return { ...b, command, output, rawOutput };
 }
 
-export function loadBlocks(tabId: string): SegmentedBlock[] {
+/**
+ * Restored blocks plus the moment they were saved — the resume rail dates its
+ * header off `savedAt` ("2h ago"), so it has to survive the load.
+ */
+export interface RestoredSession {
+  blocks: SegmentedBlock[];
+  savedAt: number | null;
+}
+
+export function loadSession(tabId: string): RestoredSession {
   let raw: string | null = null;
   try {
     raw = localStorage.getItem(keyFor(tabId));
   } catch {
-    return [];
+    return { blocks: [], savedAt: null };
   }
-  if (!raw) return [];
+  if (!raw) return { blocks: [], savedAt: null };
   try {
     const payload = JSON.parse(raw) as Payload;
-    if (payload?.v !== VERSION || !Array.isArray(payload.blocks)) return [];
-    return payload.blocks
+    if (payload?.v !== VERSION || !Array.isArray(payload.blocks)) return { blocks: [], savedAt: null };
+    const blocks = payload.blocks
       .filter(
         (b): b is SegmentedBlock =>
           !!b && typeof b.id === 'string' && typeof b.command === 'string' && typeof b.output === 'string',
       )
       .map(scrubBlock)
       .filter((b): b is SegmentedBlock => b !== null);
+    return { blocks, savedAt: typeof payload.savedAt === 'number' ? payload.savedAt : null };
   } catch {
-    return [];
+    return { blocks: [], savedAt: null };
   }
+}
+
+export function loadBlocks(tabId: string): SegmentedBlock[] {
+  return loadSession(tabId).blocks;
 }

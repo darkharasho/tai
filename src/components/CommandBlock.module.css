@@ -322,13 +322,26 @@
   border-left: 1px solid color-mix(in srgb, var(--accent-color, var(--color-shell)) 30%, transparent);
 }
 
+/* The command is the thing you scan a scrollback for: brighter and heavier
+   than --text-primary, which the output now sits below. */
 .cmd {
   font-family: var(--font-mono);
-  font-size: 13px;
-  color: var(--text-primary);
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  color: var(--text-command);
   white-space: pre-wrap;
   overflow: hidden;
   word-break: break-word;
+}
+
+.cmdGlyph {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--accent-color, var(--color-shell));
+  flex-shrink: 0;
 }
 
 .cmdDim {
@@ -400,11 +413,19 @@
   margin-left: 2px;
 }
 
+/* Output is downstream of the command — recessive type, hung off a hairline
+   rail so it reads as "produced by the line above" rather than as a peer. */
+.output,
+.scrolledOutput {
+  padding-left: 13px;
+  border-left: 1px solid rgba(255, 255, 255, 0.055);
+}
+
 .output {
   font-family: var(--font-mono);
-  color: var(--text-primary);
-  font-size: 13px;
-  line-height: 1.5;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-all;
 }
@@ -415,6 +436,8 @@
   color: var(--text-muted);
   cursor: pointer;
   padding-top: 2px;
+  /* Aligns with the output rail above it. */
+  padding-left: 13px;
   opacity: 0.7;
 }
 
@@ -856,9 +879,9 @@
 
 .scrolledOutput {
   font-family: var(--font-mono);
-  color: var(--text-primary);
-  font-size: 13px;
-  line-height: 1.5;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-all;
   max-height: min(60vh, 420px);
