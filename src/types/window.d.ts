@@ -46,6 +46,7 @@ declare global {
       };
       git: {
         branch: (cwd: string) => Promise<string | null>;
+        status: (cwd: string) => Promise<{ branch: string | null; dirty: number }>;
       };
       daemon: {
         check: (target: string) => Promise<{ installed: boolean; version?: string }>;

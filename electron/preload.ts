@@ -90,6 +90,8 @@ contextBridge.exposeInMainWorld('tai', {
   },
   git: {
     branch: (cwd: string): Promise<string | null> => ipcRenderer.invoke('git:branch', cwd),
+    status: (cwd: string): Promise<{ branch: string | null; dirty: number }> =>
+      ipcRenderer.invoke('git:status', cwd),
   },
   codex: {
     send: (key: string, cwd: string, message: string, permMode: string, model: string) =>

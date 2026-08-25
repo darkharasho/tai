@@ -2028,6 +2028,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
             lastExitCode={lastFinalizedExit}
             aiNextCommandRefine={aiNextCommandRefine}
             onRequestAiSuggestion={singleShotAi}
+            model={claudeModel}
           />
         </div>
       )}

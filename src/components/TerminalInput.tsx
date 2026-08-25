@@ -5,9 +5,10 @@ import { predictNextCommand, type NextCommandCtx } from '@/utils/nextCommand';
 import { classifyInput, FLIP_THRESHOLD, type ClassificationResult, type InputType } from '@/utils/commandDetector';
 import { loadLearnedVerdicts, recordCorrection } from '@/utils/classifierMemory';
 import { stripForceShellPrefix, shouldShowAutoBadge } from '@/utils/inputModeUx';
+import { describeProvenance, formatBranchChip, describeBranch, type PredictionSource } from '@/utils/composerStatus';
 import { buildNextCommandPrompt, extractCommand } from '@/utils/aiNextCommand';
 import styles from './TerminalInput.module.css';
-import { ShieldCheck, ShieldOff, Folder, Sparkles, TerminalSquare } from 'lucide-react';
+import { ShieldCheck, ShieldOff, Folder, Sparkles, TerminalSquare, GitBranch } from 'lucide-react';
 import type { AIProvider, TrustLevel } from '@/types';
 import type { PillView, RemoteAiMode } from '@/utils/remoteAiSession';
 import { tokenize, resolveCompletion, type CompletionItem } from '@/completions/resolveCompletion';
@@ -100,6 +101,8 @@ interface TerminalInputProps {
   lastCommand?: string;
   lastExitCode?: number;
   aiNextCommandRefine?: boolean;
+  /** Model label for the chip at the right of the chip row. AI mode only. */
+  model?: string;
   /** Called with a prompt string and abort signal when AI next-command refine is enabled and a zero-state
    *  suggestion is showing. The caller should resolve with the raw AI text response (or reject/throw to
    *  cancel silently). The signal fires when the effect is torn down or conditions no longer hold. */
@@ -144,7 +147,7 @@ export function RemoteAiPill({ view, onEnable, onSetMode, onDismiss }: RemoteAiP
   );
 }
 
-export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>(function TerminalInput({ onSubmit, mode, onModeChange, disabled, cwd, ptyId, commandIndex, promptInfo, shellIntegrated, history = [], onClear, initialValue, remoteAiView, onEnableRemoteAi, onSetRemoteAiMode, onDismissRemoteAi, aiProvider, trustLevel, onTrustLevelChange, lastCommand, lastExitCode, aiNextCommandRefine, onRequestAiSuggestion }, ref) {
+export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>(function TerminalInput({ onSubmit, mode, onModeChange, disabled, cwd, ptyId, commandIndex, promptInfo, shellIntegrated, history = [], onClear, initialValue, remoteAiView, onEnableRemoteAi, onSetRemoteAiMode, onDismissRemoteAi, aiProvider, trustLevel, onTrustLevelChange, lastCommand, lastExitCode, aiNextCommandRefine, onRequestAiSuggestion, model }, ref) {
   const [value, setValue] = useState(initialValue || '');
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const historyIndexRef = useRef(-1);
@@ -161,6 +164,7 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
   // Local PATH binaries. Left null on a remote prompt — over ssh these names
   // describe the wrong machine — which disables the rung by omission.
   const [pathBinaries, setPathBinaries] = useState<ReadonlySet<string> | null>(null);
+  const [gitStatus, setGitStatus] = useState<{ branch: string | null; dirty: number } | null>(null);
   // The decision the last keystroke produced, so a Shift-Tab knows which rung
   // it is correcting. `recordCorrection` discards corrections against rungs
   // that sit above `learned` in the cascade.
@@ -172,23 +176,28 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
   const aiRefineTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const aiRefineAbortRef = useRef<AbortController | null>(null);
 
-  const prediction = useMemo(
+  // The suggestion carries where it came from, so the hint row can attribute it.
+  // An unattributed guess is indistinguishable from the app inventing a command.
+  const predicted = useMemo<{ text: string; source: PredictionSource } | null>(
     () => {
       if (mode !== 'shell') return null;
       if (value.length === 0) {
         // Zero-state: prefer AI refined suggestion when available, else heuristic.
         if (!lastCommand) return null;
-        if (aiRefinedSuggestion) return aiRefinedSuggestion;
-        return zeroStateSuggestion(value, mode, { lastCommand, lastExitCode, index: commandIndex });
+        if (aiRefinedSuggestion) return { text: aiRefinedSuggestion, source: 'ai' };
+        const next = zeroStateSuggestion(value, mode, { lastCommand, lastExitCode, index: commandIndex });
+        return next ? { text: next, source: 'next' } : null;
       }
       // Prefix ghost text (P1): require at least GHOST_MIN_PREFIX chars and no newlines.
       if (value.length >= GHOST_MIN_PREFIX && !value.includes('\n')) {
-        return predictCommandIndexed(value, commandIndex, Date.now(), cwd);
+        const hit = predictCommandIndexed(value, commandIndex, Date.now(), cwd);
+        return hit ? { text: hit, source: 'history' } : null;
       }
       return null;
     },
     [mode, value, commandIndex, cwd, lastCommand, lastExitCode, aiRefinedSuggestion],
   );
+  const prediction = predicted?.text ?? null;
 
   useEffect(() => {
     const el = inputRef.current;
@@ -229,6 +238,25 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
     }).catch(() => { /* the rung simply stays disabled */ });
     return () => { cancelled = true; };
   }, []);
+
+  // Branch + dirty count. Re-read after every command, because a command is
+  // the thing most likely to have changed the tree. `lastCommand`/`lastExitCode`
+  // both move on completion; main dedupes the resulting burst behind a short
+  // TTL. A commit made in some other window shows up on the next command,
+  // which is the first moment it could matter here anyway.
+  useEffect(() => {
+    if (promptInfo?.isRemote) {
+      // The cwd belongs to the remote host; a local git call would describe
+      // the wrong repository.
+      setGitStatus(null);
+      return;
+    }
+    let cancelled = false;
+    void window.tai?.git?.status(cwd).then(st => {
+      if (!cancelled) setGitStatus(st);
+    }).catch(() => { /* chip stays hidden */ });
+    return () => { cancelled = true; };
+  }, [cwd, lastCommand, lastExitCode, promptInfo?.isRemote]);
 
   // Debounced AI refine: only fires when the flag is on, composer is empty (zero-state),
   // a heuristic suggestion exists, and a callback is provided. Cancels on any keystroke /
@@ -296,26 +324,33 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
     };
   }, [aiNextCommandRefine, onRequestAiSuggestion, value, mode, lastCommand, history, cwd]);
 
+  /** Switch modes and teach the classifier from it. Shared by Shift+Tab and
+   *  the segmented control — clicking the toggle is the same correction as
+   *  pressing the key, so it must learn the same way. */
+  const switchMode = (corrected: InputMode) => {
+    if (corrected === mode) return;
+    const last = lastDecisionRef.current;
+    // Three clauses, each load-bearing:
+    //   !manualOverride  — teach only on the FIRST toggle for this input.
+    //                      After it is set the classifier stops running, so
+    //                      the retained decision is stale and repeated
+    //                      presses would pump the counts on one input.
+    //   last.input === … — the retained decision must describe what is in
+    //                      the field right now, not an earlier keystroke.
+    //   type !== corrected — only record when the classifier actually held
+    //                      the opposing opinion; agreeing is not a correction.
+    if (!manualOverride && last && last.input === value.trim() && last.result.type !== corrected) {
+      recordCorrection(last.input, corrected, last.result.source, localStorage);
+      learnedRef.current = loadLearnedVerdicts(localStorage);
+    }
+    setManualOverride(true);
+    onModeChange(corrected);
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Tab' && e.shiftKey) {
       e.preventDefault();
-      const corrected: InputMode = mode === 'shell' ? 'ai' : 'shell';
-      const last = lastDecisionRef.current;
-      // Three clauses, each load-bearing:
-      //   !manualOverride  — teach only on the FIRST toggle for this input.
-      //                      After it is set the classifier stops running, so
-      //                      the retained decision is stale and repeated
-      //                      presses would pump the counts on one input.
-      //   last.input === … — the retained decision must describe what is in
-      //                      the field right now, not an earlier keystroke.
-      //   type !== corrected — only record when the classifier actually held
-      //                      the opposing opinion; agreeing is not a correction.
-      if (!manualOverride && last && last.input === value.trim() && last.result.type !== corrected) {
-        recordCorrection(last.input, corrected, last.result.source, localStorage);
-        learnedRef.current = loadLearnedVerdicts(localStorage);
-      }
-      setManualOverride(true);
-      onModeChange(corrected);
+      switchMode(mode === 'shell' ? 'ai' : 'shell');
       return;
     }
     if (e.key === 'Tab' && !e.shiftKey && mode === 'shell') {
@@ -510,6 +545,9 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
 
   const isAI = mode === 'ai';
   const showAutoBadge = shouldShowAutoBadge(value, manualOverride);
+  const branchLabel = formatBranchChip(gitStatus?.branch ?? null, gitStatus?.dirty ?? 0);
+  const branchTitle = describeBranch(gitStatus?.branch ?? null, gitStatus?.dirty ?? 0);
+  const provenance = describeProvenance(prediction, predicted?.source ?? null, commandIndex, cwd);
   const shortCwd = cwd.replace(/^\/var\/home\/[^/]+/, '~').replace(/^\/home\/[^/]+/, '~');
   const modKey = isMac ? '\u2318' : 'Ctrl+';
 
@@ -541,7 +579,7 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
       )}
       {/* Warp's composer stack: a row of context chips, the input flush
           beneath with no frame around it, then a muted key-hint line. */}
-      <div className={styles.box}>
+      <div className={`${styles.box} ${isAI ? styles.boxAi : ''}`}>
         <div className={styles.chipRow}>
           <span
             className={`${styles.integrationDot} ${shellIntegrated ? styles.integrationDotActive : ''}`}
@@ -550,9 +588,28 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
               : 'Shell integration not detected \u2014 falling back to prompt-text heuristics. Block boundaries may be flaky.'}
             aria-label={shellIntegrated ? 'Shell integration active' : 'Shell integration not detected'}
           />
-          <span className={`${styles.chip} ${isAI ? styles.chipAi : styles.chipShell}`}>
-            {isAI ? <Sparkles size={11} /> : <TerminalSquare size={11} />}
-            {isAI ? 'AI' : 'Shell'}
+          {/* Both destinations visible at once: the old single chip named the
+              current mode but gave no hint the other one existed, let alone
+              that it was one click away. */}
+          <span className={styles.modeSeg} role="group" aria-label="Input mode">
+            <button
+              type="button"
+              className={`${styles.modeSegBtn} ${!isAI ? styles.modeSegOnShell : ''}`}
+              onClick={() => switchMode('shell')}
+              aria-pressed={!isAI}
+              title="Run input as a shell command (Shift+Tab)"
+            >
+              <TerminalSquare size={11} />Shell
+            </button>
+            <button
+              type="button"
+              className={`${styles.modeSegBtn} ${isAI ? styles.modeSegOnAi : ''}`}
+              onClick={() => switchMode('ai')}
+              aria-pressed={isAI}
+              title="Send input to AI (Shift+Tab)"
+            >
+              <Sparkles size={11} />AI
+            </button>
           </span>
           {userName && (
             <span
@@ -566,6 +623,15 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
             <Folder size={11} />
             {promptPath}
           </span>
+          {branchLabel && (
+            <span
+              className={`${styles.chip} ${(gitStatus?.dirty ?? 0) > 0 ? styles.chipDirty : ''}`}
+              title={branchTitle}
+            >
+              <GitBranch size={11} />
+              {branchLabel}
+            </span>
+          )}
           {remoteAiView && onEnableRemoteAi && onSetRemoteAiMode && onDismissRemoteAi && (
             <RemoteAiPill
               view={remoteAiView}
@@ -593,8 +659,17 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
               <span className={styles.permLabel}>{PERM_LABELS[aiProvider][trustLevel]}</span>
             </button>
           )}
+          {isAI && model && (
+            <span className={styles.modelChip} title={`Model: ${model}`}>{model}</span>
+          )}
         </div>
         <div className={styles.row}>
+          {/* A real caret, so ghost text reads as continuing a prompt line
+              rather than floating in an empty box. It takes the mode's colour,
+              which makes the Shell/AI state legible without reading the chip. */}
+          <span className={`${styles.caret} ${isAI ? styles.caretAi : ''}`} aria-hidden="true">
+            {isAI ? '\u2726' : '\u276F'}
+          </span>
           <div className={styles.fieldWrap}>
             {prediction && (
               <span className={styles.ghost} aria-hidden="true">
@@ -625,8 +700,21 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
               auto
             </span>
           )}
-          <span className={styles.kbd}>Shift+Tab</span>
-          <span className={styles.hintLabel}>switch to {isAI ? 'Shell' : 'AI'}</span>
+          {/* The hint follows what the composer is actually offering: while a
+              suggestion is up, the key worth knowing is the one that accepts
+              it, not the one that changes mode. */}
+          {prediction ? (
+            <>
+              <span className={`${styles.kbd} ${styles.kbdGlyph}`}>{'\u2192'}</span>
+              <span className={styles.hintLabel}>accept</span>
+            </>
+          ) : (
+            <>
+              <span className={styles.kbd}>Shift+Tab</span>
+              <span className={styles.hintLabel}>switch to {isAI ? 'Shell' : 'AI'}</span>
+            </>
+          )}
+          {provenance && <span className={styles.provenance}>{provenance}</span>}
         </div>
       </div>
     </div>
