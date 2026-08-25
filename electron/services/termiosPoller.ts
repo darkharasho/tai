@@ -19,6 +19,14 @@ export type ChangeHandler = (e: EchoChangeEvent) => void;
 
 const POLL_INTERVAL_MS = 200;
 
+/**
+ * What the tty provably was before the command started: the shell's own
+ * canonical mode. Both the initial baseline and resetBaseline() seed from
+ * this — they are the same claim ("assume we came from the shell"), and
+ * spelling it once keeps them from drifting apart.
+ */
+const SHELL_STATE: TermiosState = { echo: true, icanon: true };
+
 export class TermiosPoller {
   private _timer: ReturnType<typeof setInterval> | null = null;
   private _last: TermiosState | null = null;
@@ -31,14 +39,24 @@ export class TermiosPoller {
 
   start(): void {
     if (this._timer) return;
-    // Capture the baseline synchronously so the very first interval tick can
-    // already report a change — otherwise the first tick is burned snapshotting
-    // the shell's canonical mode and detection lags a full interval.
-    try {
-      this._last = this._read(this._fd);
-    } catch {
-      this._last = null;
-    }
+    // Seed the baseline with the shell's canonical mode and evaluate at once,
+    // rather than snapshotting whatever the tty currently is.
+    //
+    // A snapshot looks like a "before" reading but is not one: the poller is
+    // armed from the OSC 133 output marker, i.e. AFTER the child is already
+    // running. A program that goes raw the instant it starts (top, htop, less)
+    // has already flipped the tty by the time this runs, so the snapshot baked
+    // raw mode into the baseline and every later tick compared equal — the one
+    // transition this poller exists to report was the one it could never see,
+    // and the surface stayed on the composer while a TUI owned the screen.
+    // Programs that print first and go raw later (python, psql) were
+    // unaffected, which is why it survived this long.
+    //
+    // Seeding instead of snapshotting costs nothing in the common case: an
+    // ordinary command reads (echo on, canonical), matches the seed, and emits
+    // nothing.
+    this._last = { ...SHELL_STATE };
+    this._tick();
     this._timer = setInterval(() => this._tick(), POLL_INTERVAL_MS);
   }
 
@@ -58,7 +76,7 @@ export class TermiosPoller {
    * password prompt re-emits onChange.
    */
   resetBaseline(): void {
-    this._last = { echo: true, icanon: true };
+    this._last = { ...SHELL_STATE };
   }
 
   private _tick(): void {

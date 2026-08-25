@@ -23,7 +23,7 @@ describe('TermiosPoller', () => {
     const read = vi.fn(() => states[Math.min(i++, states.length - 1)]);
     const onChange = vi.fn();
     const p = new TermiosPoller(123, read, onChange);
-    p.start();                    // baseline captured synchronously
+    p.start();                    // seeded baseline (on,on); first read matches → no event
     vi.advanceTimersByTime(200);  // no change
     vi.advanceTimersByTime(200);  // echo off → event
     expect(onChange).toHaveBeenCalledTimes(1);
@@ -36,7 +36,7 @@ describe('TermiosPoller', () => {
       .mockReturnValue({ echo: false, icanon: false });
     const onChange = vi.fn();
     const p = new TermiosPoller(123, read, onChange);
-    p.start();                    // baseline captured synchronously
+    p.start();                    // seeded baseline (on,on); first read matches → no event
     vi.advanceTimersByTime(200);  // raw mode → event
     expect(onChange).toHaveBeenCalledWith({ echo: false, icanon: false, passwordPrompt: false, interactiveProgram: true });
   });
@@ -47,9 +47,48 @@ describe('TermiosPoller', () => {
       .mockReturnValue({ echo: true, icanon: false });
     const onChange = vi.fn();
     const p = new TermiosPoller(123, read, onChange);
-    p.start();                    // baseline captured synchronously
+    p.start();                    // seeded baseline (on,on); first read matches → no event
     vi.advanceTimersByTime(200);  // raw mode → event
     expect(onChange).toHaveBeenCalledWith({ echo: true, icanon: false, passwordPrompt: false, interactiveProgram: true });
+  });
+
+  it('reports a program that was already in raw mode when the poller was armed', () => {
+    // The regression this seeded baseline exists for. The poller is armed at
+    // the OSC 133 output marker, so a program that goes raw the instant it
+    // starts (top, htop, less) has already flipped the tty by then. Snapshotting
+    // the tty here baked raw mode into the baseline and the transition was
+    // never reported, leaving stdin on the composer while a TUI owned the
+    // screen — pressing `q` in top typed a literal q.
+    const read = vi.fn().mockReturnValue({ echo: false, icanon: false });
+    const onChange = vi.fn();
+    const p = new TermiosPoller(123, read, onChange);
+    p.start();                    // evaluates immediately against the seed
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith({
+      echo: false, icanon: false, passwordPrompt: false, interactiveProgram: true,
+    });
+  });
+
+  it('reports a password prompt that was already up when the poller was armed', () => {
+    // Same shape, cooked variant: sudo prompts before the poller is armed.
+    const read = vi.fn().mockReturnValue({ echo: false, icanon: true });
+    const onChange = vi.fn();
+    const p = new TermiosPoller(123, read, onChange);
+    p.start();
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ passwordPrompt: true, interactiveProgram: false }),
+    );
+  });
+
+  it('stays quiet for an ordinary command that never leaves canonical mode', () => {
+    // The seed must not manufacture an event for the common case.
+    const read = vi.fn().mockReturnValue({ echo: true, icanon: true });
+    const onChange = vi.fn();
+    const p = new TermiosPoller(123, read, onChange);
+    p.start();
+    vi.advanceTimersByTime(1000);
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it('resetBaseline() forces a re-emit of an otherwise-unchanged password-prompt state', () => {
@@ -59,12 +98,13 @@ describe('TermiosPoller', () => {
     const read = vi.fn().mockReturnValue({ echo: false, icanon: true });
     const onChange = vi.fn();
     const p = new TermiosPoller(123, read, onChange);
-    p.start();                    // baseline captured synchronously as (off,on)
-    vi.advanceTimersByTime(200);  // (off,on) == baseline → no event
-    expect(onChange).not.toHaveBeenCalled();
+    p.start();                    // first prompt: (off,on) != seed → fires
+    expect(onChange).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(200);  // second prompt reads the same → no event
+    expect(onChange).toHaveBeenCalledTimes(1);
     p.resetBaseline();            // baseline → shell-like (on,on)
     vi.advanceTimersByTime(200);  // (off,on) != (on,on) → re-fires
-    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledTimes(2);
     expect(onChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ passwordPrompt: true }),
     );
