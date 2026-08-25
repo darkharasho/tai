@@ -1,9 +1,10 @@
 import { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect, memo, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Copy, Check, GitBranch, RotateCw, Sparkles, ChevronsDownUp } from 'lucide-react';
+import { Copy, Check, GitBranch, RotateCw, Sparkles, ChevronsDownUp, FileText } from 'lucide-react';
 import { ansiToHtml } from '@/utils/ansiToHtml';
 import { headLines, tailLines } from '@/utils/outputWindow';
 import { classifyExit } from '@/utils/exitStatus';
+import { formatClock, buildBlockTranscript } from '@/utils/blockChrome';
 import { clampMenuPos } from '@/utils/menuPosition';
 import type { SessionKind } from '@/utils/sessionKind';
 import { isPinnedToBottom } from '@/utils/scrollPolicy';
@@ -173,7 +174,8 @@ export const CommandBlock = memo(function CommandBlock({
   headerNotice,
 }: CommandBlockProps) {
   const [showAll, setShowAll] = useState(true);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<'cmd' | 'all' | null>(null);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [inputValue, setInputValue] = useState('');
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const interactiveRef = useRef<HTMLInputElement>(null);
@@ -340,6 +342,18 @@ export const CommandBlock = memo(function CommandBlock({
       {exitClass === 'failure' ? '✗' : exitClass === 'neutral' ? '⊘' : '✓'}
     </span>
   ) : null;
+
+  // Only finished blocks get a wall-clock stamp: a running command's start
+  // time competes with the ticking elapsed chip for the same question.
+  const clock = active ? '' : formatClock(block.startTime);
+  const clockTitle = clock ? new Date(block.startTime).toLocaleString() : undefined;
+
+  const flashCopied = useCallback((which: 'cmd' | 'all') => {
+    setCopied(which);
+    if (copiedTimer.current) clearTimeout(copiedTimer.current);
+    copiedTimer.current = setTimeout(() => setCopied(null), 1500);
+  }, []);
+  useEffect(() => () => { if (copiedTimer.current) clearTimeout(copiedTimer.current); }, []);
 
   const exitTag = exitLabel ? (
     <span className={`${styles.exitTag}${exitClass === 'failure' ? ` ${styles.exitFailure}` : ''}`}>
@@ -523,41 +537,65 @@ export const CommandBlock = memo(function CommandBlock({
             </>
           ) : (
             <>
-              {onToggleCollapse && (
-                <span
-                  className={styles.copyBtn}
-                  title="Collapse block"
-                  onClick={(e) => { e.stopPropagation(); onToggleCollapse(); }}
+              {/* At rest the row says when this ran; on hover the time steps
+                  aside for what you can do with it. Swapping rather than
+                  stacking keeps the meta row one line at every width. */}
+              {clock && <span className={styles.clock} title={clockTitle}>{clock}</span>}
+              <div className={styles.actions}>
+                {onToggleCollapse && (
+                  <button
+                    type="button"
+                    className={`${styles.actionBtn} ${styles.actionBtnIcon}`}
+                    title="Collapse block"
+                    onClick={(e) => { e.stopPropagation(); onToggleCollapse(); }}
+                  >
+                    <ChevronsDownUp size={10} />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={`${styles.actionBtn}${copied === 'cmd' ? ` ${styles.actionBtnDone}` : ''}`}
+                  title="Copy the command"
+                  onClick={(e) => { e.stopPropagation(); onCopy(block.command); flashCopied('cmd'); }}
                 >
-                  <ChevronsDownUp size={11} />
-                </span>
-              )}
-              <span
-                className={styles.copyBtn}
-                title="Ask AI about this block"
-                onClick={(e) => { e.stopPropagation(); onAskAI(block); }}
-              >
-                <Sparkles size={11} />
-              </span>
-              <span
-                className={styles.copyBtn}
-                title="Re-run command"
-                onClick={(e) => { e.stopPropagation(); onRerun(block.command); }}
-              >
-                <RotateCw size={11} />
-              </span>
-              <span
-                className={`${styles.copyBtn}${copied ? ` ${styles.copyBtnCopied}` : ''}`}
-                title="Copy command"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCopy(block.command);
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 1500);
-                }}
-              >
-                {copied ? <Check size={11} /> : <Copy size={11} />}
-              </span>
+                  {copied === 'cmd' ? <Check size={10} /> : <Copy size={10} />}
+                  {copied === 'cmd' ? 'Copied' : 'Copy cmd'}
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.actionBtn}${copied === 'all' ? ` ${styles.actionBtnDone}` : ''}`}
+                  title="Copy command, output and exit code as Markdown"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCopy(buildBlockTranscript(block));
+                    flashCopied('all');
+                  }}
+                >
+                  {copied === 'all' ? <Check size={10} /> : <FileText size={10} />}
+                  {copied === 'all' ? 'Copied' : 'Copy all'}
+                </button>
+                <button
+                  type="button"
+                  className={styles.actionBtn}
+                  title="Re-run this command"
+                  onClick={(e) => { e.stopPropagation(); onRerun(block.command); }}
+                >
+                  <RotateCw size={10} />
+                  Rerun
+                </button>
+                {/* The remedy sits next to the failure badge that prompts it.
+                    On a clean exit there is nothing to fix, so it stays away
+                    rather than offering AI for its own sake. */}
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${exitClass === 'failure' ? styles.actionBtnFix : ''}`}
+                  title={exitClass === 'failure' ? 'Ask AI to fix this failure' : 'Ask AI about this block'}
+                  onClick={(e) => { e.stopPropagation(); onAskAI(block); }}
+                >
+                  <Sparkles size={10} />
+                  {exitClass === 'failure' ? 'Fix with AI' : 'Ask AI'}
+                </button>
+              </div>
               {exitTag}
             </>
           )}

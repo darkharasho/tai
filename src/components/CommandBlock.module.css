@@ -212,7 +212,10 @@
   user-select: none;
 }
 
-/* Row 1: everything about the command except the command itself. */
+/* Row 1: everything about the command except the command itself. The row is
+   context, not content — it recedes until you look at the block. min-height is
+   sized for the action buttons that appear on hover so the row never grows and
+   shoves the rest of the history down. */
 .metaLine {
   display: flex;
   align-items: center;
@@ -220,7 +223,13 @@
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--text-muted);
-  min-height: 16px;
+  min-height: 18px;
+  opacity: 0.62;
+  transition: opacity 0.12s;
+}
+
+.block:hover .metaLine {
+  opacity: 1;
 }
 
 /* Row 2: the command, standing alone in full-strength text. */
@@ -970,4 +979,78 @@
 .blockCardFlat::before,
 .blockCardFlat::after {
   content: none;
+}
+
+/* Wall-clock stamp. Yields to the action row on hover — they answer different
+   questions and only one of them is ever the one you want. */
+.clock {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+  transition: opacity 0.12s;
+}
+
+.block:hover .clock {
+  /* Faded but still in flow: the actions land in the same place every time
+     instead of sliding as the stamp disappears. */
+  opacity: 0;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s;
+}
+
+.block:hover .actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.actionBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.2;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.12s, background 0.12s;
+}
+
+.actionBtn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.actionBtn:focus-visible {
+  outline: 1px solid var(--color-shell);
+  outline-offset: -1px;
+}
+
+.actionBtnIcon {
+  padding: 3px;
+}
+
+.actionBtnDone {
+  color: var(--color-shell);
+}
+
+/* The one coloured action in the row, and only when a failure earns it. */
+.actionBtnFix {
+  color: var(--color-ai);
+}
+
+.actionBtnFix:hover {
+  color: var(--color-ai);
+  background: color-mix(in srgb, var(--color-ai) 16%, transparent);
 }
