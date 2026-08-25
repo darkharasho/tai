@@ -23,7 +23,7 @@ export function SudoCacheBadge({ cached, flash, onForget }: SudoCacheBadgeProps)
         right: 28,
         zIndex: 20,
         padding: '3px 9px',
-        borderRadius: 999,
+        borderRadius: 'var(--r-pill)',
         border: '1px solid rgba(234, 179, 8, 0.3)',
         background: 'var(--bg-card)',
         color: 'var(--text-muted)',

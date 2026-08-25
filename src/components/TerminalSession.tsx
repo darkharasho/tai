@@ -2035,7 +2035,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         <div style={{
           position: 'fixed', bottom: 16, right: 16, zIndex: 2500,
           background: 'var(--bg-card)', border: '1px solid var(--border-card)',
-          borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center',
+          borderRadius: 'var(--r-lg)', padding: '10px 14px', display: 'flex', alignItems: 'center',
           gap: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', fontSize: 13,
           color: 'var(--text-primary)', fontFamily: 'var(--font-sans)', maxWidth: 360,
           animation: 'slideIn 0.2s ease',
@@ -2045,7 +2045,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           {daemonToast.message}
           <button onClick={() => setDaemonToast(null)} style={{
             background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer',
-            padding: 2, borderRadius: 4, marginLeft: 'auto', display: 'flex',
+            padding: 2, borderRadius: 'var(--r-sm)', marginLeft: 'auto', display: 'flex',
           }}>✕</button>
         </div>
       )}

@@ -63,7 +63,7 @@
   height: 22px;
   padding: 0;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--r-md);
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
@@ -88,7 +88,7 @@
 .body::-webkit-scrollbar { width: 9px; }
 .body::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--text-muted) 30%, transparent);
-  border-radius: 6px;
+  border-radius: var(--r-md);
   border: 2px solid transparent;
   background-clip: content-box;
 }
@@ -117,7 +117,7 @@
   max-width: 200px;
   padding: 2px 8px;
   border: 1px solid var(--border-subtle);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--bg-elevated);
   color: var(--text-secondary);
   font-family: var(--font-sans);
@@ -179,6 +179,6 @@
   color: var(--text-muted);
   border: 1px solid rgba(255, 255, 255, 0.06);
   padding: 1px 5px;
-  border-radius: 3px;
+  border-radius: var(--r-xs);
   background: color-mix(in srgb, var(--bg-base) 60%, transparent);
 }

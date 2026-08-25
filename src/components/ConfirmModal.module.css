@@ -22,7 +22,7 @@
 .modal {
   background: var(--bg-card);
   border: 1px solid var(--border-card);
-  border-radius: 10px;
+  border-radius: var(--r-lg);
   width: 400px;
   display: flex;
   flex-direction: column;
@@ -66,7 +66,7 @@
 .cancelButton {
   background: transparent;
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--r-md);
   color: var(--text-secondary);
   font-size: 13px;
   font-family: var(--font-sans);
@@ -78,7 +78,7 @@
 .confirmButton {
   background: var(--color-error, #ef4444);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--r-md);
   color: #fff;
   font-weight: 600;
   font-size: 13px;

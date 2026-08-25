@@ -55,7 +55,7 @@ export function PasswordPrompt({ ptyId, onDone }: PasswordPromptProps) {
         padding: '10px 16px',
         background: 'var(--bg-card)',
         border: '1px solid rgba(234, 179, 8, 0.2)',
-        borderRadius: '10px',
+        borderRadius: 'var(--r-lg)',
         display: 'flex',
         alignItems: 'center',
         gap: '10px',

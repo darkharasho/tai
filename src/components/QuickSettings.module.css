@@ -25,7 +25,7 @@
   max-height: 900px;
   background: var(--bg-surface);
   border: 1px solid var(--border-card);
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -130,7 +130,7 @@
   padding: 5px 12px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--r-md);
   cursor: pointer;
   font-family: var(--font-sans);
   font-size: 11px;
@@ -169,7 +169,7 @@
   padding: 6px 12px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: var(--r-md);
   cursor: pointer;
   min-width: 160px;
   transition: border-color 0.15s, background 0.15s;
@@ -208,7 +208,7 @@
   left: 0;
   background: var(--bg-elevated);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
+  border-radius: var(--r-lg);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   padding: 4px;
   z-index: 10;
@@ -220,7 +220,7 @@
   align-items: center;
   gap: 8px;
   padding: 7px 10px;
-  border-radius: 5px;
+  border-radius: var(--r-sm);
   cursor: pointer;
   font-family: var(--font-sans);
   font-size: 12px;

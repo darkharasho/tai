@@ -10,7 +10,7 @@
   top: 6px;
   bottom: 6px;
   width: 3px;
-  border-radius: 2px;
+  border-radius: var(--r-xs);
   background: linear-gradient(
     to bottom,
     rgba(0, 168, 132, 0.75) 0%,

@@ -6,7 +6,7 @@
   margin: 3px 4px 3px 0;
   background: rgba(183, 140, 255, 0.06);
   border: 1px dashed rgba(183, 140, 255, 0.35);
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: 12px;

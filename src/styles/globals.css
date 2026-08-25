@@ -51,6 +51,20 @@
   --shimmer-duration: 8s;
   --window-radius: 10px;
 
+  /* Corner radius scale. Five steps, chosen by role rather than by pixel —
+     anything that reads as the same kind of object should share a step.
+       xs   inline marks: code spans, kbd, tags, thin rails
+       sm   small controls: icon buttons, menu items, badges
+       md   inputs, medium buttons, code blocks, scrollbar thumbs
+       lg   cards, modals, floating panels
+       pill fully-round chips and toggle tracks
+     Circles (50%) and --window-radius sit outside the scale on purpose. */
+  --r-xs: 3px;
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 10px;
+  --r-pill: 999px;
+
   /* Theme system (default theme = "Tai Dark"). Each [data-theme] block below
      overrides this full set. xterm.js mirrors the ANSI palette in
      src/theme/themes.ts — keep them in sync. */
@@ -692,7 +706,7 @@ html, body {
   left: 78%;
   width: 110px;
   height: 1.5px;
-  border-radius: 99px;
+  border-radius: var(--r-pill);
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.85));
   transform: rotate(135deg);
   opacity: 0;
@@ -880,7 +894,7 @@ html, body {
 
 ::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb);
-  border-radius: 10px;
+  border-radius: var(--r-lg);
   border: 6px solid transparent;
   background-clip: content-box;
   transition:
@@ -970,6 +984,6 @@ html, body {
 .tai-find-flash {
   outline: 2px solid rgba(17, 183, 212, 0.65);
   outline-offset: 2px;
-  border-radius: 10px;
+  border-radius: var(--r-lg);
   transition: outline-color 0.6s ease;
 }

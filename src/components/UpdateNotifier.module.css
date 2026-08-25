@@ -21,7 +21,7 @@
   z-index: 2500;
   background: var(--bg-card);
   border: 1px solid var(--border-card);
-  border-radius: 8px;
+  border-radius: var(--r-lg);
   padding: 10px 14px;
   display: flex;
   align-items: center;
@@ -43,7 +43,7 @@
 .installButton {
   background: var(--color-shell);
   border: none;
-  border-radius: 5px;
+  border-radius: var(--r-sm);
   color: #000;
   font-weight: 600;
   font-size: 12px;
@@ -59,7 +59,7 @@
   color: var(--text-muted);
   cursor: pointer;
   padding: 2px;
-  border-radius: 4px;
+  border-radius: var(--r-sm);
   display: flex;
   flex-shrink: 0;
   margin-left: auto;

@@ -134,7 +134,7 @@ const PINNED_LIVE_STYLE = {
 const STOP_BTN_STYLE = {
   background: 'none',
   border: '1px solid rgba(255,255,255,0.18)',
-  borderRadius: 4,
+  borderRadius: 'var(--r-sm)',
   color: 'var(--text-muted)',
   cursor: 'pointer',
   padding: '1px 8px',

@@ -84,7 +84,7 @@
    bold card — a faint role-tinted surface with a solid accent rail. */
 .blockSession {
   background: color-mix(in srgb, var(--accent-color, var(--color-shell)) 4%, transparent);
-  border-radius: 8px;
+  border-radius: var(--r-lg);
   padding: 8px 14px 10px;
   margin-bottom: 4px;
   box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent-color, var(--color-shell)) 45%, transparent);
@@ -109,7 +109,7 @@
   border-right: var(--accent-card-border-right);
   border-bottom: var(--accent-card-border-bottom);
   border-left: var(--accent-card-border-left);
-  border-radius: 10px;
+  border-radius: var(--r-lg);
   box-shadow: var(--accent-card-shadow);
   transition: border-color 0.2s;
 }
@@ -122,7 +122,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  border-radius: 10px;
+  border-radius: var(--r-lg);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
   border-left: 2px solid var(--accent-color);
   border-top: 2px solid var(--accent-color);
@@ -137,7 +137,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  border-radius: 10px;
+  border-radius: var(--r-lg);
   border-right: 2px solid var(--accent-color);
   border-bottom: 2px solid var(--accent-color);
   pointer-events: none;
@@ -268,7 +268,7 @@
   align-items: center;
   justify-content: center;
   padding: 3px;
-  border-radius: 4px;
+  border-radius: var(--r-sm);
   color: var(--text-muted);
   cursor: pointer;
   opacity: 0;
@@ -458,7 +458,7 @@
   width: 100%;
   margin-top: 8px;
   background: var(--bg-card);
-  border-radius: 6px;
+  border-radius: var(--r-md);
   overflow: hidden;
 }
 
@@ -491,7 +491,7 @@
   font-size: 9.5px;
   letter-spacing: 0.08em;
   border: 1px solid var(--border-card);
-  border-radius: 3px;
+  border-radius: var(--r-xs);
   padding: 1px 5px;
   margin-left: auto;
 }
@@ -528,7 +528,7 @@
   font-size: 12px;
   color: var(--text-muted);
   background: transparent;
-  border-radius: 0 0 10px 10px;
+  border-radius: 0 0 var(--r-lg) var(--r-lg);
   transition: background 0.15s;
   caret-color: var(--text-primary);
 }
@@ -549,7 +549,7 @@
   gap: 9px;
   margin-top: 10px;
   padding: 10px 14px;
-  border-radius: 10px;
+  border-radius: var(--r-lg);
   /* Sits on the card surface — a lighter gradient here reads as a gray
      block and appears to shift on focus. Border is the only affordance. */
   background: rgba(0, 0, 0, 0.18);
@@ -629,7 +629,7 @@
   padding: 2px 6px;
   background: #1e1e2e;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 3px;
+  border-radius: var(--r-xs);
   font-size: 10px;
   color: var(--text-muted);
   white-space: nowrap;
@@ -676,7 +676,7 @@
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
   padding: 1px 7px;
-  border-radius: 20px;
+  border-radius: var(--r-pill);
   line-height: 1.55;
 }
 
@@ -697,7 +697,7 @@
   background: rgba(255, 255, 255, 0.035);
   border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.07));
   padding: 1px 7px;
-  border-radius: 20px;
+  border-radius: var(--r-pill);
   line-height: 1.55;
 }
 
@@ -708,7 +708,7 @@
   padding: 4px;
   background: var(--bg-card, #14181c);
   border: 1px solid var(--border-card, rgba(255, 255, 255, 0.1));
-  border-radius: 8px;
+  border-radius: var(--r-lg);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   display: flex;
   flex-direction: column;
@@ -722,7 +722,7 @@
   font-size: 12px;
   color: var(--text-primary);
   padding: 6px 10px;
-  border-radius: 5px;
+  border-radius: var(--r-sm);
   cursor: pointer;
 }
 
@@ -794,7 +794,7 @@
   color: var(--text-muted);
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 9px;
+  border-radius: var(--r-pill);
   padding: 2px 8px;
   flex-shrink: 0;
 }
@@ -805,7 +805,7 @@
   color: #11B7D4;
   background: rgba(17, 183, 212, 0.06);
   border: 1px solid rgba(17, 183, 212, 0.3);
-  border-radius: 9px;
+  border-radius: var(--r-pill);
   padding: 2px 8px;
   cursor: pointer;
   flex-shrink: 0;
@@ -821,7 +821,7 @@
   color: var(--text-muted);
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: none;
-  border-radius: 4px;
+  border-radius: var(--r-sm);
   padding: 3px 9px;
   letter-spacing: 0.5px;
   cursor: pointer;
@@ -864,7 +864,7 @@
   letter-spacing: 1px;
   color: var(--color-ai, #a85ff1);
   border: 1px solid color-mix(in srgb, var(--color-ai, #a85ff1) 45%, transparent);
-  border-radius: 8px;
+  border-radius: var(--r-pill);
   padding: 1px 7px;
   flex-shrink: 0;
 }
@@ -892,7 +892,7 @@
 .scrolledOutput::-webkit-scrollbar { width: 9px; }
 .scrolledOutput::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--text-muted) 30%, transparent);
-  border-radius: 6px;
+  border-radius: var(--r-md);
   border: 2px solid transparent;
   background-clip: content-box;
 }
@@ -932,7 +932,7 @@
   height: 0;
   transform: translateY(-50%);
   background: var(--accent-color, var(--color-shell));
-  border-radius: 2px;
+  border-radius: var(--r-xs);
   transition: height 0.22s ease;
 }
 .cmdBarPinned {
@@ -961,7 +961,9 @@
    preserve it, and both selectors are single-class, so order is the tiebreak. */
 .blockCardFlat {
   border: 1px solid var(--border-card);
-  border-radius: 5px;
+  /* Intentionally tighter than .blockCard, which this composes with: an active
+     interactive session reads as a screen, not a card. */
+  border-radius: var(--r-sm);
   box-shadow: none;
 }
 

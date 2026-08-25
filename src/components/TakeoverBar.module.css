@@ -48,7 +48,7 @@
   text-transform: uppercase;
   color: var(--text-muted);
   border: 1px solid var(--border-card);
-  border-radius: 3px;
+  border-radius: var(--r-xs);
   padding: 1px 5px;
 }
 
@@ -61,7 +61,7 @@
   color: var(--text-muted);
   background: none;
   border: 1px solid var(--border-card);
-  border-radius: 3px;
+  border-radius: var(--r-xs);
   padding: 2px 7px;
   cursor: pointer;
 }

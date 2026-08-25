@@ -13,7 +13,7 @@
   cursor: pointer;
   padding: 7px 10px 7px 8px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: var(--r-md);
   background: none;
   color: inherit;
   font: inherit;
@@ -66,6 +66,8 @@
 
 .sparks i {
   width: 3px;
+  /* Off-scale deliberately: the bar is 3px wide, so --r-xs (3px) would round it
+     into a capsule. 1px just knocks the corner off. */
   border-radius: 1px;
   background: var(--text-muted);
   opacity: 0.35;

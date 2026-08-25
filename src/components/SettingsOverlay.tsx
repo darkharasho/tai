@@ -165,7 +165,7 @@ export function SettingsOverlay({ visible, onClose, config, onSet }: SettingsOve
                         const updated = workflows.filter(w => w.id !== wf.id);
                         setWorkflowsState(updated);
                         try { (window as any).tai?.workflows?.set?.(updated); } catch {}
-                      }} style={{ background: 'none', border: '1px solid var(--border-subtle)', borderRadius: 4, color: 'var(--text-muted)', cursor: 'pointer', padding: '4px 8px', fontSize: 12, fontFamily: 'var(--font-sans)' }}>
+                      }} style={{ background: 'none', border: '1px solid var(--border-subtle)', borderRadius: 'var(--r-sm)', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px 8px', fontSize: 12, fontFamily: 'var(--font-sans)' }}>
                         Delete
                       </button>
                     </div>
@@ -184,7 +184,7 @@ export function SettingsOverlay({ visible, onClose, config, onSet }: SettingsOve
                     setWorkflowsState(updated);
                     try { (window as any).tai?.workflows?.set?.(updated); } catch {}
                     setWfName(''); setWfCommand('');
-                  }} style={{ alignSelf: 'flex-start', background: 'rgba(255,255,255,0.08)', border: '1px solid var(--border-subtle)', borderRadius: 6, color: 'var(--text-primary)', cursor: 'pointer', padding: '7px 14px', fontSize: 13, fontFamily: 'var(--font-sans)' }}>
+                  }} style={{ alignSelf: 'flex-start', background: 'rgba(255,255,255,0.08)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--r-md)', color: 'var(--text-primary)', cursor: 'pointer', padding: '7px 14px', fontSize: 13, fontFamily: 'var(--font-sans)' }}>
                     Add
                   </button>
                 </div>
