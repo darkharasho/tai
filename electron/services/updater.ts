@@ -2,6 +2,7 @@ import { autoUpdater } from 'electron-updater';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
+import { markQuitting } from './tray';
 
 export function registerUpdater(mainWindow: BrowserWindow) {
   ipcMain.handle('update:getVersion', () => {
@@ -64,6 +65,12 @@ export function registerUpdater(mainWindow: BrowserWindow) {
   });
 
   ipcMain.on('update:install', () => {
+    // quitAndInstall closes the windows first and only then calls app.quit(),
+    // so `before-quit` has not fired yet when the window's close handler runs.
+    // Without this the handler treats it as a plain close and hides to the
+    // tray, the quit never arrives, and the update is never installed — the
+    // app just appears to vanish while still running. See markQuitting.
+    markQuitting();
     autoUpdater.quitAndInstall();
   });
 

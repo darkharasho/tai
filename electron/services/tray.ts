@@ -47,9 +47,24 @@ export function isQuitting(): boolean {
   return quitting;
 }
 
+/**
+ * Flags a real quit without asking Electron to shut down yet.
+ *
+ * The updater needs the two halves separated. `autoUpdater.quitAndInstall()`
+ * closes every window *before* it calls app.quit(), so `before-quit` has not
+ * fired yet when the close handler runs: the handler sees what looks like a
+ * plain close, hides to the tray, and the quit that was supposed to follow
+ * never happens. The update then silently fails to install and the app is left
+ * running with a hidden window. Marking the quit up front makes the close
+ * handler let it through.
+ */
+export function markQuitting(): void {
+  quitting = true;
+}
+
 /** Marks the app as quitting for real, then asks Electron to shut down. */
 export function quitApp(): void {
-  quitting = true;
+  markQuitting();
   app.quit();
 }
 

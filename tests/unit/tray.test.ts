@@ -41,6 +41,7 @@ import {
   isTemplateImage,
   setupTray,
   quitApp,
+  markQuitting,
   isQuitting,
   destroyTray,
   resetTrayState,
@@ -156,6 +157,18 @@ describe('quit handling', () => {
     expect(isQuitting()).toBe(false);
     fire('app:before-quit');
     expect(isQuitting()).toBe(true);
+  });
+
+  // An update installs by closing the windows and only then quitting, so the
+  // flag has to be settable without app.quit() — otherwise the close handler
+  // hides to the tray, the quit never lands, and the update silently fails
+  // while the app keeps running with no window.
+  it('can flag a quit without shutting down yet, for the updater', () => {
+    setupTray({ getWindow: () => null });
+    markQuitting();
+    expect(isQuitting()).toBe(true);
+    expect(app.quit).not.toHaveBeenCalled();
+    expect(closeAction({ quitting: isQuitting(), trayEnabled: true })).toBe('allow');
   });
 
   // Toggling the tray setting off and on rebuilds the tray; the quit hook must
