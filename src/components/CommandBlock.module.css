@@ -48,17 +48,28 @@
 
 .blockActive {
   box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent-color, var(--color-shell)) 75%, transparent);
+  /* The rail pulse below is taller than the block and slides through it, so it
+     has to be clipped to the block box. `clip` rather than `hidden`: it needs
+     no scroll container, and the context menu is portalled to the body
+     (position: fixed) so nothing that should escape the block gets caught. */
+  overflow: clip;
 }
 
 /* Living rail: a soft pulse travels down the accent edge while the
-   command runs — the block breathes instead of sitting there. */
+   command runs — the block breathes instead of sitting there.
+   Travel is a transform, not background-position. The two look identical, but
+   background-position is a paint property, so the old version re-painted the
+   rail on every frame for as long as a command ran; a transform is handed to
+   the compositor and costs nothing per frame. The element is 220% tall — what
+   used to be background-size — and translates by its own height, so the
+   percentages below are the previous keyframes rebased onto that. */
 .blockActive::after {
   content: '';
   position: absolute;
   left: 0;
   top: 0;
-  bottom: 0;
   width: 3px;
+  height: 220%;
   pointer-events: none;
   background: linear-gradient(
     180deg,
@@ -66,18 +77,25 @@
     color-mix(in srgb, var(--accent-color, var(--color-shell)) 95%, white) 50%,
     transparent 100%
   );
-  background-size: 100% 220%;
   animation: railFlow 1.8s linear infinite;
+  will-change: transform;
 }
 
 @keyframes railFlow {
-  from { background-position: 0 220%; }
-  to { background-position: 0 -120%; }
+  from { transform: translateY(-120%); }
+  to { transform: translateY(65.45%); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .block { animation: none; }
-  .blockActive::after { animation: none; opacity: 0.6; }
+  /* Static rail rather than a frozen pulse: at rest the 220% element would
+     park most of its gradient outside the block. */
+  .blockActive::after {
+    animation: none;
+    height: 100%;
+    transform: none;
+    opacity: 0.6;
+  }
 }
 
 /* Live sessions (npm run dev, pm2 logs, agents): distinguished but not a

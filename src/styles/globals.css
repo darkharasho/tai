@@ -918,19 +918,24 @@ html, body {
   --frame-inset: 2px;
 }
 
+/* The strip is sized to the 2px it actually draws, rather than being a
+   full-window box masked down to its top edge. Both render identically, but
+   `shimmer` animates background-position — a paint property, not a composited
+   one — so the masked version re-rasterised the entire window on every frame
+   of the animation, permanently, to slide a 2px line. Sizing the element to
+   the strip cuts that raster area by ~400x. */
 .window-frame::before {
   content: '';
   position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 2px 0 0 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--frame-inset, 2px);
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
   background: var(--frame-gradient);
   background-size: 200% 100%;
   animation: shimmer var(--shimmer-duration) linear infinite;
-  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  mask-composite: exclude;
-  -webkit-mask-composite: xor;
   pointer-events: none;
   z-index: 10000;
 }
