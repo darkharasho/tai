@@ -87,17 +87,27 @@ export function registerQuitTracking(): void {
 }
 
 export type CloseAction = 'allow' | 'hide' | 'quit';
+/** What the user asked the close button to do. */
+export type ClosePreference = 'quit' | 'tray';
 
 /**
  * What a window `close` event should do.
  *
- * 'hide' is close-to-tray. With no tray there is nothing to restore from, so
- * close means quit: `window-all-closed` is deliberately a no-op, and allowing
- * the close would leave the app running with no window and no icon.
+ * 'hide' is close-to-tray. The tray existing and the close button hiding to it
+ * are separate choices — you can want an icon for quick access and still want
+ * the X to quit — so the preference decides, with one hard constraint: with no
+ * tray there is nothing to restore a hidden window from, and `window-all-closed`
+ * is deliberately a no-op, so hiding would strand the app running with no
+ * window and no icon. Without a tray, close always means quit.
  */
-export function closeAction(s: { quitting: boolean; trayEnabled: boolean }): CloseAction {
+export function closeAction(s: {
+  quitting: boolean;
+  trayEnabled: boolean;
+  closePreference?: ClosePreference;
+}): CloseAction {
   if (s.quitting) return 'allow';
-  return s.trayEnabled ? 'hide' : 'quit';
+  if (!s.trayEnabled) return 'quit';
+  return s.closePreference === 'quit' ? 'quit' : 'hide';
 }
 
 function iconPath(variant: TrayVariant): string {

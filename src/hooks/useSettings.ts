@@ -6,6 +6,7 @@ const DEFAULTS = {
   'general.fontSize': 14,
   'general.cursorStyle': 'bar',
   'general.tray': true,
+  'general.closeAction': 'tray',
   'ai.provider': 'claude',
   'ai.model': 'sonnet',
   'claude.model': 'sonnet',

@@ -199,6 +199,20 @@ describe('closeAction', () => {
     expect(closeAction({ quitting: false, trayEnabled: true })).toBe('hide');
   });
 
+  // Close-to-tray predates the preference, so an unset preference has to keep
+  // behaving the way it always did rather than falling through to quit.
+  it('hides when no preference has been chosen yet', () => {
+    expect(closeAction({ quitting: false, trayEnabled: true, closePreference: undefined })).toBe('hide');
+  });
+
+  it('honours a preference to quit even with the tray showing', () => {
+    expect(closeAction({ quitting: false, trayEnabled: true, closePreference: 'quit' })).toBe('quit');
+  });
+
+  it('honours a preference to hide', () => {
+    expect(closeAction({ quitting: false, trayEnabled: true, closePreference: 'tray' })).toBe('hide');
+  });
+
   // Without a tray there is no way back to a hidden window, and
   // window-all-closed is a deliberate no-op — allowing the close would leave
   // the app running with no window and no icon.
@@ -206,8 +220,15 @@ describe('closeAction', () => {
     expect(closeAction({ quitting: false, trayEnabled: false })).toBe('quit');
   });
 
+  // The constraint outranks the preference: a stale 'tray' preference left over
+  // from before the tray was switched off must not strand the app.
+  it('quits with the tray off even if the preference says tray', () => {
+    expect(closeAction({ quitting: false, trayEnabled: false, closePreference: 'tray' })).toBe('quit');
+  });
+
   it('lets a real quit through either way', () => {
     expect(closeAction({ quitting: true, trayEnabled: true })).toBe('allow');
     expect(closeAction({ quitting: true, trayEnabled: false })).toBe('allow');
+    expect(closeAction({ quitting: true, trayEnabled: true, closePreference: 'quit' })).toBe('allow');
   });
 });

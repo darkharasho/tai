@@ -18,6 +18,7 @@ import { registerCommandIndexIpc } from './services/commandIndexStore';
 import { registerWorkflowIpc } from './services/workflowStore';
 import { registerRecordingSave } from './services/recordingSave';
 import { setupTray, destroyTray, isQuitting, quitApp, revealWindow, registerQuitTracking, closeAction } from './services/tray';
+import type { ClosePreference } from './services/tray';
 
 // A dev run and the installed build share app.getPath('userData'), and the
 // single-instance lock keys on that path. Once close-to-tray landed, the
@@ -128,7 +129,11 @@ function createWindow() {
     // close has to mean quit: `window-all-closed` is a deliberate no-op, and
     // simply letting the close through would strand the app running with no
     // window and no icon.
-    switch (closeAction({ quitting: isQuitting(), trayEnabled: trayEnabled() })) {
+    switch (closeAction({
+      quitting: isQuitting(),
+      trayEnabled: trayEnabled(),
+      closePreference: closePreference(),
+    })) {
       case 'allow': return;
       case 'quit': quitApp(); return;
       case 'hide':
@@ -212,6 +217,7 @@ ipcMain.on('window:maximize', () => {
 ipcMain.on('window:close', () => mainWindow?.close());
 
 const TRAY_SETTING = 'general.tray';
+const CLOSE_SETTING = 'general.closeAction';
 
 const configPath = () => path.join(app.getPath('userData'), 'settings.json');
 
@@ -228,6 +234,11 @@ function readConfig(): Record<string, any> {
 /** Default on: the setting only exists to turn the tray off. */
 function trayEnabled(): boolean {
   return readConfig()[TRAY_SETTING] !== false;
+}
+
+/** Default 'tray': close-to-tray was the behaviour before this was a choice. */
+function closePreference(): ClosePreference {
+  return readConfig()[CLOSE_SETTING] === 'quit' ? 'quit' : 'tray';
 }
 
 function writeConfig(config: Record<string, any>) {
