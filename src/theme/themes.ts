@@ -143,14 +143,15 @@ export const THEMES: ThemeDef[] = [
     label: 'Warp',
     xterm: {
       /* The 16 terminal_colors below are verbatim from warpdotdev/themes
-         warp_bundled/warp_dark.yaml. The grid surface is not: that file
-         declares #000000, but Warp paints its window chrome by lightening
-         the base, so the grid matches --bg-base to sit flush in the pane. */
-      background: '#1c1c1e',
-      foreground: '#e8e8e8',
-      cursor: '#4a9eff',
-      cursorAccent: '#1c1c1e',
-      selectionBackground: 'rgba(74, 158, 255, 0.28)',
+         warp_bundled/warp_dark.yaml, and the cursor is that file's `accent`.
+         The grid surface is not: that file declares #000000, but Warp paints
+         its window chrome by lightening the base into a cool slate, so the
+         grid matches --bg-base to sit flush in the pane. */
+      background: '#1d2022',
+      foreground: '#dfe4e7',
+      cursor: '#00c2ff',
+      cursorAccent: '#1d2022',
+      selectionBackground: 'rgba(0, 194, 255, 0.28)',
       black: '#616161', red: '#ff8272', green: '#b4fa72', yellow: '#fefdc2',
       blue: '#a5d5fe', magenta: '#ff8ffd', cyan: '#d0d1fe', white: '#f1f1f1',
       brightBlack: '#8e8e8e', brightRed: '#ffc4bd', brightGreen: '#d6fcb9', brightYellow: '#fefdd5',
