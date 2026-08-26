@@ -220,8 +220,10 @@
   /* Spacing lives on the wrapper: while contents are in the skipped state,
      inner margins don't contribute to layout, so cards would visually touch
      until the visibility pass materializes them. Flat terminal stream —
-     blocks sit nearly flush, like scrollback. */
-  margin-bottom: 2px;
+     blocks sit nearly flush, like scrollback. A theme that fills blocks in
+     needs a real gap instead, or their surfaces meet edge to edge and the
+     stream reads as one slab. */
+  margin-bottom: var(--block-gap, 2px);
 }
 
 .cardWindow > :first-child {
@@ -234,7 +236,7 @@
    chrome still means "this hosts live UI"). Only between command blocks —
    AI turns and approvals bring their own framing. */
 .cardWindow + .cardWindow {
-  border-top: 1px solid rgba(255, 255, 255, 0.045);
+  border-top: var(--block-divider, 1px solid rgba(255, 255, 255, 0.045));
 }
 
 /* Inside the resume rail the tick marks do this job. */

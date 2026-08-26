@@ -95,6 +95,13 @@
      surface of their own, or the text ends up floating on live colour. */
   --block-surface: transparent;
   --block-radius: 0;
+  /* Gap lives on the .cardWindow wrapper, not the block: content-visibility
+     skips offscreen contents, and inner margins do not contribute to layout
+     while skipped. The hairline is what separates blocks when the gap is this
+     tight; a theme with real gaps between filled cards does not need it. */
+  --block-gap: 2px;
+  --block-divider: 1px solid rgba(255, 255, 255, 0.045);
+  --block-surface-hover: rgba(255, 255, 255, 0.022);
 
   /* Terminal ANSI palette — consumed by ansiToHtml via var(--ansi-N), so
      existing scrollback re-themes live on switch. */
@@ -657,6 +664,15 @@ html, body {
      these sit under mono output in nine ANSI colours. */
   --block-surface: rgba(11, 10, 30, 0.66);
   --block-radius: var(--r-lg);
+  /* Filled blocks need separating: without a gap their surfaces touch and the
+     stream reads as one slab rather than a stack of cards. The gap does the
+     separating here, so the hairline goes — on a rounded filled card it would
+     draw a line across the top edge rather than between two cards. */
+  --block-gap: 8px;
+  --block-divider: none;
+  /* Hover has to stay a lift, not a loss — it replaces the surface outright,
+     so this is the glass one step brighter rather than a wash over nothing. */
+  --block-surface-hover: rgba(26, 24, 60, 0.76);
 
   --ansi-30: #0b0a1e; --ansi-31: #ff5f87; --ansi-32: #2ff0c4; --ansi-33: #ffc069;
   --ansi-34: #57b6ff; --ansi-35: #ff85cd; --ansi-36: #5cebd0; --ansi-37: #e6e8fb;

@@ -28,8 +28,11 @@
   border-radius: var(--block-radius, 0);
 }
 
+/* Replaces the background rather than layering over it, so a theme that fills
+   blocks in has to supply its own hover or hovering would strip the surface
+   back to a 2% white wash and drop the block into the background. */
 .block:hover {
-  background: rgba(255, 255, 255, 0.022);
+  background: var(--block-surface-hover, rgba(255, 255, 255, 0.022));
 }
 
 /* State rails: failure red, a running block its accent. */
