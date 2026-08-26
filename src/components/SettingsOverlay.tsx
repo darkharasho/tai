@@ -76,10 +76,23 @@ export function SettingsOverlay({ visible, onClose, config, onSet }: SettingsOve
                     <option value="underline">Underline</option>
                   </select>
                 } />
-                <SettingRow label="Keep running in the system tray when the window is closed" value={
+                <SettingRow label="Show an icon in the system tray" value={
                   <Toggle checked={config['general.tray'] !== false}
                     onChange={v => onSet('general.tray', v)} />
                 } />
+                {/* Only offered while a tray exists: with no tray there is
+                    nothing to restore a hidden window from, so closing always
+                    quits and a choice here would be a lie. */}
+                {config['general.tray'] !== false && (
+                  <SettingRow label="When the window is closed" value={
+                    <select value={config['general.closeAction'] === 'quit' ? 'quit' : 'tray'}
+                      onChange={e => onSet('general.closeAction', e.target.value)}
+                      className={styles.input}>
+                      <option value="tray">Keep running in the tray</option>
+                      <option value="quit">Quit</option>
+                    </select>
+                  } />
+                )}
                 <SettingRow label="System notifications on completion" value={
                   <Toggle checked={!!config['systemNotifications']}
                     onChange={v => onSet('systemNotifications', v)} />

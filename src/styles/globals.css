@@ -76,6 +76,26 @@
   /* Composer (TerminalInput) surface — a subtle vertical lift over --bg-input. */
   --input-surface: linear-gradient(180deg, #181c22, #161a1f);
 
+  /* Window chrome (top bar + tab rail). Split out from --bg-surface so a theme
+     can make the two slabs translucent glass — letting its atmosphere flow
+     under them — without also thinning modals, popovers and the side chat,
+     which share --bg-surface but need to stay opaque to read over content.
+     Default is the flat surface every non-atmospheric theme wants.
+
+     Deliberately plain alpha, not backdrop-filter: an atmosphere is already a
+     heavily blurred field, so sampling and re-blurring it buys no visible
+     softening, while backdrop-filter on these three surfaces — one of which
+     scrolls — makes the compositor re-sample its backdrop on every mount and
+     scroll, which shows up as a flicker when a block lands. */
+  --chrome-surface: var(--bg-surface);
+
+  /* Finished blocks are deliberately flat — see .block in
+     CommandBlock.module.css. That works because they read against a flat
+     --bg-base. A theme whose base is a moving colour field has to give them a
+     surface of their own, or the text ends up floating on live colour. */
+  --block-surface: transparent;
+  --block-radius: 0;
+
   /* Terminal ANSI palette — consumed by ansiToHtml via var(--ansi-N), so
      existing scrollback re-themes live on switch. */
   --ansi-30: #0c0f11; --ansi-31: #E35535; --ansi-32: #00a884; --ansi-33: #c7910c;
@@ -595,6 +615,70 @@ html, body {
   --shiki-token-link: #00c2ff;
 }
 
+/* Iris — an iridescent field that flows rather than twinkles. The surfaces are
+   a deep violet-ink ladder chosen to stay neutral against the atmosphere: the
+   colour in this theme comes from the moving field behind the content, so the
+   chrome deliberately does not compete with it. Accents are the four hues the
+   field cycles through (aqua, iris, rose, azure) plus amber for warmth. */
+[data-theme="iris"] {
+  --bg-base: #0b0a1e;
+  --bg-surface: #121130;
+  --bg-mid: #0e0d26;
+  --bg-input: #191840;
+  --bg-elevated: #201f4d;
+  --bg-hover: #29285c;
+  --bg-card: #100f2a;
+  --border-card: #2b2a5e;
+  --text-primary: #e6e8fb;
+  --text-secondary: #b0b4e0;
+  --text-muted: #6f74a8;
+  --color-shell: #2ff0c4;
+  --color-ai: #b79cff;
+  --color-agent: #ffb45c;
+  --color-error: #ff5f87;
+  --color-warning: #ffc069;
+  --color-info: #57b6ff;
+  --selection-bg: rgba(183, 156, 255, 0.32);
+  --frame-gradient: linear-gradient(90deg, #2ff0c4, #b79cff, #ff85cd, #57b6ff, #2ff0c4);
+  --scrollbar-thumb: rgba(183, 156, 255, 0.26);
+  --scrollbar-thumb-hover: rgba(183, 156, 255, 0.38);
+  --scrollbar-thumb-active: rgba(47, 240, 196, 0.55);
+  --input-surface: linear-gradient(180deg, #1d1c4a, #191840);
+  --shadow-card: 0 2px 10px rgba(0, 0, 0, 0.38), 0 0 20px rgba(138, 82, 255, 0.10);
+  /* The two chrome slabs are glass here, not paint: a flat opaque bar reads as
+     a cut-out against a field that is still moving behind it. Saturate boosts
+     the hue the blur would otherwise wash out, and the hairline borders are
+     white-alpha rather than --border-subtle so they stay visible over whichever
+     colour is passing underneath. */
+  --chrome-surface: rgba(13, 12, 34, 0.62);
+  --border-subtle: rgba(255, 255, 255, 0.10);
+  /* Blocks become glass cards so the field stays visible between them rather
+     than being covered by one flat panel. Slightly denser than the chrome:
+     these sit under mono output in nine ANSI colours. */
+  --block-surface: rgba(11, 10, 30, 0.66);
+  --block-radius: var(--r-lg);
+
+  --ansi-30: #0b0a1e; --ansi-31: #ff5f87; --ansi-32: #2ff0c4; --ansi-33: #ffc069;
+  --ansi-34: #57b6ff; --ansi-35: #ff85cd; --ansi-36: #5cebd0; --ansi-37: #e6e8fb;
+  --ansi-90: #6f74a8; --ansi-91: #ff85a3; --ansi-92: #6bf5d6; --ansi-93: #ffd390;
+  --ansi-94: #86caff; --ansi-95: #ffa6dc; --ansi-96: #8ff4e2; --ansi-97: #ffffff;
+  --ansi-bg-40: #0b0a1e; --ansi-bg-41: #46203a; --ansi-bg-42: #0f4442; --ansi-bg-43: #463620;
+  --ansi-bg-44: #1c3556; --ansi-bg-45: #442458; --ansi-bg-46: #14423e; --ansi-bg-47: #35356a;
+  --ansi-bg-100: #35356a; --ansi-bg-101: #58284a; --ansi-bg-102: #145450; --ansi-bg-103: #584428;
+  --ansi-bg-104: #244470; --ansi-bg-105: #54306a; --ansi-bg-106: #1a544e; --ansi-bg-107: #6f74a8;
+
+  --shiki-foreground: #e6e8fb;
+  --shiki-token-comment: #6a6fa0;
+  --shiki-token-keyword: #b79cff;
+  --shiki-token-string: #5cebd0;
+  --shiki-token-string-expression: #5cebd0;
+  --shiki-token-constant: #ffc069;
+  --shiki-token-function: #ff85cd;
+  --shiki-token-parameter: #57b6ff;
+  --shiki-token-punctuation: #a6abd8;
+  --shiki-token-link: #57b6ff;
+}
+
 /* App root background lives here (not inline) so themes can restyle it.
    isolation creates a stacking context so the Cosmos atmosphere can sit at
    z-index -1: above this background, below ALL content unconditionally. */
@@ -848,6 +932,132 @@ html, body {
   to { opacity: 0.95; }
 }
 
+/* === Iris atmosphere — a slow river of colour ===
+   Unlike the particle themes above, nothing here is a tile: this is a mesh
+   gradient. Five opaque hue zones sit on a saturated field and each drifts on
+   its own long, prime-ish period, so the composite never repeats within a
+   session. Two rules keep it from turning to mud:
+     1. The field beneath is OPAQUE and saturated. Translucent colour over a
+        near-black base reads as grey no matter how vivid the source hue is.
+     2. Each zone travels far less than its own diameter, so the hues slide
+        past each other instead of piling into the centre and averaging out.
+   The readability scrim is flat black at low alpha — it drops lightness
+   without touching saturation, which a grey or multiply layer would not. */
+.iris-field {
+  background: linear-gradient(155deg, #0f4a5e, #2b1a72 42%, #4d1352 78%, #1a1250 100%);
+}
+
+/* No filter: blur() anywhere in here, on purpose. A radial-gradient falling
+   off over 74% of its own radius is already softer than a 64px blur can make
+   it, so the filter cost bought nothing visible — and five fullscreen filter
+   layers are expensive to re-raster, which is what showed up as a redraw
+   whenever a block mounted above them. Gradient stops do the softening;
+   the compositor only ever has to move a finished texture. */
+.iris-flow-a,
+.iris-flow-b,
+.iris-flow-c,
+.iris-flow-d,
+.iris-flow-e {
+  inset: auto;
+  border-radius: 50%;
+  will-change: transform;
+}
+
+.iris-flow-a {
+  width: 64vw; height: 70vh; left: -14vw; top: -20vh;
+  background: radial-gradient(closest-side,
+    rgba(22, 240, 189, 0.95), rgba(22, 240, 189, 0.55) 32%,
+    rgba(22, 240, 189, 0.22) 58%, rgba(22, 240, 189, 0.05) 80%, rgba(22, 240, 189, 0) 100%);
+  animation: irisFlowA 54s ease-in-out infinite alternate;
+}
+
+.iris-flow-b {
+  width: 60vw; height: 70vh; left: 46vw; top: -24vh;
+  background: radial-gradient(closest-side,
+    rgba(138, 82, 255, 1), rgba(138, 82, 255, 0.58) 32%,
+    rgba(138, 82, 255, 0.24) 58%, rgba(138, 82, 255, 0.06) 80%, rgba(138, 82, 255, 0) 100%);
+  animation: irisFlowB 66s ease-in-out infinite alternate;
+}
+
+.iris-flow-c {
+  width: 60vw; height: 64vh; left: -12vw; top: 52vh;
+  background: radial-gradient(closest-side,
+    rgba(255, 62, 165, 0.88), rgba(255, 62, 165, 0.5) 32%,
+    rgba(255, 62, 165, 0.2) 58%, rgba(255, 62, 165, 0.05) 80%, rgba(255, 62, 165, 0) 100%);
+  animation: irisFlowC 60s ease-in-out infinite alternate;
+}
+
+.iris-flow-d {
+  width: 60vw; height: 66vh; left: 54vw; top: 54vh;
+  background: radial-gradient(closest-side,
+    rgba(36, 150, 255, 0.95), rgba(36, 150, 255, 0.55) 32%,
+    rgba(36, 150, 255, 0.22) 58%, rgba(36, 150, 255, 0.05) 80%, rgba(36, 150, 255, 0) 100%);
+  animation: irisFlowD 72s ease-in-out infinite alternate;
+}
+
+.iris-flow-e {
+  width: 44vw; height: 48vh; left: 22vw; top: 22vh;
+  background: radial-gradient(closest-side,
+    rgba(255, 182, 72, 0.7), rgba(255, 182, 72, 0.36) 32%,
+    rgba(255, 182, 72, 0.14) 58%, rgba(255, 182, 72, 0.03) 80%, rgba(255, 182, 72, 0) 100%);
+  animation: irisFlowE 84s ease-in-out infinite alternate;
+}
+
+@keyframes irisFlowA {
+  from { transform: translate(0, 0) scale(1); }
+  to { transform: translate(10vw, 12vh) scale(1.16); }
+}
+
+@keyframes irisFlowB {
+  from { transform: translate(0, 0) scale(1.12); }
+  to { transform: translate(-11vw, 14vh) scale(0.94); }
+}
+
+@keyframes irisFlowC {
+  from { transform: translate(0, 0) scale(0.96); }
+  to { transform: translate(13vw, -13vh) scale(1.18); }
+}
+
+@keyframes irisFlowD {
+  from { transform: translate(0, 0) scale(1.14); }
+  to { transform: translate(-12vw, -11vh) scale(0.95); }
+}
+
+@keyframes irisFlowE {
+  from { transform: translate(-6vw, 4vh) scale(1); }
+  to { transform: translate(11vw, -7vh) scale(1.3); }
+}
+
+/* The current running through the field: one wide iridescent band that leans
+   back and forth across the whole window. Plain alpha rather than a screen
+   blend — over a field this light the two are near-indistinguishable, and a
+   blend mode would force the whole atmosphere to re-composite as a group every
+   time content above it changes. */
+.iris-silk {
+  inset: auto;
+  left: -70%; top: -25%;
+  width: 240%; height: 150%;
+  background: linear-gradient(100deg,
+    transparent 36%,
+    rgba(178, 255, 246, 0.12) 41%,
+    rgba(178, 255, 246, 0.20) 46%,
+    rgba(228, 210, 255, 0.22) 52%,
+    rgba(255, 178, 230, 0.15) 58%,
+    rgba(255, 178, 230, 0.07) 63%,
+    transparent 70%);
+  animation: irisSilk 44s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@keyframes irisSilk {
+  from { transform: translateX(-13%) rotate(-2.5deg); }
+  to { transform: translateX(13%) rotate(2.5deg); }
+}
+
+.iris-scrim {
+  background: rgba(5, 3, 12, 0.36);
+}
+
 /* Theatrical accents: soft bloom on the stream cursor, per stylized theme.
    Card shadows get their tint via --shadow-card in each theme block. */
 [data-theme="cosmos"] .cb-stream-cursor {
@@ -866,6 +1076,10 @@ html, body {
   box-shadow: 0 0 8px rgba(0, 194, 255, 0.7);
 }
 
+[data-theme="iris"] .cb-stream-cursor {
+  box-shadow: 0 0 8px rgba(183, 156, 255, 0.75);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .cosmos-aurora,
   .cosmos-stars-far,
@@ -875,7 +1089,13 @@ html, body {
   .abyss-bubbles-near,
   .magma-glow,
   .magma-embers-far,
-  .magma-embers-near {
+  .magma-embers-near,
+  .iris-flow-a,
+  .iris-flow-b,
+  .iris-flow-c,
+  .iris-flow-d,
+  .iris-flow-e,
+  .iris-silk {
     animation: none;
   }
   .cosmos-shooting { display: none; }
@@ -918,19 +1138,24 @@ html, body {
   --frame-inset: 2px;
 }
 
+/* The strip is sized to the 2px it actually draws, rather than being a
+   full-window box masked down to its top edge. Both render identically, but
+   `shimmer` animates background-position — a paint property, not a composited
+   one — so the masked version re-rasterised the entire window on every frame
+   of the animation, permanently, to slide a 2px line. Sizing the element to
+   the strip cuts that raster area by ~400x. */
 .window-frame::before {
   content: '';
   position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  padding: 2px 0 0 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--frame-inset, 2px);
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
   background: var(--frame-gradient);
   background-size: 200% 100%;
   animation: shimmer var(--shimmer-duration) linear infinite;
-  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-  mask-composite: exclude;
-  -webkit-mask-composite: xor;
   pointer-events: none;
   z-index: 10000;
 }

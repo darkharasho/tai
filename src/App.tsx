@@ -226,6 +226,18 @@ export default function App() {
           <div className="magma-embers-near" />
         </div>
       )}
+      {theme === 'iris' && (
+        <div className="theme-atmosphere" aria-hidden>
+          <div className="iris-field" />
+          <div className="iris-flow-a" />
+          <div className="iris-flow-b" />
+          <div className="iris-flow-c" />
+          <div className="iris-flow-d" />
+          <div className="iris-flow-e" />
+          <div className="iris-silk" />
+          <div className="iris-scrim" />
+        </div>
+      )}
       <TopBar
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSetting('appearance.sidebar', !sidebarOpen)}

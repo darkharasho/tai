@@ -47,9 +47,24 @@ export function isQuitting(): boolean {
   return quitting;
 }
 
+/**
+ * Flags a real quit without asking Electron to shut down yet.
+ *
+ * The updater needs the two halves separated. `autoUpdater.quitAndInstall()`
+ * closes every window *before* it calls app.quit(), so `before-quit` has not
+ * fired yet when the close handler runs: the handler sees what looks like a
+ * plain close, hides to the tray, and the quit that was supposed to follow
+ * never happens. The update then silently fails to install and the app is left
+ * running with a hidden window. Marking the quit up front makes the close
+ * handler let it through.
+ */
+export function markQuitting(): void {
+  quitting = true;
+}
+
 /** Marks the app as quitting for real, then asks Electron to shut down. */
 export function quitApp(): void {
-  quitting = true;
+  markQuitting();
   app.quit();
 }
 
@@ -72,17 +87,27 @@ export function registerQuitTracking(): void {
 }
 
 export type CloseAction = 'allow' | 'hide' | 'quit';
+/** What the user asked the close button to do. */
+export type ClosePreference = 'quit' | 'tray';
 
 /**
  * What a window `close` event should do.
  *
- * 'hide' is close-to-tray. With no tray there is nothing to restore from, so
- * close means quit: `window-all-closed` is deliberately a no-op, and allowing
- * the close would leave the app running with no window and no icon.
+ * 'hide' is close-to-tray. The tray existing and the close button hiding to it
+ * are separate choices — you can want an icon for quick access and still want
+ * the X to quit — so the preference decides, with one hard constraint: with no
+ * tray there is nothing to restore a hidden window from, and `window-all-closed`
+ * is deliberately a no-op, so hiding would strand the app running with no
+ * window and no icon. Without a tray, close always means quit.
  */
-export function closeAction(s: { quitting: boolean; trayEnabled: boolean }): CloseAction {
+export function closeAction(s: {
+  quitting: boolean;
+  trayEnabled: boolean;
+  closePreference?: ClosePreference;
+}): CloseAction {
   if (s.quitting) return 'allow';
-  return s.trayEnabled ? 'hide' : 'quit';
+  if (!s.trayEnabled) return 'quit';
+  return s.closePreference === 'quit' ? 'quit' : 'hide';
 }
 
 function iconPath(variant: TrayVariant): string {
