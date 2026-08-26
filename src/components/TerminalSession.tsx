@@ -33,6 +33,8 @@ import { SudoCacheBadge, useSudoCacheState } from './SudoCacheBadge';
 import { buildSessionAiPrompt } from '@/utils/sessionAiPrompt';
 import { assembleInputHistory } from '@/utils/inputHistory';
 import { persistBlocks, loadSession } from '@/utils/sessionRestore';
+import { buildOutline } from '@/utils/sessionOutline';
+import { publishOutline, clearOutline } from '@/stores/outlineStore';
 import { classifySessionCommand, shouldRootSession, detectPort, LONG_RUN_PROMOTE_MS, type SessionKind } from '@/utils/sessionKind';
 import { summarizeSession } from '@/utils/sessionSummary';
 import { preserveStreamedOutput } from '@/utils/finalizeOutput';
@@ -1662,6 +1664,39 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [visible, handleFindNavigate]);
+
+  // "You are here": the top-most block currently in the viewport, fed to the
+  // sidebar outline. Re-observed when the block count changes, since new cards
+  // are appended to the DOM the observer was built over.
+  const [currentItemId, setCurrentItemId] = useState<string | null>(null);
+  const blockCount = displayItems.length;
+  useEffect(() => {
+    const root = sessionRootRef.current;
+    if (!root || !visible || typeof IntersectionObserver === 'undefined') return;
+    const els = Array.from(root.querySelectorAll('[data-item-id]')) as HTMLElement[];
+    if (els.length === 0) { setCurrentItemId(null); return; }
+    const onScreen = new Set<string>();
+    const observer = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        const id = (entry.target as HTMLElement).dataset.itemId;
+        if (!id) continue;
+        if (entry.isIntersecting) onScreen.add(id); else onScreen.delete(id);
+      }
+      const first = els.find(el => el.dataset.itemId && onScreen.has(el.dataset.itemId));
+      setCurrentItemId(first?.dataset.itemId ?? null);
+    }, { threshold: 0 });
+    for (const el of els) observer.observe(el);
+    return () => observer.disconnect();
+  }, [visible, blockCount]);
+
+  // Publish this tab's block outline for the sidebar. A module store rather
+  // than App state: App keeps every tab mounted, so lifting this would
+  // re-render every session on every line of output.
+  const outline = useMemo(() => buildOutline(displayItems), [displayItems]);
+  useEffect(() => {
+    publishOutline(tabId, { outline, currentId: currentItemId, navigate: handleFindNavigate });
+  }, [tabId, outline, currentItemId, handleFindNavigate]);
+  useEffect(() => () => clearOutline(tabId), [tabId]);
 
   const handleFindClose = useCallback(() => setFindOpen(false), []);
 

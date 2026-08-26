@@ -243,24 +243,25 @@ export function BlockList({
 
     if (item.type === 'ai') {
       return (
-        <InlineAIBlock
-          key={item.id}
-          question={item.question}
-          content={item.content}
-          suggestedCommands={item.suggestedCommands}
-          streaming={item.streaming}
-          duration={item.duration}
-          entries={item.entries}
-          onRunCommand={onRunSuggested}
-          onCopy={onCopy}
-          onStop={item.streaming ? onStopAI : undefined}
-          aiProvider={aiProvider}
-          queuedPrompts={item.streaming ? queuedPrompts : undefined}
-          onEditQueued={item.streaming ? onEditQueued : undefined}
-          onRemoveQueued={item.streaming ? onRemoveQueued : undefined}
-          isFollowup={opts.isFollowup}
-          isRemote={item.remote ?? false}
-        />
+        <div key={item.id} data-item-id={item.id}>
+          <InlineAIBlock
+            question={item.question}
+            content={item.content}
+            suggestedCommands={item.suggestedCommands}
+            streaming={item.streaming}
+            duration={item.duration}
+            entries={item.entries}
+            onRunCommand={onRunSuggested}
+            onCopy={onCopy}
+            onStop={item.streaming ? onStopAI : undefined}
+            aiProvider={aiProvider}
+            queuedPrompts={item.streaming ? queuedPrompts : undefined}
+            onEditQueued={item.streaming ? onEditQueued : undefined}
+            onRemoveQueued={item.streaming ? onRemoveQueued : undefined}
+            isFollowup={opts.isFollowup}
+            isRemote={item.remote ?? false}
+          />
+        </div>
       );
     }
 

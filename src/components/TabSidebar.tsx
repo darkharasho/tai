@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { Plus, X } from 'lucide-react';
 import type { TabState, ContextMode } from '@/types';
 import { TrustBadge } from './TrustBadge';
+import { BlockOutline } from './BlockOutline';
+import { getOutline, getOutlineVersion, subscribeOutlines } from '@/stores/outlineStore';
 import styles from './TabSidebar.module.css';
 
 const MODE_COLORS: Record<ContextMode, string> = {
@@ -36,6 +38,11 @@ export function TabSidebar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTa
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
 
+  // Subscribing to the outline store here (rather than holding outlines in
+  // App) keeps block churn from re-rendering every mounted TerminalSession.
+  useSyncExternalStore(subscribeOutlines, getOutlineVersion, getOutlineVersion);
+  const activeOutline = getOutline(activeTabId);
+
   const startRename = (tab: TabState) => {
     setEditingId(tab.id);
     setEditValue(tab.label);
@@ -54,9 +61,8 @@ export function TabSidebar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTa
           const modeColor = tab.isRemote ? 'var(--color-agent)' : MODE_COLORS[tab.contextMode];
           const title = tab.isRemote && tab.sshTarget ? tab.sshTarget : tab.label;
           const sub = leaf(tab.cwd);
-          return (
+          const row = (
             <div
-              key={tab.id}
               onClick={() => onSelectTab(tab.id)}
               onDoubleClick={() => startRename(tab)}
               className={`${styles.tab} ${isActive ? styles.tabActive : ''}`}
@@ -94,6 +100,24 @@ export function TabSidebar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTa
                   onClick={e => { e.stopPropagation(); onCloseTab(tab.id); }}
                 />
               )}
+            </div>
+          );
+
+          // The active tab and its block outline are one object: the accent
+          // rail runs out of the tab and down through the blocks as a spine.
+          if (!isActive || !activeOutline) return <div key={tab.id}>{row}</div>;
+          return (
+            <div
+              key={tab.id}
+              className={styles.group}
+              style={{ '--tab-accent': modeColor } as React.CSSProperties}
+            >
+              {row}
+              <BlockOutline
+                outline={activeOutline.outline}
+                currentId={activeOutline.currentId}
+                onNavigate={activeOutline.navigate}
+              />
             </div>
           );
         })}
