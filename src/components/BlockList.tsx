@@ -19,7 +19,7 @@ const PALETTE_KEY =
   typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent) ? '⌘K' : 'Ctrl+K';
 
 export type DisplayItem =
-  | { type: 'command'; block: SegmentedBlock; aiSuggested?: boolean; active?: boolean; awaitingInput?: boolean; restored?: boolean; defaultCollapsed?: boolean }
+  | { type: 'command'; block: SegmentedBlock; aiSuggested?: boolean; active?: boolean; awaitingInput?: boolean; restored?: boolean }
   | { type: 'ai'; id: string; question: string; content: string; suggestedCommands: string[]; streaming: boolean; duration?: number; entries?: AIEntry[]; remote?: boolean }
   | { type: 'approval'; id: string; command: string; toolUseId: string; toolName: string; status: 'pending' | 'approved' | 'rejected'; input?: unknown; answers?: Record<string, string> };
 
@@ -198,11 +198,11 @@ export function BlockList({
     const id = item.block.id;
     const isActive = item.active || id === activeBlockId;
     if (isActive) return false;
-    // manualCollapsed records "the user toggled this card". Fresh cards
-    // default expanded; restored (previous-session) and finished session
-    // cards (server/watch/agent) default collapsed.
-    const toggled = manualCollapsed.has(id);
-    return (item.restored || item.defaultCollapsed) ? !toggled : toggled;
+    // Every card opens expanded — a block you have to click to read is a
+    // block you do not read. Restored history is folded behind the resume
+    // rail instead, so it costs one collapse rather than fifty expands.
+    // manualCollapsed records "the user folded this card".
+    return manualCollapsed.has(id);
   }
 
   function renderItem(item: DisplayItem, opts: { isFollowup?: boolean } = {}) {

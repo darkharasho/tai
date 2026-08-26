@@ -81,9 +81,9 @@ describe('resume rail', () => {
     const { container, getByRole } = render(
       <BlockList {...baseProps} items={[cmd('a', { restored: true })]} />,
     );
-    expect(container.querySelectorAll('[data-collapsed]')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-card-surface]')).toHaveLength(1);
     fireEvent.click(getByRole('button', { expanded: true }));
-    expect(container.querySelectorAll('[data-collapsed]')).toHaveLength(0);
+    expect(container.querySelectorAll('[data-card-surface]')).toHaveLength(0);
   });
 
   it('holds only the restored run at the head of the list', () => {

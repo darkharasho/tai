@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import '@testing-library/jest-dom';
-import { render, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { BlockList, type DisplayItem } from '../../src/components/BlockList';
 import type { SegmentedBlock } from '../../src/types';
 
@@ -9,11 +9,10 @@ vi.mock('../../src/components/InlineAIBlock', () => ({
   InlineAIBlock: () => <div />,
 }));
 
-function cmd(id: string, restored?: boolean, defaultCollapsed?: boolean): DisplayItem {
+function cmd(id: string, restored?: boolean): DisplayItem {
   return {
     type: 'command',
     restored,
-    defaultCollapsed,
     block: { id, command: `c-${id}`, output: 'out', rawOutput: 'out', promptText: 'p $', startTime: 0, duration: 1, exitCode: 0, isRemote: false } as SegmentedBlock,
   } as DisplayItem;
 }
@@ -34,25 +33,20 @@ beforeEach(() => {
 });
 
 describe('BlockList restored cards', () => {
-  it('renders restored cards collapsed by default', () => {
+  it('renders every card expanded, restored history included', () => {
     const { container } = render(<BlockList {...baseProps} items={[cmd('a', true), cmd('b')]} />);
+    expect(container.querySelectorAll('[data-collapsed]')).toHaveLength(0);
+    expect(container.querySelectorAll('[data-card-surface]')).toHaveLength(2);
+  });
+
+  it('collapses a card on request, and only that card', () => {
+    const { container } = render(
+      <BlockList {...baseProps} items={[cmd('a', true), cmd('b', true)]} />,
+    );
+    fireEvent.contextMenu(container.querySelectorAll('[data-card-surface]')[0]);
+    fireEvent.click(screen.getByText('Collapse block'));
     const collapsed = container.querySelectorAll('[data-collapsed]');
     expect(collapsed).toHaveLength(1);
     expect(collapsed[0].textContent).toContain('c-a');
-  });
-
-  it('expands a restored card on toggle', () => {
-    const { container } = render(<BlockList {...baseProps} items={[cmd('a', true)]} />);
-    fireEvent.click(container.querySelector('[data-collapsed]')!);
-    expect(container.querySelector('[data-card-surface]')).toBeTruthy();
-  });
-
-  it('collapses finished session cards by default (defaultCollapsed)', () => {
-    const { container } = render(
-      <BlockList {...baseProps} items={[cmd('s', false, true), cmd('n')]} />,
-    );
-    const collapsed = container.querySelectorAll('[data-collapsed]');
-    expect(collapsed).toHaveLength(1);
-    expect(collapsed[0].textContent).toContain('c-s');
   });
 });

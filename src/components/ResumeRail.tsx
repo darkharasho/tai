@@ -43,9 +43,10 @@ function barHeight(duration: number, max: number): number {
 }
 
 /**
- * The previous session, folded into one rail. Restoring 50 loose collapsed
- * rows made every launch look like a wall of dead output; here they sit
- * behind a header that says what they are and can be folded away entirely.
+ * The previous session, folded into one rail. Restoring 50 loose rows made
+ * every launch look like a wall of dead output; here they sit behind a
+ * header that says what they are and can be folded away entirely — which is
+ * why the cards themselves no longer need to open collapsed.
  * Expanded by default — the scrollback is still where you left it.
  */
 export function ResumeRail({ stats, savedAt, children }: ResumeRailProps) {
