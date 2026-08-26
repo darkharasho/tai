@@ -20,7 +20,12 @@
      wash, no rail. The 3px left rail is reserved for state (failure, running)
      and is held transparent here so gaining it never shifts the layout. */
   box-shadow: inset 3px 0 0 transparent;
-  background: transparent;
+  /* Transparent everywhere except themes that paint a live field behind the
+     list — over moving colour a flat block has nothing to sit on, so Iris
+     fills these in as glass cards. .blockCard and .blockSession bring their
+     own surfaces and are unaffected. */
+  background: var(--block-surface, transparent);
+  border-radius: var(--block-radius, 0);
 }
 
 .block:hover {

@@ -9,7 +9,7 @@ import type { ITheme } from '@xterm/xterm';
  * must match black…white / brightBlack…brightWhite below.
  */
 
-export type ThemeId = 'default' | 'graphite' | 'ash' | 'fjord' | 'ember' | 'cosmos' | 'abyss' | 'magma' | 'warp';
+export type ThemeId = 'default' | 'graphite' | 'ash' | 'fjord' | 'ember' | 'cosmos' | 'abyss' | 'magma' | 'warp' | 'iris';
 
 export interface ThemeDef {
   id: ThemeId;
@@ -156,6 +156,21 @@ export const THEMES: ThemeDef[] = [
       blue: '#a5d5fe', magenta: '#ff8ffd', cyan: '#d0d1fe', white: '#f1f1f1',
       brightBlack: '#8e8e8e', brightRed: '#ffc4bd', brightGreen: '#d6fcb9', brightYellow: '#fefdd5',
       brightBlue: '#c1e3fe', brightMagenta: '#ffb1fe', brightCyan: '#e5e6fe', brightWhite: '#feffff',
+    },
+  },
+  {
+    id: 'iris',
+    label: 'Iris',
+    xterm: {
+      background: '#100f2a',
+      foreground: '#e6e8fb',
+      cursor: '#b79cff',
+      cursorAccent: '#100f2a',
+      selectionBackground: 'rgba(183, 156, 255, 0.32)',
+      black: '#0b0a1e', red: '#ff5f87', green: '#2ff0c4', yellow: '#ffc069',
+      blue: '#57b6ff', magenta: '#ff85cd', cyan: '#5cebd0', white: '#e6e8fb',
+      brightBlack: '#6f74a8', brightRed: '#ff85a3', brightGreen: '#6bf5d6', brightYellow: '#ffd390',
+      brightBlue: '#86caff', brightMagenta: '#ffa6dc', brightCyan: '#8ff4e2', brightWhite: '#ffffff',
     },
   },
 ];
