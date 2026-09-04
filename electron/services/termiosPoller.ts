@@ -16,6 +16,13 @@ export interface EchoChangeEvent extends TermiosState {
 
 export type TermiosReader = (fd: number) => TermiosState;
 export type ChangeHandler = (e: EchoChangeEvent) => void;
+/**
+ * Is the shell's own process group the tty's foreground group right now?
+ *
+ * Optional, and false when the answer is unknown — a platform that cannot tell
+ * gets exactly the behaviour it had before this existed.
+ */
+export type ShellOwnsTty = () => boolean;
 
 const POLL_INTERVAL_MS = 200;
 
@@ -35,6 +42,7 @@ export class TermiosPoller {
     private _fd: number,
     private _read: TermiosReader,
     private _onChange: ChangeHandler,
+    private _shellOwnsTty?: ShellOwnsTty,
   ) {}
 
   start(): void {
@@ -91,6 +99,21 @@ export class TermiosPoller {
       return;
     }
     if (state.echo === this._last.echo && state.icanon === this._last.icanon) {
+      return;
+    }
+    // A raw reading is only news if a CHILD went raw. An interactive shell's
+    // line editor (zsh's zle, bash's readline) holds the tty in raw mode
+    // whenever it is drawing a prompt, and it takes the tty back the instant a
+    // command's child exits — before the OSC 133 prompt marker closes the
+    // block. That reading was reported as "a raw-mode program is foreground",
+    // which flipped the surface to `docked` and slammed the full-pane xterm
+    // over the block for the ~1 poll interval before the block ended: a
+    // whole-window flash of raw output on every ordinary command.
+    //
+    // `_last` is deliberately NOT advanced. The reading is discarded, not
+    // recorded, so the next genuine cooked→raw edge (a real TUI starting) is
+    // still an edge and is still reported.
+    if (!state.icanon && this._shellOwnsTty?.()) {
       return;
     }
     this._last = state;

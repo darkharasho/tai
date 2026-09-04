@@ -8,6 +8,14 @@ export interface ForegroundInfo {
    *  Identifies WHICH sudo process is prompting — same tpgid re-prompting means
    *  our auto-filled secret was rejected; a different tpgid is a new command. */
   tpgid: number | null;
+  /**
+   * Is the shell's OWN process group the tty's foreground group — i.e. no child
+   * is running and the shell is sitting at its line editor?
+   *
+   * Only ever true when /proc answered; an unresolved read reports false, so a
+   * caller that suppresses on this suppresses nothing when it cannot tell.
+   */
+  shellIsForeground: boolean;
 }
 
 function defaultReadFile(path: string): string {
@@ -29,15 +37,18 @@ export function resolveForegroundDetail(
     const stat = readFile(`/proc/${shellPid}/stat`);
     // comm is parenthesized and may contain spaces/parens — skip to the last ')'.
     const closeParenIdx = stat.lastIndexOf(')');
-    if (closeParenIdx < 0) return { kind: 'unknown', tpgid: null };
+    if (closeParenIdx < 0) return { kind: 'unknown', tpgid: null, shellIsForeground: false };
     const fields = stat.slice(closeParenIdx + 2).split(' ');
+    // Post-comm stat fields: 0 state, 1 ppid, 2 pgrp, 3 session, 4 tty_nr, 5 tpgid.
+    const pgrp = parseInt(fields[2], 10);
     const tpgid = parseInt(fields[5], 10);
-    if (!(tpgid > 0)) return { kind: 'unknown', tpgid: null };
+    if (!(tpgid > 0)) return { kind: 'unknown', tpgid: null, shellIsForeground: false };
+    const shellIsForeground = pgrp > 0 && pgrp === tpgid;
     const comm = readFile(`/proc/${tpgid}/comm`).trim();
-    if (!comm) return { kind: 'unknown', tpgid };
-    return { kind: comm === 'sudo' ? 'sudo' : 'other', tpgid };
+    if (!comm) return { kind: 'unknown', tpgid, shellIsForeground };
+    return { kind: comm === 'sudo' ? 'sudo' : 'other', tpgid, shellIsForeground };
   } catch {
-    return { kind: 'unknown', tpgid: null };
+    return { kind: 'unknown', tpgid: null, shellIsForeground: false };
   }
 }
 

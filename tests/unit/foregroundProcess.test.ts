@@ -56,7 +56,7 @@ describe('resolveForegroundDetail', () => {
       if (p === '/proc/200/comm') return 'sudo\n';
       throw new Error('unexpected path ' + p);
     };
-    expect(resolveForegroundDetail(100, fakeRead)).toEqual({ kind: 'sudo', tpgid: 200 });
+    expect(resolveForegroundDetail(100, fakeRead)).toEqual({ kind: 'sudo', tpgid: 200, shellIsForeground: false });
   });
 
   it('returns kind=other with the tpgid for a non-sudo foreground', () => {
@@ -65,7 +65,7 @@ describe('resolveForegroundDetail', () => {
       if (p === '/proc/321/comm') return 'ssh\n';
       throw new Error('unexpected path ' + p);
     };
-    expect(resolveForegroundDetail(100, fakeRead)).toEqual({ kind: 'other', tpgid: 321 });
+    expect(resolveForegroundDetail(100, fakeRead)).toEqual({ kind: 'other', tpgid: 321, shellIsForeground: false });
   });
 
   it('returns kind=unknown, tpgid=null when tpgid is invalid', () => {
@@ -73,11 +73,41 @@ describe('resolveForegroundDetail', () => {
       if (p === '/proc/100/stat') return statWithTpgid(-1);
       throw new Error('unexpected path ' + p);
     };
-    expect(resolveForegroundDetail(100, fakeRead)).toEqual({ kind: 'unknown', tpgid: null });
+    expect(resolveForegroundDetail(100, fakeRead)).toEqual({ kind: 'unknown', tpgid: null, shellIsForeground: false });
   });
 
   it('returns kind=unknown, tpgid=null when a read throws', () => {
     const fakeRead = (_p: string): string => { throw new Error('ENOENT'); };
-    expect(resolveForegroundDetail(100, fakeRead)).toEqual({ kind: 'unknown', tpgid: null });
+    expect(resolveForegroundDetail(100, fakeRead)).toEqual({ kind: 'unknown', tpgid: null, shellIsForeground: false });
+  });
+});
+
+// The tty's foreground process group being the shell's OWN group is how a
+// caller tells "zsh is drawing its prompt in raw mode" from "a TUI is running".
+// Without it, termios alone cannot distinguish the two, and every ordinary
+// command ended with a raw reading that read as a TUI launch.
+describe('resolveForegroundDetail: shellIsForeground', () => {
+  it('is true when the tty foreground group is the shell\'s own', () => {
+    const fakeRead = (p: string) => {
+      if (p === '/proc/100/stat') return statWithTpgid(100);
+      if (p === '/proc/100/comm') return 'zsh\n';
+      throw new Error('unexpected path ' + p);
+    };
+    expect(resolveForegroundDetail(100, fakeRead).shellIsForeground).toBe(true);
+  });
+
+  it('is false while a child owns the tty', () => {
+    const fakeRead = (p: string) => {
+      if (p === '/proc/100/stat') return statWithTpgid(200);
+      if (p === '/proc/200/comm') return 'vim\n';
+      throw new Error('unexpected path ' + p);
+    };
+    expect(resolveForegroundDetail(100, fakeRead).shellIsForeground).toBe(false);
+  });
+
+  // Fail safe: a platform with no /proc must suppress nothing.
+  it('is false when /proc cannot be read', () => {
+    const fakeRead = () => { throw new Error('ENOENT'); };
+    expect(resolveForegroundDetail(100, fakeRead).shellIsForeground).toBe(false);
   });
 });

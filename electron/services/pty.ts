@@ -407,7 +407,12 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
             passwordPrompt: e.passwordPrompt,
             interactiveProgram: e.interactiveProgram,
           });
-        });
+        },
+          // An interactive shell's line editor holds the tty in raw mode while
+          // it draws a prompt, which is indistinguishable from a TUI by termios
+          // alone. /proc can tell them apart: the shell's own process group
+          // being the tty's foreground group means no child is running.
+          () => resolveForegroundDetail(term.pid).shellIsForeground);
       } catch (err) {
         console.warn('[pty] termios poller unavailable:', err);
       }

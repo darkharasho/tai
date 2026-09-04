@@ -120,4 +120,52 @@ describe('TermiosPoller', () => {
     vi.advanceTimersByTime(5000);
     expect(read.mock.calls.length).toBe(callsBefore);
   });
+
+  // The full-window flash on every ordinary command. zsh's zle (and bash's
+  // readline) take the tty back into raw mode the moment a command's child
+  // exits — before the OSC 133 prompt marker closes the block — so the poller,
+  // still armed, read raw and reported "a TUI is running". The surface flipped
+  // to `docked` and the full-pane xterm slammed over the block for a poll
+  // interval, showing the raw output the app had just finished cardizing.
+  it('ignores a raw reading taken while the shell itself owns the tty', () => {
+    const read = vi.fn()
+      .mockReturnValueOnce({ echo: true, icanon: true })
+      .mockReturnValue({ echo: true, icanon: false });
+    const onChange = vi.fn();
+    const p = new TermiosPoller(123, read, onChange, () => true);
+    p.start();
+    vi.advanceTimersByTime(600);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  // The discarded reading must not be recorded as the baseline, or the edge it
+  // suppressed would swallow the next real one: the shell's own raw mode would
+  // mask a TUI that goes raw immediately afterwards.
+  it('still reports a real program going raw after suppressing the shell\'s own', () => {
+    let shellOwns = true;
+    const read = vi.fn()
+      .mockReturnValueOnce({ echo: true, icanon: true })
+      .mockReturnValue({ echo: true, icanon: false });
+    const onChange = vi.fn();
+    const p = new TermiosPoller(123, read, onChange, () => shellOwns);
+    p.start();
+    vi.advanceTimersByTime(400);
+    expect(onChange).not.toHaveBeenCalled();
+    shellOwns = false;
+    vi.advanceTimersByTime(200);
+    expect(onChange).toHaveBeenCalledWith({ echo: true, icanon: false, passwordPrompt: false, interactiveProgram: true });
+  });
+
+  // A password prompt is cooked (ICANON on), so it is not a raw reading and the
+  // gate must never see it — sudo prompts while the shell owns the tty are real.
+  it('never suppresses a password prompt', () => {
+    const read = vi.fn()
+      .mockReturnValueOnce({ echo: true, icanon: true })
+      .mockReturnValue({ echo: false, icanon: true });
+    const onChange = vi.fn();
+    const p = new TermiosPoller(123, read, onChange, () => true);
+    p.start();
+    vi.advanceTimersByTime(200);
+    expect(onChange).toHaveBeenCalledWith({ echo: false, icanon: true, passwordPrompt: true, interactiveProgram: false });
+  });
 });
