@@ -1,0 +1,232 @@
+/* OutlineFlyout.module.css — the session's blocks, floating over the terminal.
+
+   The tick vocabulary is inherited wholesale from the old inline outline: a
+   success is a hairline you cannot look at, a failure is the only saturated
+   thing in the panel. What is new is the frame around it, which exists so the
+   sidebar does not have to hold a 200px column of monospace. */
+
+.flyout {
+  position: fixed;
+  left: 214px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  width: 278px;
+  max-height: 60vh;
+  padding: 5px;
+  border: 1px solid var(--border-card);
+  border-radius: var(--r-md);
+  background: var(--bg-elevated);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.62);
+  user-select: none;
+}
+
+/* Points back at the row it was opened from, so opening tab 4's blocks is
+   visibly about tab 4. */
+.flyout::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  top: 14px;
+  width: 9px;
+  height: 9px;
+  background: var(--bg-elevated);
+  border-left: 1px solid var(--border-card);
+  border-bottom: 1px solid var(--border-card);
+  transform: rotate(45deg);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px 6px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 4px;
+  font-family: var(--font-sans);
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.pill {
+  margin-left: auto;
+  padding: 1px 6px;
+  border: 1px solid var(--border-card);
+  border-radius: var(--r-pill);
+  background: none;
+  font: inherit;
+  font-size: 9px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.pill:hover { color: var(--text-secondary); }
+.pillOn {
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+
+.search {
+  margin: 0 2px 4px;
+  padding: 3px 8px;
+  border-radius: var(--r-sm);
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.input {
+  width: 100%;
+  border: none;
+  background: none;
+  outline: none;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-primary);
+}
+.input::placeholder { color: var(--text-muted); opacity: 0.7; }
+
+.list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.empty {
+  padding: 8px;
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 8px 3px 18px;
+  border: none;
+  border-radius: var(--r-xs);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tick {
+  position: absolute;
+  left: 7px;
+  width: 4px;
+  height: 1px;
+  background: var(--text-muted);
+  opacity: 0.4;
+}
+
+.label {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dur {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  opacity: 0.55;
+}
+
+/* --- Tick vocabulary, carried over from the inline outline --------------- */
+
+.ok .tick { /* the hairline default above */ opacity: 0.4; }
+
+.neutral .tick {
+  height: 3px;
+  border-radius: 1px;
+  opacity: 0.5;
+}
+
+.fail .tick {
+  left: 5px;
+  top: calc(50% - 3px);
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--color-error);
+  opacity: 1;
+}
+.fail .label { color: var(--text-primary); }
+
+.ai .tick {
+  left: 5px;
+  top: calc(50% - 3px);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-ai);
+  opacity: 1;
+}
+.ai .label {
+  font-family: var(--font-sans);
+  font-style: italic;
+}
+
+.run .tick {
+  left: 5px;
+  top: calc(50% - 3px);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-shell);
+  opacity: 1;
+  animation: flyoutTickPulse 1.4s ease-in-out infinite;
+}
+.run .label { color: var(--text-secondary); }
+
+@keyframes flyoutTickPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.75); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .run .tick { animation: none; }
+}
+
+/* --- Selection and position -------------------------------------------- */
+
+/* Keyboard selection. Colourless on purpose: colour in this list already
+   means exit state, so tinting the selected row would lie about it. */
+.selected { background: rgba(255, 255, 255, 0.06); }
+.selected .label { color: var(--text-primary); }
+
+/* The block filling the viewport behind the panel — same hairline the inline
+   outline used, so "you are here" reads identically. */
+.current::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  bottom: 4px;
+  width: 1px;
+  background: var(--text-secondary);
+  opacity: 0.5;
+}
+
+.foot {
+  display: flex;
+  gap: 9px;
+  padding: 5px 8px 3px;
+  margin-top: 3px;
+  border-top: 1px solid var(--border-subtle);
+  font-family: var(--font-sans);
+  font-size: 9px;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+.foot b {
+  font-family: var(--font-mono);
+  font-weight: 400;
+}

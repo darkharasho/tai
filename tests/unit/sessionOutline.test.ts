@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildOutline, formatOutlineDuration } from '@/utils/sessionOutline';
+import { bucketOutline, buildOutline, formatOutlineDuration } from '@/utils/sessionOutline';
+import type { OutlineEntry, OutlineKind } from '@/utils/sessionOutline';
 import type { DisplayItem } from '@/components/BlockList';
 import type { SegmentedBlock } from '@/types';
 
@@ -88,5 +89,52 @@ describe('formatOutlineDuration', () => {
     expect(formatOutlineDuration(12400)).toBe('12s');
     expect(formatOutlineDuration(90000)).toBe('2m');
     expect(formatOutlineDuration(7200000)).toBe('2h');
+  });
+});
+
+describe('bucketOutline', () => {
+  const entries = (kinds: OutlineKind[]): OutlineEntry[] =>
+    kinds.map((kind, i) => ({ id: `b${i}`, label: `cmd-${i}`, kind }));
+
+  it('has nothing to draw for an empty session', () => {
+    expect(bucketOutline(entries([]), 8)).toEqual([]);
+  });
+
+  // A short session should read as a short strip, not be stretched to fill
+  // the row, so the mark count is the block count until the slots run out.
+  it('maps one mark per block while the blocks fit', () => {
+    expect(bucketOutline(entries(['ok', 'fail', 'ai']), 8)).toEqual(['ok', 'fail', 'ai']);
+  });
+
+  it('fills every slot exactly when the counts match', () => {
+    expect(bucketOutline(entries(['ok', 'fail', 'ok', 'ai']), 4)).toEqual(['ok', 'fail', 'ok', 'ai']);
+  });
+
+  it('compresses a long session to the slot count', () => {
+    const kinds = Array.from({ length: 900 }, (): OutlineKind => 'ok');
+    expect(bucketOutline(entries(kinds), 28)).toHaveLength(28);
+  });
+
+  // The point of the strip: compression may lose a success, never a failure.
+  it('paints each bucket with the worst kind it holds', () => {
+    const kinds: OutlineKind[] = ['ok', 'ok', 'fail', 'ok', 'ok', 'ok'];
+    expect(bucketOutline(entries(kinds), 3)).toEqual(['ok', 'fail', 'ok']);
+  });
+
+  it('ranks run and ai above neutral and ok', () => {
+    expect(bucketOutline(entries(['ok', 'neutral']), 1)).toEqual(['neutral']);
+    expect(bucketOutline(entries(['neutral', 'ai']), 1)).toEqual(['ai']);
+    expect(bucketOutline(entries(['ai', 'run']), 1)).toEqual(['run']);
+    expect(bucketOutline(entries(['run', 'fail']), 1)).toEqual(['fail']);
+  });
+
+  it('keeps the axis linear, so a mark maps to its position in time', () => {
+    const kinds = Array.from({ length: 100 }, (_, i): OutlineKind => (i === 50 ? 'fail' : 'ok'));
+    const marks = bucketOutline(entries(kinds), 10);
+    expect(marks.indexOf('fail')).toBe(5);
+  });
+
+  it('draws nothing rather than dividing by zero', () => {
+    expect(bucketOutline(entries(['ok', 'fail']), 0)).toEqual([]);
   });
 });

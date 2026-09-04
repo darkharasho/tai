@@ -73,3 +73,45 @@ export function formatOutlineDuration(ms: number | undefined): string | null {
   if (ms < 3600000) return `${Math.round(ms / 60000)}m`;
   return `${Math.round(ms / 3600000)}h`;
 }
+
+/** How many buckets the tab row's sparkline has room for at a 3.5px pitch,
+    once the cwd leaf and the failure count have taken their share. */
+export const SPARK_BUCKETS = 28;
+
+/** Loudest first: a bucket is painted by the worst thing that happened in it,
+    so compressing a session can hide a success but never hides a failure. */
+const KIND_RANK: Record<OutlineKind, number> = {
+  fail: 4,
+  run: 3,
+  ai: 2,
+  neutral: 1,
+  ok: 0,
+};
+
+/**
+ * Compress an outline to at most `buckets` marks for the sparkline.
+ *
+ * Sessions run to thousands of blocks and the row is 100px wide, so the marks
+ * cannot be one-per-block. Even-width buckets keep the horizontal axis linear
+ * — a failure a third of the way along the strip really is a third of the way
+ * through the session — and each bucket reports its worst kind, which is what
+ * makes the strip readable as session health rather than as a texture.
+ */
+export function bucketOutline(entries: OutlineEntry[], buckets = SPARK_BUCKETS): OutlineKind[] {
+  if (buckets < 1 || entries.length === 0) return [];
+  // Fewer blocks than slots: one mark each, so a short session reads as a
+  // short strip instead of being stretched to full width.
+  if (entries.length <= buckets) return entries.map(entry => entry.kind);
+
+  const marks: OutlineKind[] = [];
+  for (let i = 0; i < buckets; i++) {
+    const start = Math.floor((i * entries.length) / buckets);
+    const end = Math.floor(((i + 1) * entries.length) / buckets);
+    let worst: OutlineKind = entries[start].kind;
+    for (let j = start + 1; j < end; j++) {
+      if (KIND_RANK[entries[j].kind] > KIND_RANK[worst]) worst = entries[j].kind;
+    }
+    marks.push(worst);
+  }
+  return marks;
+}

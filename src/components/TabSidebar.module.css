@@ -35,26 +35,25 @@
 }
 .tab:hover { background: var(--bg-hover); }
 
-/* The rail carries the mode colour, the way a block's rail carries state.
-   A real bar rather than an inset shadow: an inset shadow follows
-   `border-radius`, and on a row this short the whole 2px rail is curve. */
-.tab::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 4px;
-  bottom: 4px;
-  width: 2px;
-  border-radius: 1px;
-  background: transparent;
-  transition: background 0.15s ease;
-}
+/* The active row carries its mode colour as a wash that decays left to right
+   rather than as a bar pinned to the edge.
 
+   A hard 2px rail reads as a fill level — a measurement of something — which
+   is wrong for a binary "this one is selected", and it puts a saturated edge
+   on every active row whatever else is going on. The gradient keeps the
+   rail's position (the eye still lands on the left edge to find the active
+   tab) without the edge, and it has run out by the time it reaches the
+   sparkline, so the red failure ticks are never sitting on a coloured field.
+
+   `--tab-tint` is per mode: see MODE_TINTS. */
 .tabActive {
-  background: var(--bg-elevated);
-}
-.tabActive::before {
-  background: var(--tab-accent, var(--color-shell));
+  --tab-wash: color-mix(in srgb, var(--tab-accent, var(--color-shell)) var(--tab-tint, 9%), var(--bg-elevated));
+  background: linear-gradient(
+    90deg,
+    var(--tab-wash) 0%,
+    color-mix(in srgb, var(--tab-wash) 45%, var(--bg-elevated)) 45%,
+    var(--bg-elevated) 100%
+  );
 }
 
 .index {
@@ -86,6 +85,31 @@
   font-weight: 600;
 }
 
+/* The subtitle line, now shared by the cwd leaf and the session sparkline.
+   The cwd is the only thing here allowed to shrink: the sparkline has a fixed
+   width and losing its tail would misreport how long the session is. */
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 2px;
+  padding: 1px 4px;
+  margin-left: -4px;
+  margin-right: -4px;
+  border-radius: var(--r-xs);
+}
+
+/* Only a row with blocks in it is a control; an empty session's meta line is
+   just text and must not offer to be clicked. */
+.metaLive {
+  cursor: pointer;
+}
+.metaLive:hover {
+  background: rgba(255, 255, 255, 0.055);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
 .sub {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -94,6 +118,31 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.metaDot {
+  flex-shrink: 0;
+  font-size: 9px;
+  color: var(--text-muted);
+  opacity: 0.4;
+}
+
+.failCount {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--color-error);
+}
+
+/* Appears only under the cursor: at rest the strip is an indicator, and the
+   rail should not be dotted with affordances for something you rarely open. */
+.chevron {
+  flex-shrink: 0;
+  font-size: 7px;
+  color: var(--text-muted);
+  opacity: 0;
+}
+.metaLive:hover .chevron { opacity: 0.55; }
 
 .editInput {
   width: 100%;
@@ -151,16 +200,4 @@
 .newTab:hover {
   background: var(--bg-hover);
   color: var(--text-secondary);
-}
-
-/* The active tab and its block outline are one object (see BlockOutline). The
-   tab's rail runs to the very bottom edge here so it meets the outline's
-   faded continuation without a seam. */
-.group {
-  position: relative;
-}
-.group .tab::before {
-  bottom: 0;
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
 }

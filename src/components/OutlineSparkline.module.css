@@ -1,0 +1,73 @@
+/* OutlineSparkline.module.css — the session strip on the tab's subtitle line.
+
+   Kind rules are written `.spark .fail`, not `.fail`: the base mark is styled
+   through `.spark i`, whose element selector would otherwise outrank a bare
+   class and flatten every mark to the grey stub.
+
+   Two channels, and they must stay separate: height says what happened (a
+   success is a low stub, a failure the full 9px, so scanning the rail you see
+   the red teeth and nothing else), and opacity says how recently. `.head` is
+   therefore opacity-only — it must never touch background, or the newest mark
+   would lose its kind colour. */
+
+.spark {
+  display: flex;
+  align-items: flex-end;
+  gap: 1.5px;
+  height: 9px;
+  flex-shrink: 0;
+}
+
+.spark i {
+  width: 2px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--text-muted);
+  opacity: 0.42;
+}
+
+/* A success is deliberately quiet, but 2px at 0.34 was quieter than nothing:
+   identical to the unstyled base mark, so finishing a command left the strip
+   visibly unchanged. 3px is still texture and is still a mark you can count. */
+.spark .ok {
+  height: 3px;
+}
+
+.spark .neutral {
+  height: 4px;
+  opacity: 0.5;
+}
+
+.spark .ai {
+  height: 6px;
+  background: var(--color-ai);
+  opacity: 0.9;
+}
+
+.spark .run {
+  height: 7px;
+  background: var(--color-shell);
+  opacity: 1;
+  animation: sparkPulse 1.4s ease-in-out infinite;
+}
+
+.spark .fail {
+  height: 9px;
+  background: var(--color-error);
+  opacity: 1;
+}
+
+/* Last in source on purpose: this and the kind rules are both 0-2-0, so the
+   head's opacity has to be declared after them to win. */
+.spark .head {
+  opacity: 1;
+}
+
+@keyframes sparkPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spark .run { animation: none; }
+}
