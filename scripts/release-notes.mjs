@@ -15,6 +15,11 @@ const SECTIONS = [
   { type: 'fix', heading: '## Bug Fixes' },
 ];
 
+// The version-bump commit the release skill makes. It describes the release
+// itself, not anything in it, so it never belongs in the notes — not even in
+// the catch-all below.
+const RELEASE_COMMIT = /^release(?:\([^)]*\))?!?:/i;
+
 const SUBJECT = /^(\w+)(?:\([^)]*\))?!?:\s*(.+)$/;
 
 export function buildReleaseNotes(subjects) {
@@ -29,10 +34,32 @@ export function buildReleaseNotes(subjects) {
     if (entry && !bucket.includes(entry)) bucket.push(entry);
   }
 
-  return SECTIONS
+  const sections = SECTIONS
     .filter(s => grouped.get(s.type).length > 0)
-    .map(s => [s.heading, ...grouped.get(s.type).map(e => `- ${e}`)].join('\n'))
-    .join('\n\n');
+    .map(s => [s.heading, ...grouped.get(s.type).map(e => `- ${e}`)].join('\n'));
+
+  // A range of pure chore/ci/docs commits would otherwise yield an empty body,
+  // and the What's New modal would say there are no notes for a version that
+  // demonstrably changed something. List everything instead — blunt, but honest.
+  if (sections.length === 0) return buildFallbackNotes(subjects);
+
+  return sections.join('\n\n');
+}
+
+function buildFallbackNotes(subjects) {
+  const entries = [];
+
+  for (const raw of subjects) {
+    const subject = raw.trim();
+    if (!subject || RELEASE_COMMIT.test(subject)) continue;
+    // Keep the type prefix here: with no section headings to group by, "chore:"
+    // is the only thing telling the reader what kind of change this was.
+    const entry = capitalize(subject.replace(/\.$/, ''));
+    if (!entries.includes(entry)) entries.push(entry);
+  }
+
+  if (entries.length === 0) return '';
+  return ['## Changes', ...entries.map(e => `- ${e}`)].join('\n');
 }
 
 function capitalize(text) {

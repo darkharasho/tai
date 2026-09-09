@@ -19,16 +19,17 @@ describe('buildReleaseNotes', () => {
     );
   });
 
-  it('skips internal commit types and unconventional subjects', () => {
+  it('keeps internal commit types out of the user-facing sections', () => {
     expect(
       buildReleaseNotes([
+        'feat: add a thing',
         'chore: bump deps',
         'ci: pin windows runner',
         'docs: tidy readme',
         'release: v1.19.0',
         'merge branch master',
       ]),
-    ).toBe('');
+    ).toBe("## What's New\n- Add a thing");
   });
 
   it('omits an empty section rather than emitting a bare heading', () => {
@@ -67,5 +68,35 @@ describe('compareSemver', () => {
     expect(compareSemver('v1.19.0', '1.18.1')).toBeGreaterThan(0);
     expect(compareSemver('1.9.0', '1.10.0')).toBeLessThan(0);
     expect(compareSemver('v1.19.0', '1.19.0')).toBe(0);
+  });
+});
+
+describe('buildReleaseNotes fallback', () => {
+  it('lists every commit when no feat or fix is present', () => {
+    expect(buildReleaseNotes(['chore: bump deps', 'ci: pin the windows runner'])).toBe(
+      ['## Changes', '- Chore: bump deps', '- Ci: pin the windows runner'].join('\n'),
+    );
+  });
+
+  it('keeps non-conventional subjects in the fallback', () => {
+    expect(buildReleaseNotes(['Fix mac icns file'])).toBe('## Changes\n- Fix mac icns file');
+  });
+
+  it('omits the release commit from the fallback', () => {
+    expect(buildReleaseNotes(['release: v1.1.5', 'chore: tidy'])).toBe('## Changes\n- Chore: tidy');
+  });
+
+  it('does not fall back when a feat or fix exists', () => {
+    expect(buildReleaseNotes(['chore: bump deps', 'fix: stop the crash'])).toBe(
+      '## Bug Fixes\n- Stop the crash',
+    );
+  });
+
+  it('returns empty when the range holds only the release commit', () => {
+    expect(buildReleaseNotes(['release: v1.1.5'])).toBe('');
+  });
+
+  it('dedupes repeated fallback subjects', () => {
+    expect(buildReleaseNotes(['chore: tidy', 'chore: tidy'])).toBe('## Changes\n- Chore: tidy');
   });
 });
