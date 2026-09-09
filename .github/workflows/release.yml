@@ -136,14 +136,30 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Release notes are derived from the commit range since the previous
+          # tag, so the fallback below needs full history and tags.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
           merge-multiple: true
       - name: Ensure release exists
-        run: gh release view ${{ github.ref_name }} >/dev/null 2>&1 || gh release create ${{ github.ref_name }} --draft --title ${{ github.ref_name }} --generate-notes
+        # The release skill normally pre-creates a draft with hand-written
+        # notes. If it did not, build notes from conventional commits rather
+        # than --generate-notes, whose body is just a "Full Changelog" link
+        # and shows up in the app's What's New modal as a bare link.
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            node scripts/release-notes.mjs "$TAG" > /tmp/release-notes.md
+            gh release create "$TAG" --draft --title "$TAG" --notes-file /tmp/release-notes.md
+          fi
         env:
+          TAG: ${{ github.ref_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload to GitHub Release
         run: find artifacts -type f -print0 | xargs -0 gh release upload ${{ github.ref_name }} --clobber

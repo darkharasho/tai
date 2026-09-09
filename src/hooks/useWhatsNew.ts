@@ -19,6 +19,19 @@ export interface UseWhatsNewReturn {
 
 const RELEASES_URL = 'https://api.github.com/repos/darkharasho/tai/releases';
 
+// Releases created by `gh release create --generate-notes` have a body that is
+// nothing but a "Full Changelog" compare link. Rendering that gives the user a
+// What's New modal containing a single link to GitHub, which is worse than
+// saying there are no notes. Treat such a body as empty.
+export function hasRealNotes(body: string | undefined): boolean {
+  const stripped = (body ?? '')
+    .split('\n')
+    .filter(line => !/^\s*(\*\*)?Full Changelog(\*\*)?:/i.test(line))
+    .join('\n')
+    .trim();
+  return stripped !== '';
+}
+
 export function compareSemver(a: string, b: string): number {
   const pa = a.replace(/^v/, '').split('.').map(Number);
   const pb = b.replace(/^v/, '').split('.').map(Number);
@@ -51,7 +64,7 @@ export function useWhatsNew(): UseWhatsNewReturn {
             const afterCurrent = compareSemver(ver, currentVersion) > 0;
             const beforeOrAtLastSeen = afterVersion != null && compareSemver(ver, afterVersion) <= 0;
             const isCurrentVersion = compareSemver(ver, currentVersion) === 0;
-            return !afterCurrent && (isCurrentVersion || !beforeOrAtLastSeen) && (r.body ?? '').trim() !== '';
+            return !afterCurrent && (isCurrentVersion || !beforeOrAtLastSeen) && hasRealNotes(r.body);
           })
           .sort((a, b) => compareSemver(b.tag_name, a.tag_name))
           .map(r => ({ version: r.tag_name.replace(/^v/, ''), notes: r.body ?? '' }));
