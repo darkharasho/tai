@@ -17,7 +17,7 @@ import { purgeStaleTempFiles } from './services/tempCleanup';
 import { registerCommandIndexIpc } from './services/commandIndexStore';
 import { registerWorkflowIpc } from './services/workflowStore';
 import { registerRecordingSave } from './services/recordingSave';
-import { setupTray, destroyTray, isQuitting, quitApp, revealWindow, registerQuitTracking, closeAction } from './services/tray';
+import { setupTray, destroyTray, isQuitting, quitApp, revealWindow, registerQuitTracking, closeAction, minimizeAction } from './services/tray';
 import type { ClosePreference } from './services/tray';
 
 // A dev run and the installed build share app.getPath('userData'), and the
@@ -141,6 +141,15 @@ function createWindow() {
         mainWindow?.hide();
     }
   });
+  // The title-bar button is handled at the IPC below, but the window manager
+  // can minimise too (keyboard shortcut, taskbar click). `minimize` is not
+  // cancellable, so the window briefly minimises and is then pulled off the
+  // taskbar; revealWindow restores it on the way back.
+  mainWindow.on('minimize', () => {
+    if (minimizeAction({ trayEnabled: trayEnabled(), minimizeToTray: minimizeToTray() }) === 'hide') {
+      mainWindow?.hide();
+    }
+  });
   mainWindow.on('resize', saveWindowState);
   mainWindow.on('move', saveWindowState);
 
@@ -209,7 +218,13 @@ app.on('activate', () => {
   mainWindow.focus();
 });
 
-ipcMain.on('window:minimize', () => mainWindow?.minimize());
+ipcMain.on('window:minimize', () => {
+  if (minimizeAction({ trayEnabled: trayEnabled(), minimizeToTray: minimizeToTray() }) === 'hide') {
+    mainWindow?.hide();
+  } else {
+    mainWindow?.minimize();
+  }
+});
 ipcMain.on('window:maximize', () => {
   if (mainWindow?.isMaximized()) mainWindow.unmaximize();
   else mainWindow?.maximize();
@@ -218,6 +233,7 @@ ipcMain.on('window:close', () => mainWindow?.close());
 
 const TRAY_SETTING = 'general.tray';
 const CLOSE_SETTING = 'general.closeAction';
+const MINIMIZE_SETTING = 'general.minimizeToTray';
 
 const configPath = () => path.join(app.getPath('userData'), 'settings.json');
 
@@ -239,6 +255,11 @@ function trayEnabled(): boolean {
 /** Default 'tray': close-to-tray was the behaviour before this was a choice. */
 function closePreference(): ClosePreference {
   return readConfig()[CLOSE_SETTING] === 'quit' ? 'quit' : 'tray';
+}
+
+/** Default off: minimise has always gone to the taskbar. */
+function minimizeToTray(): boolean {
+  return readConfig()[MINIMIZE_SETTING] === true;
 }
 
 function writeConfig(config: Record<string, any>) {

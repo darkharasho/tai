@@ -84,14 +84,20 @@ export function SettingsOverlay({ visible, onClose, config, onSet }: SettingsOve
                     nothing to restore a hidden window from, so closing always
                     quits and a choice here would be a lie. */}
                 {config['general.tray'] !== false && (
-                  <SettingRow label="When the window is closed" value={
-                    <select value={config['general.closeAction'] === 'quit' ? 'quit' : 'tray'}
-                      onChange={e => onSet('general.closeAction', e.target.value)}
-                      className={styles.input}>
-                      <option value="tray">Keep running in the tray</option>
-                      <option value="quit">Quit</option>
-                    </select>
-                  } />
+                  <>
+                    <SettingRow label="When the window is closed" value={
+                      <select value={config['general.closeAction'] === 'quit' ? 'quit' : 'tray'}
+                        onChange={e => onSet('general.closeAction', e.target.value)}
+                        className={styles.input}>
+                        <option value="tray">Keep running in the tray</option>
+                        <option value="quit">Quit</option>
+                      </select>
+                    } />
+                    <SettingRow label="Minimize to the tray" value={
+                      <Toggle checked={config['general.minimizeToTray'] === true}
+                        onChange={v => onSet('general.minimizeToTray', v)} />
+                    } />
+                  </>
                 )}
                 <SettingRow label="System notifications on completion" value={
                   <Toggle checked={!!config['systemNotifications']}
