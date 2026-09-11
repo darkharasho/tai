@@ -7,7 +7,7 @@ interface TopBarProps {
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
   onNewTab: () => void;
-  onOpenQuickSettings: () => void;
+  onOpenSettings: () => void;
   onOpenPalette: () => void;
 }
 
@@ -16,7 +16,7 @@ interface TopBarProps {
  * in the centre, icons and the window controls on the right. The bar itself is
  * the drag region; every interactive child opts back out with `no-drag`.
  */
-export function TopBar({ sidebarOpen, onToggleSidebar, onNewTab, onOpenQuickSettings, onOpenPalette }: TopBarProps) {
+export function TopBar({ sidebarOpen, onToggleSidebar, onNewTab, onOpenSettings, onOpenPalette }: TopBarProps) {
   return (
     <div className={`${styles.bar}${isMac ? ` ${styles.barMac}` : ''}`}>
       <div className={styles.cluster}>
@@ -43,7 +43,7 @@ export function TopBar({ sidebarOpen, onToggleSidebar, onNewTab, onOpenQuickSett
       </button>
 
       <div className={styles.cluster}>
-        <button className={styles.iconBtn} onClick={onOpenQuickSettings} title="Settings" aria-label="Settings">
+        <button className={styles.iconBtn} onClick={onOpenSettings} title="Settings" aria-label="Settings">
           <Settings size={14} />
         </button>
         {!isMac && (

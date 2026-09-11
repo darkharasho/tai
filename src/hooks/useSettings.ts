@@ -7,7 +7,6 @@ const DEFAULTS = {
   'general.cursorStyle': 'bar',
   'general.tray': true,
   'general.closeAction': 'tray',
-  'general.minimizeToTray': false,
   'ai.provider': 'claude',
   'ai.model': 'sonnet',
   'claude.model': 'sonnet',

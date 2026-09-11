@@ -33,6 +33,10 @@ describe('SettingsOverlay — async workflows.get', () => {
         onClose={() => {}}
         config={{}}
         onSet={() => {}}
+        trustLevel="ask"
+        onTrustLevelChange={() => {}}
+        aiProvider="claude"
+        onAIProviderChange={() => {}}
       />,
     );
 
@@ -55,6 +59,10 @@ describe('SettingsOverlay — async workflows.get', () => {
         onClose={() => {}}
         config={{}}
         onSet={() => {}}
+        trustLevel="ask"
+        onTrustLevelChange={() => {}}
+        aiProvider="claude"
+        onAIProviderChange={() => {}}
       />,
     );
 

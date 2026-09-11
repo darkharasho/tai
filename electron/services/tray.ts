@@ -110,20 +110,6 @@ export function closeAction(s: {
   return s.closePreference === 'quit' ? 'quit' : 'hide';
 }
 
-export type MinimizeAction = 'minimize' | 'hide';
-
-/**
- * What the minimise button should do.
- *
- * 'hide' is minimise-to-tray: the window leaves the taskbar and only the tray
- * icon brings it back. Opt-in, since a minimise that vanishes from the taskbar
- * surprises anyone who did not ask for it — and like close-to-tray it needs a
- * tray to exist, or the hidden window would have no way back.
- */
-export function minimizeAction(s: { trayEnabled: boolean; minimizeToTray?: boolean }): MinimizeAction {
-  return s.trayEnabled && s.minimizeToTray === true ? 'hide' : 'minimize';
-}
-
 function iconPath(variant: TrayVariant): string {
   // Mirrors how main.ts resolves the window icon: public/ in dev, dist/ once
   // Vite has copied it for a packaged build.

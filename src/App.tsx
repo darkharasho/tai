@@ -3,7 +3,6 @@ import { TopBar } from './components/TopBar';
 import { TabSidebar } from './components/TabSidebar';
 import { TerminalSession } from './components/TerminalSession';
 import { SettingsOverlay } from './components/SettingsOverlay';
-import { QuickSettings } from './components/QuickSettings';
 import WhatsNewModal from './components/WhatsNewModal';
 import UpdateNotifier from './components/UpdateNotifier';
 import ConfirmModal from './components/ConfirmModal';
@@ -29,7 +28,6 @@ export default function App() {
   const whatsNew = useWhatsNew();
   const updater = useUpdateNotifier();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [quickSettingsOpen, setQuickSettingsOpen] = useState(false);
   const persistedProvider = (config['ai.provider'] || 'claude') as AIProvider;
   const persistedTrust = (config['ai.trustLevel'] || 'ask') as TrustLevel;
   const [tabs, setTabs] = useState<TabState[]>(() => [createTabState()]);
@@ -242,7 +240,7 @@ export default function App() {
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSetting('appearance.sidebar', !sidebarOpen)}
         onNewTab={handleNewTab}
-        onOpenQuickSettings={() => setQuickSettingsOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
         onOpenPalette={() => window.dispatchEvent(new CustomEvent('tai:open-palette'))}
       />
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row' }}>
@@ -292,33 +290,11 @@ export default function App() {
         onClose={() => setSettingsOpen(false)}
         config={config}
         onSet={setSetting}
-      />
-      <QuickSettings
-        visible={quickSettingsOpen}
-        onClose={() => setQuickSettingsOpen(false)}
-        theme={theme}
-        onThemeChange={(value) => setSetting('appearance.theme', value)}
-        colorMode={colorMode}
-        onColorModeChange={(mode) => setSetting('appearance.colorMode', mode)}
-        cardAccent={cardAccent}
-        onCardAccentChange={(value) => setSetting('appearance.cardAccent', value)}
-        noise={noise}
-        onNoiseChange={(value) => setSetting('appearance.noise', value)}
         trustLevel={activeTab.trustLevel}
         onTrustLevelChange={handleTrustLevelChange}
         aiProvider={activeTab.aiProvider}
         onAIProviderChange={handleAIProviderChange}
-        claudeModel={config['claude.model'] || 'sonnet'}
-        onClaudeModelChange={(model) => setSetting('claude.model', model)}
         availableModels={claudeModels}
-        claudeEffort={config['claude.effort'] || 'auto'}
-        onClaudeEffortChange={(effort) => setSetting('claude.effort', effort)}
-        claudeShowReasoning={config['claude.showReasoning'] !== false}
-        onClaudeShowReasoningChange={(value) => setSetting('claude.showReasoning', value)}
-        expandToolCalls={!!config['ai.expandToolCalls']}
-        onExpandToolCallsChange={(value) => setSetting('ai.expandToolCalls', value)}
-        systemNotifications={!!config['systemNotifications']}
-        onSystemNotificationsChange={(value) => setSetting('systemNotifications', value)}
       />
       <UpdateNotifier
         state={updater.state}

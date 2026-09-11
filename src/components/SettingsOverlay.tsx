@@ -1,23 +1,140 @@
-import { useState, useEffect } from 'react';
-import { X, Settings } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { X, Settings, ChevronDown, Check, RefreshCw } from 'lucide-react';
+import type { TrustLevel, AIProvider } from '@/types';
 import { Toggle } from './Toggle';
 import { THEME_OPTIONS } from '@/theme/themes';
-import styles from './SettingsOverlay.module.css';
+import styles from './Settings.module.css';
 
 interface SettingsOverlayProps {
   visible: boolean;
   onClose: () => void;
   config: Record<string, any>;
   onSet: (key: string, value: any) => void;
+  // Provider and permissions apply to the active tab as well as becoming the
+  // default for new ones, so they go through App rather than onSet.
+  trustLevel: TrustLevel;
+  onTrustLevelChange: (level: TrustLevel) => void;
+  aiProvider: AIProvider;
+  onAIProviderChange: (provider: AIProvider) => void;
+  availableModels?: { value: string; label: string; description?: string; recommended?: boolean }[];
 }
 
-type Category = 'general' | 'ai' | 'trust' | 'appearance' | 'keybindings' | 'workflows';
+type Category = 'general' | 'ai' | 'appearance' | 'workflows';
 
-export function SettingsOverlay({ visible, onClose, config, onSet }: SettingsOverlayProps) {
+const COLOR_MODE_OPTIONS = [
+  { value: 'high', label: 'High' },
+  { value: 'low', label: 'Low' },
+];
+
+const CARD_ACCENT_OPTIONS = [
+  { value: 'brackets', label: 'Corner Brackets' },
+  { value: 'stripe-left', label: 'Left Stripe' },
+  { value: 'stripe-top', label: 'Top Stripe' },
+  { value: 'tinted', label: 'Tinted Border' },
+  { value: 'tinted-stripe', label: 'Tinted + Stripe' },
+  { value: 'stripe-glow', label: 'Stripe + Glow' },
+];
+
+const TRUST_LEVEL_OPTIONS = [
+  { value: 'ask', label: 'Ask Every Time' },
+  { value: 'approve-edits', label: 'Auto-approve Edits' },
+  { value: 'bypass', label: 'Full Auto' },
+];
+
+const PROVIDER_OPTIONS = [
+  { value: 'claude', label: 'Claude' },
+  { value: 'codex', label: 'Codex' },
+  { value: 'gemini', label: 'Gemini' },
+];
+
+const CLOSE_ACTION_OPTIONS = [
+  { value: 'tray', label: 'Keep running in the tray' },
+  { value: 'quit', label: 'Quit' },
+];
+
+const CLAUDE_MODEL_OPTIONS = [
+  { value: 'default', label: 'Default' },
+  { value: 'best', label: 'Best' },
+  { value: 'opus', label: 'Opus 4.8' },
+  { value: 'opus[1m]', label: 'Opus 4.8 (1M context)' },
+  { value: 'sonnet', label: 'Sonnet 4.6' },
+  { value: 'sonnet[1m]', label: 'Sonnet 4.6 (1M context)' },
+  { value: 'haiku', label: 'Haiku 4.5' },
+  { value: 'opusplan', label: 'Opus Plan' },
+];
+
+const CLAUDE_EFFORT_OPTIONS = [
+  { value: 'auto', label: 'Default' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+  { value: 'max', label: 'Max (Opus only)' },
+];
+
+function CustomDropdown({ value, options, onChange }: {
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const selected = options.find(o => o.value === value);
+
+  return (
+    <div ref={ref} className={styles.dropdownWrapper}>
+      <div
+        onClick={() => setOpen(v => !v)}
+        className={`${styles.dropdownTrigger} ${open ? styles.dropdownTriggerOpen : ''}`}
+      >
+        <span className={styles.dropdownValue}>{selected?.label}</span>
+        <ChevronDown size={13} className={`${styles.dropdownChevron} ${open ? styles.dropdownChevronOpen : ''}`} />
+      </div>
+      {open && (
+        <div className={styles.dropdownMenu}>
+          {options.map(opt => (
+            <div
+              key={opt.value}
+              className={`${styles.dropdownOption} ${opt.value === value ? styles.dropdownOptionActive : ''}`}
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+            >
+              <span className={styles.dropdownCheck}>
+                {opt.value === value && <Check size={13} />}
+              </span>
+              {opt.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function SettingsOverlay({ visible, onClose, config, onSet, trustLevel, onTrustLevelChange, aiProvider, onAIProviderChange, availableModels }: SettingsOverlayProps) {
   const [category, setCategory] = useState<Category>('general');
   const [workflows, setWorkflowsState] = useState<Array<{id:string;name:string;command:string}>>([]);
   const [wfName, setWfName] = useState('');
   const [wfCommand, setWfCommand] = useState('');
+  const [version, setVersion] = useState('');
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'up-to-date' | 'available' | 'error'>('idle');
+
+  const modelOptions = availableModels?.length ? availableModels : CLAUDE_MODEL_OPTIONS;
+
+  useEffect(() => {
+    if (visible) {
+      window.tai?.update?.getVersion().then(v => setVersion(v));
+      setUpdateStatus('idle');
+    }
+  }, [visible]);
 
   useEffect(() => {
     if (visible && category === 'workflows') {
@@ -25,27 +142,37 @@ export function SettingsOverlay({ visible, onClose, config, onSet }: SettingsOve
     }
   }, [visible, category]);
 
+  const handleCheckUpdate = () => {
+    setUpdateStatus('checking');
+    const cleanups: (() => void)[] = [];
+    cleanups.push(window.tai?.update?.onStatus((status: string) => {
+      if (status === 'up-to-date') { setUpdateStatus('up-to-date'); cleanups.forEach(c => c()); }
+    }));
+    cleanups.push(window.tai?.update?.onAvailable(() => {
+      setUpdateStatus('available'); cleanups.forEach(c => c());
+    }));
+    cleanups.push(window.tai?.update?.onError(() => {
+      setUpdateStatus('error'); cleanups.forEach(c => c());
+    }));
+    window.tai?.update?.check();
+  };
+
   if (!visible) return null;
 
   const categories: { id: Category; label: string }[] = [
     { id: 'general', label: 'General' },
-    { id: 'ai', label: 'AI Provider' },
-    { id: 'trust', label: 'Trust' },
+    { id: 'ai', label: 'AI' },
     { id: 'appearance', label: 'Appearance' },
-    { id: 'keybindings', label: 'Keybindings' },
     { id: 'workflows', label: 'Workflows' },
   ];
 
   return (
     <div className={styles.overlay} onClick={onClose}>
-      <div
-        className={styles.modal}
-        onClick={e => e.stopPropagation()}
-      >
+      <div className={styles.modal} onClick={e => e.stopPropagation()}>
         <div className={styles.header}>
           <Settings size={16} color="var(--text-secondary)" />
           <span className={styles.headerTitle}>Settings</span>
-          <X size={16} color="var(--text-muted)" className={styles.closeButton} onClick={onClose} />
+          <X size={16} className={styles.closeBtn} onClick={onClose} />
         </div>
 
         <div className={styles.body}>
@@ -62,162 +189,132 @@ export function SettingsOverlay({ visible, onClose, config, onSet }: SettingsOve
           </div>
 
           <div className={styles.content}>
-            {category === 'general' && (
-              <SettingsGroup>
-                <SettingRow label="Font Size" value={
-                  <input type="number" value={config['general.fontSize']} onChange={e => onSet('general.fontSize', parseInt(e.target.value))}
-                    className={styles.input} />
-                } />
-                <SettingRow label="Cursor Style" value={
-                  <select value={config['general.cursorStyle']} onChange={e => onSet('general.cursorStyle', e.target.value)}
-                    className={styles.input}>
-                    <option value="bar">Bar</option>
-                    <option value="block">Block</option>
-                    <option value="underline">Underline</option>
-                  </select>
-                } />
-                <SettingRow label="Show an icon in the system tray" value={
-                  <Toggle checked={config['general.tray'] !== false}
-                    onChange={v => onSet('general.tray', v)} />
-                } />
-                {/* Only offered while a tray exists: with no tray there is
-                    nothing to restore a hidden window from, so closing always
-                    quits and a choice here would be a lie. */}
-                {config['general.tray'] !== false && (
-                  <>
-                    <SettingRow label="When the window is closed" value={
-                      <select value={config['general.closeAction'] === 'quit' ? 'quit' : 'tray'}
-                        onChange={e => onSet('general.closeAction', e.target.value)}
-                        className={styles.input}>
-                        <option value="tray">Keep running in the tray</option>
-                        <option value="quit">Quit</option>
-                      </select>
-                    } />
-                    <SettingRow label="Minimize to the tray" value={
-                      <Toggle checked={config['general.minimizeToTray'] === true}
-                        onChange={v => onSet('general.minimizeToTray', v)} />
-                    } />
-                  </>
-                )}
-                <SettingRow label="System notifications on completion" value={
-                  <Toggle checked={!!config['systemNotifications']}
-                    onChange={v => onSet('systemNotifications', v)} />
-                } />
-              </SettingsGroup>
-            )}
-            {category === 'ai' && (
-              <SettingsGroup>
-                <SettingRow label="Provider" value={
-                  <select value={config['ai.provider']} onChange={e => onSet('ai.provider', e.target.value)}
-                    className={styles.input}>
-                    <option value="claude">Claude</option>
-                    <option value="codex">Codex</option>
-                    <option value="gemini">Gemini</option>
-                  </select>
-                } />
-                <SettingRow label="Model" value={
-                  <input type="text" value={config['ai.model']} onChange={e => onSet('ai.model', e.target.value)}
-                    className={styles.input} />
-                } />
-                {/* aiNextCommandRefine: flag is persisted and read by TerminalInput,
-                    but the live provider call is not yet wired — pending a future
-                    useSingleShotAi hook. The toggle is inert until that lands. */}
-                <SettingRow label="AI next-command suggestions" value={
-                  <Toggle checked={!!config['aiNextCommandRefine']}
-                    onChange={v => onSet('aiNextCommandRefine', v)} />
-                } />
-              </SettingsGroup>
-            )}
-            {category === 'trust' && (
-              <SettingsGroup>
-                <SettingRow label="Default Trust Level" value={
-                  <select value={config['trust.default']} onChange={e => onSet('trust.default', e.target.value)}
-                    className={styles.input}>
-                    <option value="ask">Ask (approve everything)</option>
-                    <option value="approve-edits">Approve Edits (read-only is free)</option>
-                    <option value="bypass">Bypass (full autonomy)</option>
-                  </select>
-                } />
-              </SettingsGroup>
-            )}
-            {category === 'appearance' && (
-              <SettingsGroup>
-                <SettingRow label="Theme" value={
-                  <select value={config['appearance.theme'] || 'default'}
-                    onChange={e => onSet('appearance.theme', e.target.value)}
-                    className={styles.input}>
-                    {THEME_OPTIONS.map(o => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
-                } />
-                <SettingRow label="Expand tool calls by default" value={
-                  <Toggle checked={!!config['ai.expandToolCalls']}
-                    onChange={v => onSet('ai.expandToolCalls', v)} />
-                } />
-                <SettingRow label="Gradient Border" value={
-                  <Toggle checked={!!config['appearance.gradientBorder']}
-                    onChange={v => onSet('appearance.gradientBorder', v)} />
-                } />
-                <SettingRow label="Animation Speed (seconds)" value={
-                  <input type="number" value={config['appearance.animationSpeed']}
-                    onChange={e => onSet('appearance.animationSpeed', parseInt(e.target.value))}
-                    className={styles.input} />
-                } />
-              </SettingsGroup>
-            )}
-            {category === 'keybindings' && (
-              <div className={styles.keybindingsPlaceholder}>
-                Keybinding customization coming soon.
-              </div>
-            )}
-            {category === 'workflows' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {workflows.map(wf => (
-                    <div key={wf.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0', borderBottom: '1px solid var(--border-subtle)' }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13, color: 'var(--text-primary)', fontFamily: 'var(--font-sans)', fontWeight: 500 }}>{wf.name}</div>
-                        <div style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{wf.command}</div>
-                      </div>
-                      <button onClick={() => {
-                        const updated = workflows.filter(w => w.id !== wf.id);
-                        setWorkflowsState(updated);
-                        try { (window as any).tai?.workflows?.set?.(updated); } catch {}
-                      }} style={{ background: 'none', border: '1px solid var(--border-subtle)', borderRadius: 'var(--r-sm)', color: 'var(--text-muted)', cursor: 'pointer', padding: '4px 8px', fontSize: 12, fontFamily: 'var(--font-sans)' }}>
-                        Delete
+            <div className={styles.rows}>
+              {category === 'general' && (
+                <>
+                  <SettingRow label="On Window Close" value={
+                    <CustomDropdown
+                      value={config['general.closeAction'] === 'quit' ? 'quit' : 'tray'}
+                      options={CLOSE_ACTION_OPTIONS}
+                      onChange={v => onSet('general.closeAction', v)}
+                    />
+                  } />
+                  <SettingRow label="Notify on Completion" value={
+                    <Toggle checked={!!config['systemNotifications']}
+                      onChange={v => onSet('systemNotifications', v)} ariaLabel="Notify on completion" />
+                  } />
+                  <SettingRow label="Version" value={
+                    <div className={styles.versionRow}>
+                      <span className={styles.versionValue}>{version || '…'}</span>
+                      <button
+                        className={styles.button}
+                        onClick={handleCheckUpdate}
+                        disabled={updateStatus === 'checking'}
+                      >
+                        <RefreshCw size={12} className={updateStatus === 'checking' ? styles.spinning : ''} />
+                        {updateStatus === 'idle' && 'Check for Updates'}
+                        {updateStatus === 'checking' && 'Checking…'}
+                        {updateStatus === 'up-to-date' && 'Up to Date'}
+                        {updateStatus === 'available' && 'Update Available!'}
+                        {updateStatus === 'error' && 'Check Failed'}
                       </button>
                     </div>
-                  ))}
-                  {workflows.length === 0 && (
-                    <div style={{ fontSize: 13, color: 'var(--text-muted)', fontFamily: 'var(--font-sans)', padding: '8px 0' }}>No workflows yet.</div>
-                  )}
+                  } />
+                </>
+              )}
+              {category === 'ai' && (
+                <>
+                  <SettingRow label="AI Provider" value={
+                    <CustomDropdown value={aiProvider} options={PROVIDER_OPTIONS}
+                      onChange={v => onAIProviderChange(v as AIProvider)} />
+                  } />
+                  <SettingRow label="AI Permissions" value={
+                    <CustomDropdown value={trustLevel} options={TRUST_LEVEL_OPTIONS}
+                      onChange={v => onTrustLevelChange(v as TrustLevel)} />
+                  } />
+                  <SettingRow label="Expand Tool Calls" value={
+                    <Toggle checked={!!config['ai.expandToolCalls']}
+                      onChange={v => onSet('ai.expandToolCalls', v)} ariaLabel="Expand tool calls" />
+                  } />
+                  <div className={styles.sectionTitle}>Claude</div>
+                  <SettingRow label="Model" value={
+                    <CustomDropdown value={config['claude.model'] || 'sonnet'} options={modelOptions}
+                      onChange={v => onSet('claude.model', v)} />
+                  } />
+                  <SettingRow label="Reasoning Effort" value={
+                    <CustomDropdown value={config['claude.effort'] || 'auto'} options={CLAUDE_EFFORT_OPTIONS}
+                      onChange={v => onSet('claude.effort', v)} />
+                  } />
+                  <SettingRow label="Show Reasoning" value={
+                    <Toggle checked={config['claude.showReasoning'] !== false}
+                      onChange={v => onSet('claude.showReasoning', v)} ariaLabel="Show reasoning" />
+                  } />
+                </>
+              )}
+              {category === 'appearance' && (
+                <>
+                  <SettingRow label="Theme" value={
+                    <CustomDropdown value={config['appearance.theme'] || 'default'} options={THEME_OPTIONS}
+                      onChange={v => onSet('appearance.theme', v)} />
+                  } />
+                  <SettingRow label="Color Mode" value={
+                    <CustomDropdown value={config['appearance.colorMode'] || 'high'} options={COLOR_MODE_OPTIONS}
+                      onChange={v => onSet('appearance.colorMode', v)} />
+                  } />
+                  <SettingRow label="Card Accent" value={
+                    <CustomDropdown value={config['appearance.cardAccent'] || 'brackets'} options={CARD_ACCENT_OPTIONS}
+                      onChange={v => onSet('appearance.cardAccent', v)} />
+                  } />
+                  <SettingRow label="Noise Texture" value={
+                    <Toggle checked={config['appearance.noise'] !== false}
+                      onChange={v => onSet('appearance.noise', v)} ariaLabel="Noise texture" />
+                  } />
+                </>
+              )}
+              {category === 'workflows' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {workflows.map(wf => (
+                      <div key={wf.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 14, color: 'var(--text-primary)', fontFamily: 'var(--font-sans)', fontWeight: 500 }}>{wf.name}</div>
+                          <div style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{wf.command}</div>
+                        </div>
+                        <button className={styles.button} onClick={() => {
+                          const updated = workflows.filter(w => w.id !== wf.id);
+                          setWorkflowsState(updated);
+                          try { (window as any).tai?.workflows?.set?.(updated); } catch {}
+                        }}>
+                          Delete
+                        </button>
+                      </div>
+                    ))}
+                    {workflows.length === 0 && (
+                      <div style={{ fontSize: 13, color: 'var(--text-muted)', fontFamily: 'var(--font-sans)', padding: '8px 0' }}>No workflows yet.</div>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div className={styles.sectionTitle}>Add workflow</div>
+                    <input className={styles.input} placeholder="Name" value={wfName} onChange={e => setWfName(e.target.value)} />
+                    <input className={styles.input} placeholder="Command (use {{param}} for params)" value={wfCommand} onChange={e => setWfCommand(e.target.value)} />
+                    <button className={styles.button} style={{ alignSelf: 'flex-start' }} onClick={() => {
+                      if (!wfName.trim() || !wfCommand.trim()) return;
+                      const updated = [...workflows, { id: crypto.randomUUID(), name: wfName.trim(), command: wfCommand.trim() }];
+                      setWorkflowsState(updated);
+                      try { (window as any).tai?.workflows?.set?.(updated); } catch {}
+                      setWfName(''); setWfCommand('');
+                    }}>
+                      Add
+                    </button>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div style={{ fontSize: 12, color: 'var(--text-secondary)', fontFamily: 'var(--font-sans)', fontWeight: 600 }}>Add workflow</div>
-                  <input className={styles.input} placeholder="Name" value={wfName} onChange={e => setWfName(e.target.value)} />
-                  <input className={styles.input} placeholder="Command (use {{param}} for params)" value={wfCommand} onChange={e => setWfCommand(e.target.value)} />
-                  <button onClick={() => {
-                    if (!wfName.trim() || !wfCommand.trim()) return;
-                    const updated = [...workflows, { id: crypto.randomUUID(), name: wfName.trim(), command: wfCommand.trim() }];
-                    setWorkflowsState(updated);
-                    try { (window as any).tai?.workflows?.set?.(updated); } catch {}
-                    setWfName(''); setWfCommand('');
-                  }} style={{ alignSelf: 'flex-start', background: 'rgba(255,255,255,0.08)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--r-md)', color: 'var(--text-primary)', cursor: 'pointer', padding: '7px 14px', fontSize: 13, fontFamily: 'var(--font-sans)' }}>
-                    Add
-                  </button>
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       </div>
     </div>
   );
-}
-
-function SettingsGroup({ children }: { children: React.ReactNode }) {
-  return <div className={styles.settingsGroup}>{children}</div>;
 }
 
 function SettingRow({ label, value }: { label: string; value: React.ReactNode }) {

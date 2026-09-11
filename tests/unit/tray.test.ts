@@ -47,7 +47,6 @@ import {
   resetTrayState,
   registerQuitTracking,
   closeAction,
-  minimizeAction,
 } from '../../electron/services/tray';
 
 const fire = (key: string) => (listeners[key] || []).forEach((fn) => fn());
@@ -231,23 +230,5 @@ describe('closeAction', () => {
     expect(closeAction({ quitting: true, trayEnabled: true })).toBe('allow');
     expect(closeAction({ quitting: true, trayEnabled: false })).toBe('allow');
     expect(closeAction({ quitting: true, trayEnabled: true, closePreference: 'quit' })).toBe('allow');
-  });
-});
-
-describe('minimizeAction', () => {
-  // Opt-in: minimise went to the taskbar before this was a choice.
-  it('minimises normally when no preference has been chosen', () => {
-    expect(minimizeAction({ trayEnabled: true })).toBe('minimize');
-    expect(minimizeAction({ trayEnabled: true, minimizeToTray: false })).toBe('minimize');
-  });
-
-  it('hides to the tray when asked to', () => {
-    expect(minimizeAction({ trayEnabled: true, minimizeToTray: true })).toBe('hide');
-  });
-
-  // Same constraint as close: a stale preference with the tray off must not
-  // hide the window somewhere nothing can bring it back from.
-  it('minimises normally with the tray off even if the preference says tray', () => {
-    expect(minimizeAction({ trayEnabled: false, minimizeToTray: true })).toBe('minimize');
   });
 });
