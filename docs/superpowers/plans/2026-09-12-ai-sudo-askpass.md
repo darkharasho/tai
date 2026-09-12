@@ -25,9 +25,10 @@
 - Vitest: always run through `npm test` / `npx vitest run --config tests/vitest.config.ts` (config pins `maxForks: 2`, `maxWorkers: 2`).
 - Typecheck gates:
   - `npx tsc --noEmit -p tsconfig.json` → exit 0.
-  - `npx tsc --noEmit -p tsconfig.node.json 2>&1 | grep 'error TS' | grep -v TS6307` → exactly these two pre-existing lines and nothing else:
-    - `electron/main.ts(51,7): error TS2339: Property 'setDesktopName' does not exist on type 'App'.`
-    - `electron/services/claude.ts(185,7): error TS2322: ...` (the SDK `Options` mismatch; line number may shift by the lines this plan adds above it)
+  - `npx tsc --noEmit -p tsconfig.node.json 2>&1 | grep 'error TS' | grep -v TS6307` → exactly two lines, the pre-existing errors, matched by file and message text **regardless of line/column** (this plan adds imports above both):
+    - `electron/main.ts(<line>,<col>): error TS2339: Property 'setDesktopName' does not exist on type 'App'.`
+    - `electron/services/claude.ts(<line>,<col>): error TS2322: Type '{ abortController: AbortController; env: ...` (the SDK `Options` mismatch at the `query({ options })` call)
+    - Any other `error TS` line, or a third line, fails the gate.
 - Commits end with `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`.
 
 ## File Map
@@ -36,7 +37,7 @@
 |---|---|---|
 | `electron/services/sudoParent.ts` | create | Pure parsers + `resolveSudoParent(pid)` → sudo pid or null |
 | `electron/services/askpassDecision.ts` | create | Pure `decideAskpass()` |
-| `electron/services/askpassHelper.ts` | create | Generate sh wrapper + `.cjs` helper; `buildAskpassEnv()` |
+| `electron/services/askpassHelper.ts` | create | Generate sh wrapper + `.cjs` helper; `buildAskpassEnv()`; `sweepStaleAskpassDirs()` |
 | `electron/services/askpassBroker.ts` | create | `AskpassBroker` class: claims, duplicate tripwire, queue, decide, auto-fill hold, reply, cancel, timeout |
 | `electron/services/askpassServer.ts` | create | `startAskpassServer()` Unix socket + `parseAskpassRequest()` |
 | `electron/services/askpassService.ts` | create | Singleton wiring: temp dir, files, server, IPC, `askpassEnvFor()`, `cancelAskpassForKey()`, `stopAskpassService()` |
@@ -47,8 +48,8 @@
 | `src/components/PasswordPrompt.tsx` | modify | Thin terminal wrapper over `PasswordField` (behaviour unchanged) |
 | `src/components/SudoPrompt.tsx` | create | AI wrapper over `PasswordField` |
 | `src/components/BlockList.tsx` (+ `.module.css`) | modify | `sudo` display item + render |
-| `src/components/TerminalSession.tsx` | modify | handle `sudo_prompt` / `sudo_resolved` (incl. `refused-duplicate`) / `sudo_auth`; report needs-input |
-| `src/utils/sudoDisplay.ts` | create | `hasPendingSudo(items)`, `applySudoResolved(items, …)` |
+| `src/components/TerminalSession.tsx` | modify | handle `sudo_prompt` / `sudo_resolved` (incl. `refused-duplicate`) / `sudo_auth` in the always-on per-tab listener; cancel pending sudo items on Stop; keep composer focus-restore off while a sudo field is pending; report needs-input |
+| `src/utils/sudoDisplay.ts` | create | `hasPendingSudo(items)`, `applySudoResolved(items, …)`, `cancelPendingSudo(items)` |
 | `src/types.ts`, `src/App.tsx`, `src/components/TabSidebar.tsx` (+ `.module.css`) | modify | `aiNeedsInput` marker |
 | `.github/workflows/test.yml` | modify | macOS job running the askpass tests |
 
@@ -425,6 +426,8 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
   - `generateAskpassWrapper(execPath: string, helperPath: string): string`
   - `generateAskpassHelperScript(socketPath: string): string`
   - `buildAskpassEnv(key: string, askpassPath: string | null, platform: NodeJS.Platform): Record<string, string>`
+  - `const ASKPASS_DIR_PREFIX = 'tai-askpass-'`, `const ASKPASS_OWNER_FILE = 'owner.pid'`
+  - `sweepStaleAskpassDirs(tempDir: string, isAlive?: (pid: number) => boolean): string[]` — removes `tai-askpass-*` directories in `tempDir` owned by the current uid whose `owner.pid` is missing, garbled, or not a live process; returns the removed names. Electron-free (the caller passes the temp dir).
 - Wire protocol (used by Tasks 5, 6):
   - helper → broker: one line `{"pid":number,"key":string,"prompt":string}\n`
   - broker → helper: one line `{"ok":boolean,"secret"?:string}\n`
@@ -442,6 +445,7 @@ import * as path from 'path';
 import { spawn } from 'child_process';
 import {
   generateAskpassWrapper, generateAskpassHelperScript, buildAskpassEnv,
+  sweepStaleAskpassDirs, ASKPASS_OWNER_FILE,
 } from '../../electron/services/askpassHelper';
 
 describe('buildAskpassEnv', () => {
@@ -458,8 +462,11 @@ describe('buildAskpassEnv', () => {
   });
 
   it('never touches process.env', () => {
+    // Compare against the starting values: the suite may itself run under a
+    // TAI AI tool, whose env legitimately carries both vars.
+    const before = { SUDO_ASKPASS: process.env.SUDO_ASKPASS, TAI_ASKPASS_KEY: process.env.TAI_ASKPASS_KEY };
     buildAskpassEnv('tab_1', '/tmp/x/askpass', 'linux');
-    expect(process.env.TAI_ASKPASS_KEY).toBeUndefined();
+    expect({ SUDO_ASKPASS: process.env.SUDO_ASKPASS, TAI_ASKPASS_KEY: process.env.TAI_ASKPASS_KEY }).toEqual(before);
   });
 });
 
@@ -468,6 +475,37 @@ describe('generateAskpassWrapper', () => {
     const sh = generateAskpassWrapper("/opt/it's here/tai", '/tmp/d/askpass.cjs');
     expect(sh.startsWith('#!/bin/sh\n')).toBe(true);
     expect(sh).toContain(`ELECTRON_RUN_AS_NODE=1 exec '/opt/it'\\''s here/tai' '/tmp/d/askpass.cjs' "$@"`);
+  });
+});
+
+describe.skipIf(process.platform === 'win32')('sweepStaleAskpassDirs', () => {
+  let tmp: string;
+
+  beforeEach(() => { tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tai-sweep-test-')); });
+  afterEach(() => { fs.rmSync(tmp, { recursive: true, force: true }); });
+
+  function makeDir(name: string, owner?: string): void {
+    fs.mkdirSync(path.join(tmp, name));
+    fs.writeFileSync(path.join(tmp, name, 'broker.sock.stale'), '');
+    if (owner !== undefined) fs.writeFileSync(path.join(tmp, name, ASKPASS_OWNER_FILE), owner);
+  }
+
+  it('removes our dead, ownerless and garbled askpass dirs; keeps live ones and unrelated entries', () => {
+    makeDir('tai-askpass-dead', '999999');
+    makeDir('tai-askpass-live', '4242');
+    makeDir('tai-askpass-noowner');
+    makeDir('tai-askpass-garbled', 'not a pid');
+    makeDir('tai-history-keep', '999999');
+    fs.writeFileSync(path.join(tmp, 'tai-askpass-file'), '');
+
+    const removed = sweepStaleAskpassDirs(tmp, (pid) => pid === 4242);
+
+    expect(removed.sort()).toEqual(['tai-askpass-dead', 'tai-askpass-garbled', 'tai-askpass-noowner']);
+    expect(fs.readdirSync(tmp).sort()).toEqual(['tai-askpass-file', 'tai-askpass-live', 'tai-history-keep']);
+  });
+
+  it('tolerates a missing temp dir', () => {
+    expect(sweepStaleAskpassDirs(path.join(tmp, 'nope'))).toEqual([]);
   });
 });
 
@@ -564,6 +602,13 @@ Expected: FAIL — module not found.
 
 ```ts
 // electron/services/askpassHelper.ts
+import * as fs from 'fs';
+import * as path from 'path';
+
+/** Per-run directory name prefix under the temp dir. */
+export const ASKPASS_DIR_PREFIX = 'tai-askpass-';
+/** File inside that directory holding the owning TAI main-process pid. */
+export const ASKPASS_OWNER_FILE = 'owner.pid';
 
 /**
  * sudo takes SUDO_ASKPASS as a bare path with no arguments, so the helper is a
@@ -622,6 +667,51 @@ export function buildAskpassEnv(
   if (!askpassPath || (platform !== 'linux' && platform !== 'darwin')) return {};
   return { SUDO_ASKPASS: askpassPath, TAI_ASKPASS_KEY: key };
 }
+
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    // EPERM: the pid exists but belongs to someone else — treat as alive.
+    return (err as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+/**
+ * A crashed run leaves its askpass directory behind. Remove ours whose owning
+ * process is gone, but never one belonging to a live TAI (a dev build and the
+ * packaged app can share a temp dir) or to another user.
+ */
+export function sweepStaleAskpassDirs(
+  tempDir: string,
+  isAlive: (pid: number) => boolean = pidAlive,
+): string[] {
+  const removed: string[] = [];
+  let names: string[];
+  try {
+    names = fs.readdirSync(tempDir);
+  } catch {
+    return removed;
+  }
+  const uid = typeof process.getuid === 'function' ? process.getuid() : null;
+  for (const name of names) {
+    if (!name.startsWith(ASKPASS_DIR_PREFIX)) continue;
+    const dir = path.join(tempDir, name);
+    try {
+      const st = fs.lstatSync(dir);
+      if (!st.isDirectory() || (uid !== null && st.uid !== uid)) continue;
+      let owner = Number.NaN;
+      try {
+        owner = Number.parseInt(fs.readFileSync(path.join(dir, ASKPASS_OWNER_FILE), 'utf8').trim(), 10);
+      } catch { /* no owner file */ }
+      if (Number.isInteger(owner) && owner > 0 && isAlive(owner)) continue;
+      fs.rmSync(dir, { recursive: true, force: true });
+      removed.push(name);
+    } catch { /* best effort */ }
+  }
+  return removed;
+}
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -665,6 +755,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
   - A verified request records a claim `pid → { sudoPid, requestId, key }`. It stays while pending and after an answer (single use); it is released when the request is cancelled or times out. A claim with a different `sudoPid` is a recycled pid and is replaced.
   - A request whose `pid` has a claim with the same `sudoPid` trips the wire: newcomer `{ ok: false }`; the claimed request, if still pending, `{ ok: false }`; `vault.clear()`; `pty:secret-state false`; `sudo_resolved` `refused-duplicate` (requestId of the original claim) to the original key and, if different, the newcomer's key. The claim stays burned.
   - `auto-fill` holds for `autofillHoldMs` (default `AUTOFILL_HOLD_MS`) before replying; the vault is re-read at the end of the hold and an empty vault falls through to a prompt.
+  - Claims are capped at 1024; beyond that the oldest **settled** claim is dropped. A claim whose request is still pending is never evicted.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -891,14 +982,28 @@ describe('AskpassBroker', () => {
     expect(timers.every((t) => t.cleared)).toBe(true);
   });
 
-  it('never puts the secret in anything sent to the renderer', () => {
-    const { broker, request, send, advance } = setup({ vault: makeVault(SECRET) });
-    request(42);
-    request(43);
+  it('never puts the secret in anything sent to the renderer (auto-fill and answer paths)', () => {
+    const vault = makeVault(SECRET);
+    const { broker, request, send, advance } = setup({ vault });
+    const filled = request(42);          // auto-fill path
     advance(AUTOFILL_HOLD_MS);
-    advance(AUTOFILL_HOLD_MS);
+    expect(filled.reply).toHaveBeenCalledWith({ ok: true, secret: SECRET });
+    vault.clear();
+    const prompted = request(43);        // prompt + remembered answer path (req-2)
     broker.answer('req-2', SECRET, true);
+    expect(prompted.reply).toHaveBeenCalledWith({ ok: true, secret: SECRET });
+    expect(messages(send).map((m) => m.type)).toEqual(['sudo_auth', 'sudo_prompt', 'sudo_resolved']);
+    expect(send).toHaveBeenCalledWith('pty:secret-state', true);
     expect(JSON.stringify(send.mock.calls)).not.toContain(SECRET);
+  });
+
+  it('the claim cap never evicts a claim that is still pending', () => {
+    const { request } = setup();
+    const first = request(2, 'tab_first');
+    for (let pid = 3; pid < 3 + 1100; pid++) request(pid, `tab_${pid}`);
+    const dup = request(2, 'tab_first');
+    expect(dup.reply).toHaveBeenCalledWith({ ok: false });
+    expect(first.reply).toHaveBeenCalledWith({ ok: false });
   });
 });
 
@@ -994,8 +1099,6 @@ describe('AskpassBroker single use and duplicate-claim tripwire', () => {
 });
 ```
 
-Note: the "never puts the secret" test issues `request(43)` against a cached vault, so it auto-fills and `req-2` is never shown; `answer('req-2', …)` is a no-op. That is intentional — the assertion covers both the auto-fill and answer paths.
-
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run --config tests/vitest.config.ts tests/unit/askpassBroker.test.ts`
@@ -1015,7 +1118,7 @@ import { decideAskpass } from './askpassDecision';
  */
 export const AUTOFILL_HOLD_MS = 150;
 
-/** Claims kept for single-use checks; the oldest are dropped beyond this. */
+/** Claims kept for single-use checks; the oldest settled ones are dropped beyond this. */
 const MAX_CLAIMS = 1024;
 
 export interface AskpassRequest {
@@ -1100,13 +1203,14 @@ export class AskpassBroker {
     }
 
     const id = (this.deps.newId ?? randomUUID)();
-    this.claim(req.pid, { sudoPid: sudoPid!, requestId: id, key: req.key });
     const p: Pending = {
       id, key: req.key, pid: req.pid, sudoPid: sudoPid!, prompt: req.prompt, reply,
       timer: null, holdTimer: null, state: 'queued',
     };
     p.timer = this.deps.setTimer(() => this.cancel(id), this.deps.timeoutMs);
     this.pending.push(p);
+    // Claim after pushing, so the cap sees this request as pending.
+    this.claim(req.pid, { sudoPid: sudoPid!, requestId: id, key: req.key });
     this.pump(req.key);
     return () => this.cancel(id);
   }
@@ -1145,9 +1249,15 @@ export class AskpassBroker {
   private claim(pid: number, c: Claim): void {
     this.claims.delete(pid);
     this.claims.set(pid, c);
-    if (this.claims.size > MAX_CLAIMS) {
-      const oldest = this.claims.keys().next().value;
-      if (oldest !== undefined) this.claims.delete(oldest);
+    if (this.claims.size <= MAX_CLAIMS) return;
+    // Drop the oldest settled claim. A pending claim must stay, or a second
+    // claim on its pid would slip past the tripwire.
+    const pendingIds = new Set(this.pending.map((x) => x.id));
+    for (const [oldPid, old] of this.claims) {
+      if (oldPid !== pid && !pendingIds.has(old.requestId)) {
+        this.claims.delete(oldPid);
+        return;
+      }
     }
   }
 
@@ -1265,7 +1375,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 **Interfaces:**
 - Consumes: `AskpassBroker`, `AskpassRequest`, `AskpassReply` (Task 5); `generateAskpassHelperScript`, `generateAskpassWrapper` (Task 4); `resolveSudoParent` (Task 2).
 - Produces:
-  - `parseAskpassRequest(value: unknown): AskpassRequest | null`
+  - `parseAskpassRequest(value: unknown): AskpassRequest | null` — `null` (→ refuse) for a non-integer pid ≤ 1, a non-string, empty or over-200-char key
   - `startAskpassServer(broker: Pick<AskpassBroker, 'handleRequest'>, socketPath: string): Promise<net.Server>`
 - The server is platform-agnostic: it relays the broker's `AskpassReply` (including `secret` on success) as one JSON line, identically on Linux and macOS.
 
@@ -1295,6 +1405,7 @@ describe('parseAskpassRequest', () => {
     expect(parseAskpassRequest({ pid: 1, key: 'k', prompt: '' })).toBeNull();
     expect(parseAskpassRequest({ pid: 42.5, key: 'k', prompt: '' })).toBeNull();
     expect(parseAskpassRequest({ pid: 42, key: 7, prompt: '' })).toBeNull();
+    expect(parseAskpassRequest({ pid: 42, key: '', prompt: '' })).toBeNull();
     expect(parseAskpassRequest({ pid: 42, key: 'x'.repeat(201), prompt: '' })).toBeNull();
   });
 
@@ -1450,7 +1561,9 @@ export function parseAskpassRequest(value: unknown): AskpassRequest | null {
   if (!value || typeof value !== 'object') return null;
   const v = value as Record<string, unknown>;
   if (typeof v.pid !== 'number' || !Number.isInteger(v.pid) || v.pid <= 1) return null;
-  if (typeof v.key !== 'string' || v.key.length > MAX_KEY) return null;
+  // An empty key (helper run without TAI_ASKPASS_KEY) routes to no tab: refuse
+  // now rather than leave sudo waiting out the prompt timeout.
+  if (typeof v.key !== 'string' || v.key.length === 0 || v.key.length > MAX_KEY) return null;
   const prompt = typeof v.prompt === 'string' ? v.prompt.slice(0, MAX_PROMPT) : '';
   return { pid: v.pid, key: v.key, prompt };
 }
@@ -1496,6 +1609,9 @@ export function startAskpassServer(
     server.once('error', reject);
     server.listen(socketPath, () => {
       server.off('error', reject);
+      // Keep a listener so a later server error cannot crash the main process.
+      // Log the message only: requests and replies never reach this path.
+      server.on('error', (err) => { console.warn('[askpass] server error:', err.message); });
       try { fs.chmodSync(socketPath, 0o600); } catch { /* dir is 0700 anyway */ }
       resolve(server);
     });
@@ -1523,7 +1639,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 **Files:**
 - Create: `electron/services/askpassService.ts`
-- Modify: `electron/main.ts` (imports; `app.whenReady` after `setupGeminiService(() => mainWindow);`; `before-quit`)
+- Modify: `electron/main.ts` (imports; `app.whenReady().then(() => {` made async and awaiting the service right after `purgeStaleTempFiles(os.tmpdir());`, before the window and AI services exist; `before-quit`)
 - Modify: `electron/services/claude.ts` (`env: enrichedEnv(),` inside `query({ options })`; `ai:cancel`, `ai:stop` handlers)
 - Modify: `electron/services/codex.ts` (`const env = enrichedEnv();` in `codex:send`; `codex:stop` handler)
 - Modify: `electron/services/gemini.ts` (`env: enrichedEnv(),` in `ensureTransport`; `gemini:stop` handler)
@@ -1534,7 +1650,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 **Interfaces:**
 - Consumes: everything from Tasks 2, 4, 5, 6; `credentialVault` from `./credentialVault`.
 - Produces:
-  - `setupAskpassService(getWindow: () => BrowserWindow | null): Promise<void>`
+  - `setupAskpassService(getWindow: () => BrowserWindow | null): Promise<void>` — never rejects (failures are logged and leave the service off); uses `app.getPath('temp')`, sweeps stale `tai-askpass-*` dirs first, writes `owner.pid`
   - `askpassEnvFor(key: string): Record<string, string>`
   - `cancelAskpassForKey(key: string): void`
   - `stopAskpassService(): void`
@@ -1554,6 +1670,17 @@ describe('askpassService before setup', () => {
     expect(() => cancelAskpassForKey('tab_1')).not.toThrow();
     expect(() => stopAskpassService()).not.toThrow();
   });
+
+  it('never leaks the askpass vars into process.env, which terminal PTYs inherit', () => {
+    // pty.ts builds each shell's env from `{ ...process.env }`, so keeping
+    // process.env clean is what keeps the terminal unaffected.
+    // Compare against the starting values: the suite may itself run under a
+    // TAI AI tool, whose env legitimately carries both vars.
+    const before = { SUDO_ASKPASS: process.env.SUDO_ASKPASS, TAI_ASKPASS_KEY: process.env.TAI_ASKPASS_KEY };
+    askpassEnvFor('tab_1');
+    cancelAskpassForKey('tab_1');
+    expect({ SUDO_ASKPASS: process.env.SUDO_ASKPASS, TAI_ASKPASS_KEY: process.env.TAI_ASKPASS_KEY }).toEqual(before);
+  });
 });
 ```
 
@@ -1568,12 +1695,14 @@ Expected: FAIL — module not found.
 // electron/services/askpassService.ts
 import * as fs from 'fs';
 import * as net from 'net';
-import * as os from 'os';
 import * as path from 'path';
-import { ipcMain, type BrowserWindow } from 'electron';
+import { app, ipcMain, type BrowserWindow } from 'electron';
 import { AskpassBroker } from './askpassBroker';
 import { startAskpassServer } from './askpassServer';
-import { buildAskpassEnv, generateAskpassHelperScript, generateAskpassWrapper } from './askpassHelper';
+import {
+  ASKPASS_DIR_PREFIX, ASKPASS_OWNER_FILE, buildAskpassEnv, generateAskpassHelperScript,
+  generateAskpassWrapper, sweepStaleAskpassDirs,
+} from './askpassHelper';
 import { resolveSudoParent } from './sudoParent';
 import { credentialVault } from './credentialVault';
 
@@ -1618,8 +1747,11 @@ export async function setupAskpassService(getWindow: () => BrowserWindow | null)
   });
 
   try {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tai-askpass-'));
+    const tempDir = app.getPath('temp');
+    sweepStaleAskpassDirs(tempDir);
+    dir = fs.mkdtempSync(path.join(tempDir, ASKPASS_DIR_PREFIX));
     fs.chmodSync(dir, 0o700);
+    fs.writeFileSync(path.join(dir, ASKPASS_OWNER_FILE), String(process.pid), { mode: 0o600 });
     const socketPath = path.join(dir, 'broker.sock');
     const helperPath = path.join(dir, 'askpass.cjs');
     fs.writeFileSync(helperPath, generateAskpassHelperScript(socketPath), { mode: 0o700 });
@@ -1664,10 +1796,17 @@ Add import next to the other service imports:
 ```ts
 import { setupAskpassService, stopAskpassService } from './services/askpassService';
 ```
-In `app.whenReady().then(...)`, directly after `setupGeminiService(() => mainWindow);`:
+Make the ready callback async — replace the line `app.whenReady().then(() => {` with:
 ```ts
-  void setupAskpassService(() => mainWindow);
+app.whenReady().then(async () => {
 ```
+and directly after `purgeStaleTempFiles(os.tmpdir());` (inside that callback, after the `gotInstanceLock` guard) add:
+```ts
+  // Before the window and the AI services exist, so no provider can spawn
+  // without SUDO_ASKPASS. Never rejects; on failure AI sudo behaves as before.
+  await setupAskpassService(() => mainWindow);
+```
+(`mainWindow` is read lazily by the getter, so it being `null` here is fine.)
 In `app.on('before-quit', ...)`, directly after `credentialVault.clear();`:
 ```ts
   stopAskpassService();
@@ -1716,13 +1855,13 @@ First statement inside `ipcMain.on('gemini:stop', async (_event, key: string) =>
 
 - [ ] **Step 7: Expose IPC to the renderer**
 
-`electron/preload.ts`, inside `ai: {`, directly after the `approve:` entry:
+`electron/preload.ts`, inside `ai: {`, directly after the line `      ipcRenderer.invoke('ai:approve', key, toolUseId, approved, updatedInput),` (the second line of the `ai.approve` entry; the later `approve:` entries in other blocks are not the anchor):
 ```ts
     sudoAnswer: (requestId: string, secret: string, remember: boolean) =>
       ipcRenderer.send('ai:sudo-answer', requestId, secret, remember),
     sudoCancel: (requestId: string) => ipcRenderer.send('ai:sudo-cancel', requestId),
 ```
-`src/types/window.d.ts`, inside `ai: {`, directly after its `approve:` line:
+`src/types/window.d.ts`, inside `ai: {`, directly after the line `approve: (key: string, toolUseId: string, approved: boolean, updatedInput?: Record<string, unknown> | null) => Promise<boolean>;` (the only `approve:` with `updatedInput`):
 ```ts
         sudoAnswer?: (requestId: string, secret: string, remember: boolean) => void;
         sudoCancel?: (requestId: string) => void;
@@ -1761,7 +1900,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Create: `src/utils/sudoDisplay.ts`
 - Modify: `src/components/BlockList.tsx` (`DisplayItem` union at lines 21-24; render branch before `if (item.type === 'approval')`; import)
 - Modify: `src/components/BlockList.module.css` (append)
-- Modify: `src/components/TerminalSession.tsx` (props interface; destructuring; effect beside the `aiWorking` effect at ~449-452; message handler before `if (msg.type === 'approval_needed')` at ~1102)
+- Modify: `src/components/TerminalSession.tsx` (props interface; destructuring; import; the always-on `window.tai?.ai?.onMessage(tabId, …)` effect at ~356-372; `aiNeedsInput` + its effect directly before the `visible` focus effect at ~416-420; that effect; the per-turn handler before `if (msg.type === 'approval_needed')` at ~1102; `handleStopAI` at ~1307; the window-`focus` effect at ~1499-1506; the `surface` focus effect at ~1578-1590)
 - Modify: `src/types.ts` (`TabState`)
 - Modify: `src/App.tsx` (handler beside `handleAiWorkingChange`; prop beside `onAiWorkingChange` at ~280)
 - Modify: `src/components/TabSidebar.tsx` (beside the `workingDot` span at ~169) and `src/components/TabSidebar.module.css` (append)
@@ -1775,6 +1914,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
   - `DisplayItem` member `{ type: 'sudo'; id: string; requestId: string; prompt: string; status: 'pending' | 'answered' | 'cancelled' | 'auto' | 'refused' }`
   - `hasPendingSudo(items: DisplayItem[]): boolean`
   - `applySudoResolved(items: DisplayItem[], requestId: string, outcome: unknown, newId: () => string): DisplayItem[]` — marks the pending item for `requestId`; for `'refused-duplicate'` with no pending item (the request was queued, holding or already answered) it appends a `refused` warning item
+  - `cancelPendingSudo(items: DisplayItem[]): DisplayItem[]` — marks every pending sudo item `cancelled`; returns `items` unchanged (same reference) when none is pending
   - `TabState.aiNeedsInput?: boolean`; `TerminalSessionProps.onAiNeedsInputChange?: (needsInput: boolean) => void`
 
 - [ ] **Step 1: Write the failing tests**
@@ -1887,7 +2027,7 @@ describe('SudoPrompt', () => {
 ```ts
 // tests/unit/sudoDisplay.test.ts
 import { describe, it, expect } from 'vitest';
-import { hasPendingSudo, applySudoResolved } from '../../src/utils/sudoDisplay';
+import { hasPendingSudo, applySudoResolved, cancelPendingSudo } from '../../src/utils/sudoDisplay';
 import type { DisplayItem } from '../../src/components/BlockList';
 
 type SudoStatus = 'pending' | 'answered' | 'cancelled' | 'auto' | 'refused';
@@ -1928,6 +2068,22 @@ describe('applySudoResolved', () => {
     const items = [sudo('answered', 'req-1')];
     expect(applySudoResolved(items, 'req-9', 'answered', newId)).toBe(items);
     expect(applySudoResolved(items, 'req-1', 'cancelled', newId)).toBe(items);
+  });
+});
+
+describe('cancelPendingSudo', () => {
+  it('marks every pending sudo item cancelled and leaves the rest alone', () => {
+    const items = [sudo('pending', 'req-1'), sudo('answered', 'req-2'), sudo('pending', 'req-3')];
+    expect(cancelPendingSudo(items)).toEqual([
+      { ...sudo('pending', 'req-1'), status: 'cancelled' },
+      sudo('answered', 'req-2'),
+      { ...sudo('pending', 'req-3'), status: 'cancelled' },
+    ]);
+  });
+
+  it('returns the same array when nothing is pending', () => {
+    const items = [sudo('answered', 'req-1'), sudo('refused', 'req-2')];
+    expect(cancelPendingSudo(items)).toBe(items);
   });
 });
 ```
@@ -2135,6 +2291,18 @@ export function applySudoResolved(
   if (status !== 'refused') return items;
   return [...items, { type: 'sudo' as const, id: newId(), requestId, prompt: '', status }];
 }
+
+/**
+ * Local cancel for when the renderer stops the AI turn itself. The broker's
+ * own `sudo_resolved cancelled` follows and is then a no-op; this makes sure a
+ * dead field never lingers if that message is late or lost.
+ */
+export function cancelPendingSudo(items: DisplayItem[]): DisplayItem[] {
+  if (!hasPendingSudo(items)) return items;
+  return items.map(di =>
+    di.type === 'sudo' && di.status === 'pending' ? { ...di, status: 'cancelled' as const } : di
+  );
+}
 ```
 
 - [ ] **Step 6: Run the new tests**
@@ -2198,8 +2366,19 @@ Append to `src/components/BlockList.module.css`:
 
 - [ ] **Step 8: Handle the messages in `TerminalSession.tsx`**
 
-Directly before `if (msg.type === 'approval_needed') {` add:
+The `sudo_*` messages are handled in the tab's **always-on** listener, not the per-turn one: `handleStopAI` and `done` tear the per-turn listener down, and the broker's `sudo_resolved cancelled` (sent from `ai:stop`), a cross-tab `refused-duplicate` notice, or a prompt raised outside a live turn must still land.
+
+Add `onAiNeedsInputChange?: (needsInput: boolean) => void;` to `TerminalSessionProps` after `onAiWorkingChange`, and add `onAiNeedsInputChange` to the destructured parameters after `onAiWorkingChange`.
+
+Add import beside `hasActiveAi`'s import:
 ```ts
+import { hasPendingSudo, applySudoResolved, cancelPendingSudo } from '@/utils/sudoDisplay';
+```
+
+(a) In the always-on effect that begins `// Persistent listener for daemon lifecycle messages that arrive outside of a conversation`, directly after its `remote:daemon_disconnected` `if` block (the line `        showDaemonToast('Daemon disconnected', false);` and its closing `      }`), add:
+```ts
+      // AI sudo (askpass broker). Handled here, not in the per-turn listener,
+      // so a resolution that arrives after Stop or outside a turn still lands.
       if (msg.type === 'sudo_prompt') {
         setDisplayItems(prev => [...prev, {
           type: 'sudo' as const,
@@ -2208,36 +2387,88 @@ Directly before `if (msg.type === 'approval_needed') {` add:
           prompt: typeof msg.prompt === 'string' ? msg.prompt : '',
           status: 'pending' as const,
         }]);
-        needsNewBlock = true;
-        return;
       }
-
       if (msg.type === 'sudo_resolved') {
         const requestId = String(msg.requestId);
         setDisplayItems(prev => applySudoResolved(prev, requestId, msg.outcome, nextBlockId));
-        return;
       }
-
       if (msg.type === 'sudo_auth') {
         setDisplayItems(prev => [...prev, {
           type: 'sudo' as const, id: nextBlockId(), requestId: '', prompt: '', status: 'auto' as const,
         }]);
+      }
+```
+(The effect's deps stay `[tabId]`: `setDisplayItems` is stable and `nextBlockId`/`applySudoResolved` are module functions.)
+
+(b) In the per-turn handler, directly before `if (msg.type === 'approval_needed') {`, add only the block-ordering flag (no item changes — those happen in (a)):
+```ts
+      if (msg.type === 'sudo_prompt' || msg.type === 'sudo_auth') {
+        // The sudo item was appended by the always-on listener; later AI text
+        // starts a new block below it instead of growing the one above.
         needsNewBlock = true;
         return;
       }
+      if (msg.type === 'sudo_resolved') return;
 ```
-Add `onAiNeedsInputChange?: (needsInput: boolean) => void;` to `TerminalSessionProps` after `onAiWorkingChange`, and add `onAiNeedsInputChange` to the destructured parameters after `onAiWorkingChange`.
 
-Add import beside `hasActiveAi`'s import:
+(c) Directly before the existing effect
 ```ts
-import { hasPendingSudo, applySudoResolved } from '@/utils/sudoDisplay';
+  useEffect(() => {
+    if (visible) {
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
+  }, [visible]);
 ```
-Directly after the existing effect that calls `onAiWorkingChange?.(aiWorking);`, add:
+add
 ```ts
   const aiNeedsInput = hasPendingSudo(displayItems);
   useEffect(() => {
     onAiNeedsInputChange?.(aiNeedsInput);
   }, [aiNeedsInput, onAiNeedsInputChange]);
+```
+and replace that effect with (never pull focus to the composer while an AI sudo field is pending — a password typed there would be sent to the AI):
+```ts
+  useEffect(() => {
+    if (visible && !aiNeedsInput) {
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
+  }, [visible, aiNeedsInput]);
+```
+
+(d) In the window-focus effect, replace
+```ts
+      if (!modeSignals.altScreenVisible && !awaitingInput && !passwordPrompt) inputRef.current?.focus();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [visible, modeSignals.altScreenVisible, awaitingInput, passwordPrompt]);
+```
+with
+```ts
+      if (!modeSignals.altScreenVisible && !awaitingInput && !passwordPrompt && !aiNeedsInput) inputRef.current?.focus();
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [visible, modeSignals.altScreenVisible, awaitingInput, passwordPrompt, aiNeedsInput]);
+```
+
+(e) In the `surface` focus effect, replace
+```ts
+    if (target === 'composer') {
+      requestAnimationFrame(() => inputRef.current?.focus());
+```
+with
+```ts
+    if (target === 'composer') {
+      if (!aiNeedsInput) requestAnimationFrame(() => inputRef.current?.focus());
+```
+and its deps `}, [surface]);` with `}, [surface, aiNeedsInput]);`.
+
+(f) In `handleStopAI`, directly after `providerRef.current.stop();`, add:
+```ts
+      // Belt and braces: the broker's cancel notice follows, but a dead field
+      // must not linger even if it is late.
+      setDisplayItems(prev => cancelPendingSudo(prev));
 ```
 
 - [ ] **Step 9: Tab attention marker**
@@ -2355,7 +2586,8 @@ Start `npm run dev`. Use CDP on `127.0.0.1:9222` (see memory `reference_cdp_in_a
 3. Ask: "run `sudo -k; sudo true`" again → no field; block shows "sudo authenticated" (after the 150 ms hold, not perceptible); exit 0.
 4. **Security check:** Ask: "run `\"$SUDO_ASKPASS\"; echo EXIT=$?` and show me the raw output". Expected output: empty line(s) and `EXIT=1`. The cached password must not appear. The badge still shows "sudo cached" and no "sudo refused" warning appears (a non-sudo parent is refused before any claim, so it must not trip the duplicate wire).
 5. Click the badge to forget → ask for `sudo -k; sudo true` → field appears again. Press Escape → block shows "sudo prompt cancelled"; AI reports a non-zero exit.
-6. Switch to another tab before approving a sudo command in step 1's flow; confirm the original tab shows the amber attention dot while the field is pending, and it clears after answering.
+6. Switch to another tab before approving a sudo command in step 1's flow; confirm the original tab shows the amber attention dot while the field is pending, and it clears after answering. When switching back to that tab (and after alt-tabbing away from and back to the TAI window) with the field still pending, confirm focus is **not** in the composer (`document.activeElement` is not the composer input); click the field, then answer.
+6b. With a field pending, press the AI Stop control. Expected: the block shows "sudo prompt cancelled" (no live field left behind) and the attention dot clears.
 7. **Probe check C:** right after step 5's cancel, the user runs `faillock --user "$USER"` in a terminal. Record whether the cancel appears as a failure record (the probe did not reach this).
 
 The duplicate-claim tripwire (`sudo refused: another process claimed this password prompt…`) cannot be triggered in-app without deliberately spoofing a live sudo helper's pid; it is covered by the Task 5 broker tests and the Task 8 `applySudoResolved` tests. Do not attempt it against the real account.
