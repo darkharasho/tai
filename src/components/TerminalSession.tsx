@@ -1540,9 +1540,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     if (!visible) return;
     const handleFocus = () => {
       if (aiNeedsInput) {
-        // HiddenXterm also grabs focus on window focus; hand it back to the
-        // pending sudo field on the next frame so the password stays there.
-        requestAnimationFrame(() => focusPendingSudoField(sessionRootRef.current));
+        // HiddenXterm skips its own focus grab while a sudo field is pending
+        // (suppressFocus), so hand focus straight to the field, no frame gap.
+        focusPendingSudoField(sessionRootRef.current);
         return;
       }
       if (!modeSignals.altScreenVisible && !awaitingInput && !passwordPrompt) inputRef.current?.focus();
@@ -2004,6 +2004,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           visible={showXterm}
           onData={(data) => segmenterRef.current.feed(data)}
           hostEl={(showXterm && interactivePortalTarget) ? interactivePortalTarget : xtermFallbackEl}
+          suppressFocus={aiNeedsInput}
         />
       )}
       {/* Password prompt is now rendered inside the active CommandBlock via bodyMode='password'. */}

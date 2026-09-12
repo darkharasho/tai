@@ -25,10 +25,19 @@ interface HiddenXtermProps {
    * this component mounted, so xterm's buffer state is preserved.
    */
   hostEl?: HTMLElement | null;
+  /**
+   * While set (an AI sudo password field is pending), the xterm never takes
+   * focus on its own: window focus and the fit pass skip focus(), so no
+   * keystroke meant for the password field can reach the PTY.
+   */
+  suppressFocus?: boolean;
 }
 
 export const HiddenXterm = forwardRef<HiddenXtermHandle, HiddenXtermProps>(
-  function HiddenXterm({ ptyId, visible, onData, hostEl }, ref) {
+  function HiddenXterm({ ptyId, visible, onData, hostEl, suppressFocus = false }, ref) {
+    // Read through a ref so the long-lived listeners see the current value.
+    const suppressFocusRef = useRef(suppressFocus);
+    suppressFocusRef.current = suppressFocus;
     const containerRef = useRef<HTMLDivElement | null>(null);
     if (containerRef.current === null && typeof document !== 'undefined') {
       const el = document.createElement('div');
@@ -100,7 +109,7 @@ export const HiddenXterm = forwardRef<HiddenXtermHandle, HiddenXtermProps>(
             if (xtermRef.current) {
               window.tai?.pty?.resize(ptyId, xtermRef.current.cols, xtermRef.current.rows);
               xtermRef.current.refresh(0, xtermRef.current.rows - 1);
-              xtermRef.current.focus();
+              if (!suppressFocusRef.current) xtermRef.current.focus();
             }
           } catch { /* ignore */ }
         };
@@ -146,7 +155,9 @@ export const HiddenXterm = forwardRef<HiddenXtermHandle, HiddenXtermProps>(
     }, []);
 
     useEffect(() => {
-      const onWindowFocus = () => xtermRef.current?.focus();
+      const onWindowFocus = () => {
+        if (!suppressFocusRef.current) xtermRef.current?.focus();
+      };
       const onWindowBlur = () => xtermRef.current?.blur();
       window.addEventListener('focus', onWindowFocus);
       window.addEventListener('blur', onWindowBlur);
