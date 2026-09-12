@@ -11,6 +11,9 @@ export const AUTOFILL_HOLD_MS = 150;
 /** Claims kept for single-use checks; the oldest settled ones are dropped beyond this. */
 const MAX_CLAIMS = 1024;
 
+/** Auto-filled sudo pids remembered per key, capped so a long session can't grow this unbounded. */
+const MAX_FILLED_PER_KEY = 64;
+
 export interface AskpassRequest {
   pid: number;
   key: string;
@@ -70,7 +73,16 @@ interface Claim {
  */
 export class AskpassBroker {
   private pending: Pending[] = [];
-  private lastFilled = new Map<string, number>();
+  /**
+   * Per key, every sudo pid that has already been auto-filled (or given a
+   * remembered answer) once — not just the most recent one. A wrong cached
+   * secret must not be replayed to the *same* sudo process a second time, and
+   * that has to hold even when other sudo processes are interleaved in
+   * between (A, B, A must reject A's second ask, not auto-fill it again),
+   * or Fedora's pam_faillock trips after 3 failures. Capped and FIFO-evicted
+   * per key so a long-lived tab can't grow this without bound.
+   */
+  private lastFilled = new Map<string, number[]>();
   /** Helper pid → the request that claimed it: pending, answered, or burned by a duplicate. */
   private claims = new Map<number, Claim>();
 
@@ -112,7 +124,7 @@ export class AskpassBroker {
       this.deps.vault.set(Buffer.from(secret, 'utf8'));
       // Treat a remembered answer like a fill: if this same sudo asks again the
       // secret was wrong, and it must not be replayed from the cache.
-      this.lastFilled.set(p.key, p.sudoPid);
+      this.markFilled(p.key, p.sudoPid);
       this.deps.send('pty:secret-state', true);
     }
     this.remove(p);
@@ -130,10 +142,27 @@ export class AskpassBroker {
 
   cancelKey(key: string): void {
     for (const p of this.pending.filter((x) => x.key === key)) this.dismiss(p);
+    this.lastFilled.delete(key);
   }
 
   cancelAll(): void {
     for (const p of [...this.pending]) this.dismiss(p);
+  }
+
+  /** Records that `sudoPid` has now had a (possibly wrong) secret replayed to it once, for `key`. */
+  private markFilled(key: string, sudoPid: number): void {
+    let filled = this.lastFilled.get(key);
+    if (!filled) {
+      filled = [];
+      this.lastFilled.set(key, filled);
+    }
+    if (!filled.includes(sudoPid)) filled.push(sudoPid);
+    // FIFO eviction: bounded per key so a long-lived tab can't grow this without limit.
+    while (filled.length > MAX_FILLED_PER_KEY) filled.shift();
+  }
+
+  private hasFilled(key: string, sudoPid: number): boolean {
+    return this.lastFilled.get(key)?.includes(sudoPid) ?? false;
   }
 
   private claim(pid: number, c: Claim): void {
@@ -202,7 +231,7 @@ export class AskpassBroker {
       this.pump(p.key);
       return;
     }
-    this.lastFilled.set(p.key, p.sudoPid);
+    this.markFilled(p.key, p.sudoPid);
     this.remove(p);
     p.reply({ ok: true, secret: secret.toString('utf8') });
     this.deps.send('ai:message', p.key, { type: 'sudo_auth' });
@@ -216,7 +245,7 @@ export class AskpassBroker {
     const decision = decideAskpass({
       sudoPid: head.sudoPid,
       vaultSet: this.deps.vault.isSet(),
-      lastFilledSudoPid: this.lastFilled.get(key) ?? null,
+      lastFilledSudoPid: this.hasFilled(key, head.sudoPid) ? head.sudoPid : null,
     });
 
     if (decision === 'auto-fill') {

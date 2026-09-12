@@ -242,6 +242,46 @@ describe('AskpassBroker', () => {
     expect(dup.reply).toHaveBeenCalledWith({ ok: false });
     expect(first.reply).toHaveBeenCalledWith({ ok: false });
   });
+
+  it('interleaved sudo processes: A, B, A rejects A\'s second ask instead of auto-filling it again', () => {
+    const vault = makeVault(SECRET);
+    const sudoPidFor: Record<number, number> = { 42: 900, 43: 901, 44: 900 };
+    const { request, send, advance } = setup({ vault, sudoPid: (pid) => sudoPidFor[pid] });
+    const a = request(42);   // sudo A (900) auto-fills
+    advance(AUTOFILL_HOLD_MS);
+    const b = request(43);  // sudo B (901) auto-fills
+    advance(AUTOFILL_HOLD_MS);
+    const a2 = request(44); // sudo A (900) asks again: must reject, not auto-fill
+    advance(AUTOFILL_HOLD_MS);
+    expect(a.reply).toHaveBeenCalledWith({ ok: true, secret: SECRET });
+    expect(b.reply).toHaveBeenCalledWith({ ok: true, secret: SECRET });
+    expect(a2.reply).not.toHaveBeenCalled();
+    expect(vault.clear).toHaveBeenCalled();
+    expect(send).toHaveBeenCalledWith('pty:secret-state', false);
+    expect(messages(send).at(-1)).toEqual({ type: 'sudo_prompt', requestId: 'req-3', prompt: '[sudo] password for me:' });
+  });
+
+  it('cancel during the auto-fill hold clears the hold timer and never replies again', () => {
+    const { broker, request, send, advance } = setup({ vault: makeVault(SECRET) });
+    const { reply } = request(42);
+    broker.cancel('req-1');
+    expect(reply).toHaveBeenCalledTimes(1);
+    expect(reply).toHaveBeenCalledWith({ ok: false });
+    advance(AUTOFILL_HOLD_MS);
+    expect(reply).toHaveBeenCalledTimes(1);
+    expect(messages(send)).toEqual([]);
+  });
+
+  it('cancelKey during the auto-fill hold clears the hold timer and never replies again', () => {
+    const { broker, request, send, advance } = setup({ vault: makeVault(SECRET) });
+    const { reply } = request(42);
+    broker.cancelKey('tab_1');
+    expect(reply).toHaveBeenCalledTimes(1);
+    expect(reply).toHaveBeenCalledWith({ ok: false });
+    advance(AUTOFILL_HOLD_MS);
+    expect(reply).toHaveBeenCalledTimes(1);
+    expect(messages(send)).toEqual([]);
+  });
 });
 
 describe('AskpassBroker single use and duplicate-claim tripwire', () => {
@@ -332,5 +372,23 @@ describe('AskpassBroker single use and duplicate-claim tripwire', () => {
     request(42, 'tab_2');
     expect(messages(send, 'tab_1')).toContainEqual(refused('req-1'));
     expect(messages(send, 'tab_2')).toEqual([refused('req-1')]);
+  });
+
+  it('a duplicate claim on a request that is queued (not head) in its key removes it and refuses it', () => {
+    const vault = makeVault();
+    const { broker, request, send } = setup({ vault });
+    const a = request(10, 'tab_1');  // head, prompt shown immediately (vault empty)
+    const b = request(20, 'tab_1');  // stays queued behind a
+    expect(messages(send).filter((m) => m.type === 'sudo_prompt')).toEqual([
+      { type: 'sudo_prompt', requestId: 'req-1', prompt: '[sudo] password for me:' },
+    ]);
+    const dup = request(20, 'tab_1'); // duplicate claim on b's pid while b is still queued
+    expect(dup.reply).toHaveBeenCalledWith({ ok: false });
+    expect(b.reply).toHaveBeenCalledWith({ ok: false });
+    expect(vault.clear).toHaveBeenCalled();
+    expect(messages(send)).toContainEqual(refused('req-2'));
+    expect(a.reply).not.toHaveBeenCalled();
+    broker.answer('req-1', SECRET, false);
+    expect(a.reply).toHaveBeenCalledWith({ ok: true, secret: SECRET });
   });
 });
