@@ -57,7 +57,7 @@ untrusted.
 
 ### 1. `sudoParent` (main, pure, new) — `electron/services/sudoParent.ts`
 
-`isSudoParent(pid): boolean`. Fail closed on any uncertainty.
+`resolveSudoParent(pid): number | null` — the verified sudo pid, or `null`. Fail closed on any uncertainty.
 
 - **Linux:** read `/proc/<pid>/stat` → ppid; read `/proc/<ppid>/status` →
   require `Name:\tsudo` and **any** `Uid:` slot (real, effective, saved, fs)
@@ -95,7 +95,7 @@ A local socket server started at app ready on Linux/macOS only.
     **Known weaker guarantee:** a client that races a real sudo prompt and
     claims the real helper's pid could receive the secret. Documented, accepted.
 - **Refuse / cancel / timeout:** reply `{ ok: false }`; helper exits 1.
-- **Prompt routing:** `safeSend('ai:sudo-prompt', { requestId, key, prompt })`.
+- **Prompt routing:** `send('ai:message', key, { type: 'sudo_prompt', requestId, prompt })`, reusing the per-tab channel every provider already uses. Resolution and auto-fill use `{ type: 'sudo_resolved', requestId, outcome }` and `{ type: 'sudo_auth' }`.
   Pending requests queue per `key`; one visible at a time.
 - **Timeout:** 5 minutes (sudo's default `passwd_timeout`), then cancel.
 - **Cancellation hooks:** AI turn aborted or tab/session closed for `key` →
