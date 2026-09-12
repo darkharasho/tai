@@ -60,13 +60,15 @@ untrusted.
 `isSudoParent(pid): boolean`. Fail closed on any uncertainty.
 
 - **Linux:** read `/proc/<pid>/stat` → ppid; read `/proc/<ppid>/status` →
-  require `Name:\tsudo` and effective UID (second field of `Uid:`) `== 0`.
-  A process owned by the user cannot hold euid 0, and a process that already
-  holds euid 0 is already root, so faking `Name` gains nothing.
+  require `Name:\tsudo` and **any** `Uid:` slot (real, effective, saved, fs)
+  `== 0`. A user process cannot hold uid 0 in any slot, and a process that
+  does is already root, so faking `Name` gains nothing. Any slot rather than
+  only effective, because sudo may temporarily drop its effective uid while
+  prompting; the saved uid stays 0.
   `/proc/<ppid>/exe` is deliberately **not** used: sudo is setuid and
   non-dumpable, so `readlink` on it returns `EACCES` for the user.
-- **macOS:** `ps -o ucomm=,uid= -p <ppid>` (and `ps -o ppid= -p <pid>`),
-  same test. Parsing is a separate pure function over the `ps` text.
+- **macOS:** `ps -o ucomm=,ruid=,uid=,svuid= -p <ppid>` (and
+  `ps -o ppid= -p <pid>`), same test. Parsing is a separate pure function over the `ps` text.
 
 ### 2. `askpassBroker` (main, new) — `electron/services/askpassBroker.ts`
 
@@ -207,7 +209,7 @@ Also run on the macOS CI runner.
 
 **Pre-implementation probe (throwaway, user present, one real sudo prompt):**
 1. `/proc/<askpass pid>/fd/1` is writable by the user and the write reaches sudo.
-2. `/proc/<sudo pid>/status` is readable and shows `Name: sudo`, euid 0.
+2. `/proc/<sudo pid>/status` is readable and shows `Name: sudo` with uid 0 in some slot.
 3. Whether a cancelled askpass (exit 1, no output) counts as a `faillock` failure.
 If (1) or (2) fails, stop and revisit Approach 1 before building.
 
