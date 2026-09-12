@@ -68,6 +68,9 @@ contextBridge.exposeInMainWorld('tai', {
       ipcRenderer.send('ai:updateHistory', key, entries),
     approve: (key: string, toolUseId: string, approved: boolean, updatedInput?: Record<string, unknown> | null) =>
       ipcRenderer.invoke('ai:approve', key, toolUseId, approved, updatedInput),
+    sudoAnswer: (requestId: string, secret: string, remember: boolean) =>
+      ipcRenderer.send('ai:sudo-answer', requestId, secret, remember),
+    sudoCancel: (requestId: string) => ipcRenderer.send('ai:sudo-cancel', requestId),
     onMessage: (key: string, callback: (msg: any) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, msgKey: string, msg: any) => {
         if (msgKey === key) callback(msg);

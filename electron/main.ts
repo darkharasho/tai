@@ -5,6 +5,7 @@ import { writeFile } from 'node:fs/promises';
 import * as os from 'os';
 import { spawn } from 'child_process';
 import { setupPtyService, destroyAllTerminals } from './services/pty';
+import { setupAskpassService, stopAskpassService } from './services/askpassService';
 import { credentialVault } from './services/credentialVault';
 import { setupClaudeService, destroyAllClaude } from './services/claude';
 import { setupCodexService, destroyAllCodex } from './services/codex';
@@ -155,12 +156,15 @@ app.on('second-instance', () => {
   revealWindow(mainWindow);
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // A losing second instance still reaches whenReady before app.quit() lands;
   // building a window and a tray here is exactly what we are avoiding.
   if (!gotInstanceLock) return;
 
   purgeStaleTempFiles(os.tmpdir());
+  // Before the window and the AI services exist, so no provider can spawn
+  // without SUDO_ASKPASS. Never rejects; on failure AI sudo behaves as before.
+  await setupAskpassService(() => mainWindow);
   registerCommandIndexIpc();
   registerWorkflowIpc();
   registerRecordingSave(ipcMain, {
@@ -187,6 +191,7 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   credentialVault.clear();
+  stopAskpassService();
   destroyAllTerminals();
   destroyAllClaude();
   destroyAllCodex();

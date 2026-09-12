@@ -38,6 +38,8 @@ declare global {
         stop: (key: string) => void;
         updateHistory: (key: string, entries: Array<{ command: string; output: string; exitCode?: number; cwd?: string; gitBranch?: string | null; durationMs?: number; timestamp?: number }>) => void;
         approve: (key: string, toolUseId: string, approved: boolean, updatedInput?: Record<string, unknown> | null) => Promise<boolean>;
+        sudoAnswer?: (requestId: string, secret: string, remember: boolean) => void;
+        sudoCancel?: (requestId: string) => void;
         onMessage: (key: string, callback: (msg: any) => void) => () => void;
         onError: (key: string, callback: (error: string) => void) => () => void;
         setRemoteTarget: (key: string, target: string | null, mode: string) => Promise<boolean>;

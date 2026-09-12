@@ -5,6 +5,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { enrichEnv, resolveBinary } from './platform';
 import { createIdleWatchdog } from './idleWatchdog';
+import { askpassEnvFor, cancelAskpassForKey } from './askpassService';
 
 function enrichedEnv(): Record<string, string> {
   return enrichEnv();
@@ -180,7 +181,7 @@ export function setupCodexService(getWindow: () => BrowserWindow | null) {
 
     args.push(message);
 
-    const env = enrichedEnv();
+    const env = { ...enrichedEnv(), ...askpassEnvFor(key) };
     const proc = spawn(resolveBinary('codex', env), args, {
       cwd,
       env,
@@ -272,6 +273,7 @@ export function setupCodexService(getWindow: () => BrowserWindow | null) {
   });
 
   ipcMain.on('codex:stop', (_event, key: string) => {
+    cancelAskpassForKey(key);
     const state = getState(key);
     if (state.process) {
       const proc = state.process;

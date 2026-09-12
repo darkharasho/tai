@@ -6,6 +6,7 @@ import { createGeminiAcpClient } from './gemini-acp';
 import type { GeminiAcpClient } from './gemini-acp';
 import { enrichEnv } from './platform';
 import { IDLE_TIMEOUT_MS } from './idleWatchdog';
+import { askpassEnvFor, cancelAskpassForKey } from './askpassService';
 
 function enrichedEnv(): Record<string, string> {
   return enrichEnv();
@@ -304,7 +305,7 @@ async function ensureTransport(win: BrowserWindow | null, key: string, state: Ge
 
   const client = createGeminiAcpClient({
     cwd: state.cwd,
-    env: enrichedEnv(),
+    env: { ...enrichedEnv(), ...askpassEnvFor(key) },
     clientInfo: { name: 'tai', version: '1.0' },
   });
 
@@ -475,6 +476,7 @@ export function setupGeminiService(getWindow: () => BrowserWindow | null) {
   });
 
   ipcMain.on('gemini:stop', async (_event, key: string) => {
+    cancelAskpassForKey(key);
     const state = getState(key);
     if (state.transport && state.sessionId && state.busy) {
       try {

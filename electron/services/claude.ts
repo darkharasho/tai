@@ -17,6 +17,7 @@ import { getAvailableClaudeModels } from './claudeModels';
 import { createIdleWatchdog } from './idleWatchdog';
 import { resolveClaudeExecutable } from './claudeExecutable';
 import { classifyProviderError } from '../../src/utils/classifyProviderError';
+import { askpassEnvFor, cancelAskpassForKey } from './askpassService';
 
 const sshManager = new RemoteSshManager();
 
@@ -186,7 +187,7 @@ function startQuery(win: BrowserWindow | null, key: string, firstMessage: string
         ...opts,
         ...(exe ? { pathToClaudeCodeExecutable: exe } : {}),
         abortController: abort,
-        env: enrichedEnv(),
+        env: { ...enrichedEnv(), ...askpassEnvFor(key) },
         canUseTool: async (toolName: string, input: Record<string, unknown>, o: { toolUseID: string }) => {
           // History tool is auto-allowed via allowedTools and never reaches here;
           // bypass modes also skip canUseTool. Anything that arrives needs a decision.
@@ -330,12 +331,14 @@ export function setupClaudeService(getWindow: () => BrowserWindow | null) {
   });
 
   ipcMain.on('ai:cancel', (_event, key: string) => {
+    cancelAskpassForKey(key);
     const state = getState(key);
     state.approvals.clear();
     try { state.abort?.abort(); } catch {}
   });
 
   ipcMain.on('ai:stop', (_event, key: string) => {
+    cancelAskpassForKey(key);
     const win = getWindow();
     const state = getState(key);
     state.approvals.clear();
