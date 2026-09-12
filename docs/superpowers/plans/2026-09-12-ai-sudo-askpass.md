@@ -4,7 +4,7 @@
 
 **Goal:** When TAI's AI runs `sudo` (no tty → `$SUDO_ASKPASS`), answer it from TAI's own password field inside the AI block and from the shared session cache, instead of `ksshaskpass`.
 
-**Architecture:** A main-process broker listens on a private Unix socket. A generated helper (the `SUDO_ASKPASS` target) connects and reports its pid. The broker verifies the helper's parent is a root-privileged `sudo`, then either auto-fills from `credentialVault` or asks the renderer for a password via `ai:message`. On Linux the secret is written straight into the helper's stdout pipe (`/proc/<pid>/fd/1`) and never crosses the socket; on macOS it is returned over the socket.
+**Architecture:** A main-process broker listens on a private Unix socket. A generated helper (the `SUDO_ASKPASS` target) connects and reports its pid. The broker verifies the helper's parent is a root-privileged `sudo`, then either auto-fills from `credentialVault` (after a short duplicate-claim hold) or asks the renderer for a password via `ai:message`. On both Linux and macOS the secret is returned to the helper over the socket, which prints it to sudo. Each helper pid is answered at most once, and any duplicate claim on a pid refuses both requests, clears the vault and warns in the AI block.
 
 **Tech Stack:** Electron 36 main process (Node `net`, `fs`, `child_process`), React renderer, vitest (node + jsdom), POSIX sh.
 
@@ -13,10 +13,13 @@
 ## Global Constraints
 
 - Platforms: Linux and macOS only. On `win32` nothing is started and no env vars are set.
-- The plaintext secret is never logged, never placed in an environment variable, never sent to the renderer, never included in any `ai:message` payload.
+- The plaintext secret is never logged, never placed in an environment variable, never sent to the renderer, never included in any `ai:message` payload. It leaves the main process only as the socket reply `{ ok: true, secret }` to a request whose pid passed the parent check.
 - The helper is untrusted. All trust decisions are made in the main process.
 - Parent check fails closed: any read/parse error, missing pid, or ambiguity → refuse.
+- Single use per helper pid: a pid is answered at most once. A second claim on a pid with a pending or answered request (same verified sudo parent) refuses both, clears the vault, sends `pty:secret-state false` and `sudo_resolved` `outcome: 'refused-duplicate'`.
+- Auto-fill waits `AUTOFILL_HOLD_MS = 150` before replying so a near-simultaneous duplicate trips the wire first.
 - Cached secret is replayed at most once per sudo process (same sudo pid re-asking → clear cache and prompt). Fedora `pam_faillock` locks after 3 failures.
+- No separate `sudo -S -v` validation (it would spend a faillock attempt).
 - Prompt timeout: 5 minutes (`5 * 60_000` ms).
 - Env vars are merged only at the three AI spawn sites (`claude.ts`, `codex.ts`, `gemini.ts`), never in `platform.enrichEnv()` and never into `process.env`, so terminal PTYs are unaffected.
 - Vitest: always run through `npm test` / `npx vitest run --config tests/vitest.config.ts` (config pins `maxForks: 2`, `maxWorkers: 2`).
@@ -34,7 +37,7 @@
 | `electron/services/sudoParent.ts` | create | Pure parsers + `resolveSudoParent(pid)` → sudo pid or null |
 | `electron/services/askpassDecision.ts` | create | Pure `decideAskpass()` |
 | `electron/services/askpassHelper.ts` | create | Generate sh wrapper + `.cjs` helper; `buildAskpassEnv()` |
-| `electron/services/askpassBroker.ts` | create | `AskpassBroker` class: queue, decide, deliver, cancel, timeout |
+| `electron/services/askpassBroker.ts` | create | `AskpassBroker` class: claims, duplicate tripwire, queue, decide, auto-fill hold, reply, cancel, timeout |
 | `electron/services/askpassServer.ts` | create | `startAskpassServer()` Unix socket + `parseAskpassRequest()` |
 | `electron/services/askpassService.ts` | create | Singleton wiring: temp dir, files, server, IPC, `askpassEnvFor()`, `cancelAskpassForKey()`, `stopAskpassService()` |
 | `electron/main.ts` | modify | start/stop service |
@@ -44,104 +47,20 @@
 | `src/components/PasswordPrompt.tsx` | modify | Thin terminal wrapper over `PasswordField` (behaviour unchanged) |
 | `src/components/SudoPrompt.tsx` | create | AI wrapper over `PasswordField` |
 | `src/components/BlockList.tsx` (+ `.module.css`) | modify | `sudo` display item + render |
-| `src/components/TerminalSession.tsx` | modify | handle `sudo_prompt` / `sudo_resolved` / `sudo_auth`; report needs-input |
-| `src/utils/hasPendingSudo.ts` | create | `hasPendingSudo(items)` |
+| `src/components/TerminalSession.tsx` | modify | handle `sudo_prompt` / `sudo_resolved` (incl. `refused-duplicate`) / `sudo_auth`; report needs-input |
+| `src/utils/sudoDisplay.ts` | create | `hasPendingSudo(items)`, `applySudoResolved(items, …)` |
 | `src/types.ts`, `src/App.tsx`, `src/components/TabSidebar.tsx` (+ `.module.css`) | modify | `aiNeedsInput` marker |
 | `.github/workflows/test.yml` | modify | macOS job running the askpass tests |
 
 ---
 
-### Task 1: Feasibility probe (gate — throwaway, user present)
+### Task 1: Feasibility probe — DONE (2026-09-12)
 
-Nothing from this task is committed. It confirms the three kernel/PAM facts Approach 1 depends on. **If check A or B fails, STOP and report to the user; do not start Task 2.**
+Run by the user on Fedora/Bazzite, sudo 1.9.17p2, `yama.ptrace_scope=0`, `fs.suid_dumpable=2`. Nothing committed.
 
-**Files:**
-- Create (outside repo): `/tmp/tai-askpass-probe.sh`
-
-- [ ] **Step 1: Write the probe script**
-
-```bash
-cat > /tmp/tai-askpass-probe.sh <<'PROBE'
-#!/usr/bin/env bash
-set -u
-D=$(mktemp -d /tmp/tai-askpass-probe.XXXXXX)
-export PROBE_DIR="$D"
-
-# Records its pid, then waits (same pid throughout) until the watcher says done.
-cat > "$D/askpass-wait" <<'EOF'
-#!/bin/sh
-echo "$$" > "$PROBE_DIR/pid"
-while [ ! -e "$PROBE_DIR/done" ]; do sleep 0.1; done
-exit 0
-EOF
-# Simulates the user cancelling: no output, exit 1.
-cat > "$D/askpass-cancel" <<'EOF'
-#!/bin/sh
-exit 1
-EOF
-chmod 700 "$D"/askpass-*
-
-echo "== C. cancelled askpass (no password sent)"
-SUDO_ASKPASS="$D/askpass-cancel" sudo -A -k true </dev/null
-echo "sudo exit=$?"
-
-echo
-echo "== A+B. parent identity and fd write"
-read -rsp "Enter your sudo password (read locally, never printed): " PW; echo
-SUDO_ASKPASS="$D/askpass-wait" sudo -A -k sh -c 'echo SUDO_OK; faillock --user "$SUDO_USER"' &
-SUDO_BG=$!
-for _ in $(seq 100); do [ -s "$D/pid" ] && break; sleep 0.1; done
-AP=$(cat "$D/pid")
-PP=$(awk '{print $4}' "/proc/$AP/stat")
-echo "askpass pid=$AP parent pid=$PP"
-grep -E '^(Name|Uid):' "/proc/$PP/status"
-readlink "/proc/$PP/exe" >/dev/null 2>&1 && echo "exe: readable" || echo "exe: not readable (expected)"
-if printf '%s\n' "$PW" | node -e 'const fs=require("fs");fs.writeFileSync(`/proc/${process.argv[1]}/fd/1`, fs.readFileSync(0))' "$AP"; then
-  echo "fd write: ok"
-else
-  echo "fd write: FAILED"
-fi
-unset PW
-touch "$D/done"
-wait "$SUDO_BG"
-echo "sudo exit=$?"
-rm -rf "$D"
-PROBE
-chmod 700 /tmp/tai-askpass-probe.sh
-```
-
-- [ ] **Step 2: Ask the user to run it in their own terminal**
-
-Tell the user: "Please run `bash /tmp/tai-askpass-probe.sh` in a terminal and paste the output. It reads your password locally with `read -s` and never prints it."
-
-- [ ] **Step 3: Evaluate against the gate**
-
-Expected output shape:
-```
-== C. cancelled askpass (no password sent)
-sudo: no password was provided          (or similar)
-sudo exit=1
-
-== A+B. parent identity and fd write
-askpass pid=NNNN parent pid=MMMM
-Name:	sudo
-Uid:	1000	0	0	0                     (at least one field is 0)
-exe: not readable (expected)
-fd write: ok
-SUDO_OK
-<faillock table>
-sudo exit=0
-```
-
-- **A (must pass):** `Name:	sudo` and at least one `Uid:` field is `0`. If no field is 0, the parent check design is wrong → STOP.
-- **B (must pass):** `fd write: ok`, then `SUDO_OK`, `sudo exit=0`. If not → STOP.
-- **C (informational):** inspect the faillock table. If it shows a failure record timestamped at the cancel test, note in the final report that cancelling an AI sudo prompt counts as one failed attempt. Do not block on this.
-
-- [ ] **Step 4: Delete the probe**
-
-```bash
-rm -f /tmp/tai-askpass-probe.sh
-```
+- [x] **Check A (parent identity) — PASS.** The askpass helper's parent shows `Name: sudo`, `Uid: 1000 0 0 0`. `resolveSudoParent` (Task 2) stands as designed.
+- [x] **Check B (write the secret into the helper's stdout via `/proc/<askpass pid>/fd/1`) — FAIL.** `EACCES`: sudo's askpass child is non-dumpable, so its `/proc` fd entries are root-only. Design changed: the secret is returned over the socket on both platforms, with single-use pids, a duplicate-claim tripwire and an auto-fill hold (Task 5).
+- [ ] **Check C (does a cancelled askpass count as a `faillock` failure) — unverified.** Not reached. Record it during Task 9 in-app verification (step 7).
 
 ---
 
@@ -509,7 +428,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Wire protocol (used by Tasks 5, 6):
   - helper → broker: one line `{"pid":number,"key":string,"prompt":string}\n`
   - broker → helper: one line `{"ok":boolean,"secret"?:string}\n`
-  - helper: `ok && typeof secret === 'string'` → print `secret\n`, exit 0; `ok` without secret → print nothing, exit 0; anything else / EOF / error → exit 1.
+  - helper: `ok === true && typeof secret === 'string'` → print `secret\n`, exit 0; anything else (including `ok` without a secret) / EOF / error → exit 1.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -615,9 +534,9 @@ describe.skipIf(process.platform === 'win32')('helper process', () => {
     expect(await run()).toMatchObject({ code: 0, stdout: 'hunter2\n' });
   });
 
-  it('prints nothing and exits 0 when ok without a secret (linux fd delivery)', async () => {
+  it('exits 1 and prints nothing when ok arrives without a secret', async () => {
     await serve((_l, sock) => sock.end('{"ok":true}\n'));
-    expect(await run()).toMatchObject({ code: 0, stdout: '' });
+    expect(await run()).toMatchObject({ code: 1, stdout: '' });
   });
 
   it('exits 1 on refusal', async () => {
@@ -686,13 +605,9 @@ sock.on('data', (chunk) => {
   if (nl < 0) return;
   let reply = null;
   try { reply = JSON.parse(buf.slice(0, nl)); } catch {}
-  if (!reply || reply.ok !== true) return exit(1);
-  if (typeof reply.secret === 'string') {
-    settled = true;
-    process.stdout.write(reply.secret + '\\n', () => process.exit(0));
-    return;
-  }
-  exit(0);
+  if (!reply || reply.ok !== true || typeof reply.secret !== 'string') return exit(1);
+  settled = true;
+  process.stdout.write(reply.secret + '\\n', () => process.exit(0));
 });
 sock.on('error', () => exit(1));
 sock.on('close', () => exit(1));
@@ -725,7 +640,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
-### Task 5: `AskpassBroker` — queue, decide, deliver, cancel
+### Task 5: `AskpassBroker` — claims, tripwire, queue, decide, reply, cancel
 
 **Files:**
 - Create: `electron/services/askpassBroker.ts`
@@ -734,23 +649,31 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 **Interfaces:**
 - Consumes: `decideAskpass` (Task 3).
 - Produces:
+  - `const AUTOFILL_HOLD_MS = 150`
   - `interface AskpassRequest { pid: number; key: string; prompt: string }`
   - `interface AskpassReply { ok: boolean; secret?: string }`
   - `interface SecretStore { isSet(): boolean; get(): Buffer | null; set(secret: Buffer): void; clear(): void }` (satisfied by `credentialVault`)
-  - `interface BrokerDeps { platform; resolveSudoParent(pid): number | null; vault: SecretStore; writeToFd1(pid: number, data: string): void; send(channel: string, ...args: unknown[]): void; timeoutMs: number; setTimer(fn: () => void, ms: number): unknown; clearTimer(handle: unknown): void; newId?: () => string }`
+  - `type SudoOutcome = 'answered' | 'cancelled' | 'refused-duplicate'`
+  - `interface BrokerDeps { resolveSudoParent(pid): number | null; vault: SecretStore; send(channel: string, ...args: unknown[]): void; timeoutMs: number; autofillHoldMs?: number; setTimer(fn: () => void, ms: number): unknown; clearTimer(handle: unknown): void; newId?: () => string }`
   - `class AskpassBroker { handleRequest(req, reply: (r: AskpassReply) => void): () => void; answer(requestId: string, secret: string, remember: boolean): void; cancel(requestId: string): void; cancelKey(key: string): void; cancelAll(): void }`
 - Renderer messages sent via `send('ai:message', key, msg)`:
   - `{ type: 'sudo_prompt', requestId: string, prompt: string }`
-  - `{ type: 'sudo_resolved', requestId: string, outcome: 'answered' | 'cancelled' }`
+  - `{ type: 'sudo_resolved', requestId: string, outcome: SudoOutcome }`
   - `{ type: 'sudo_auth' }`
 - Also sends `send('pty:secret-state', boolean)` (existing channel).
+- Rules:
+  - A verified request records a claim `pid → { sudoPid, requestId, key }`. It stays while pending and after an answer (single use); it is released when the request is cancelled or times out. A claim with a different `sudoPid` is a recycled pid and is replaced.
+  - A request whose `pid` has a claim with the same `sudoPid` trips the wire: newcomer `{ ok: false }`; the claimed request, if still pending, `{ ok: false }`; `vault.clear()`; `pty:secret-state false`; `sudo_resolved` `refused-duplicate` (requestId of the original claim) to the original key and, if different, the newcomer's key. The claim stays burned.
+  - `auto-fill` holds for `autofillHoldMs` (default `AUTOFILL_HOLD_MS`) before replying; the vault is re-read at the end of the hold and an empty vault falls through to a prompt.
 
 - [ ] **Step 1: Write the failing test**
 
 ```ts
 // tests/unit/askpassBroker.test.ts
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AskpassBroker, type BrokerDeps, type AskpassReply } from '../../electron/services/askpassBroker';
+import { describe, it, expect, vi } from 'vitest';
+import {
+  AskpassBroker, AUTOFILL_HOLD_MS, type BrokerDeps, type AskpassReply,
+} from '../../electron/services/askpassBroker';
 
 const SECRET = 'correct horse';
 
@@ -764,21 +687,20 @@ function makeVault(initial: string | null = null) {
   };
 }
 
-function setup(opts: { platform?: NodeJS.Platform; vault?: ReturnType<typeof makeVault>; sudoPid?: (pid: number) => number | null } = {}) {
-  const timers: Array<{ fn: () => void; cleared: boolean }> = [];
+function setup(opts: { vault?: ReturnType<typeof makeVault>; sudoPid?: (pid: number) => number | null } = {}) {
+  let now = 0;
+  const timers: Array<{ fn: () => void; due: number; cleared: boolean }> = [];
   const send = vi.fn();
-  const writeToFd1 = vi.fn();
   const vault = opts.vault ?? makeVault();
   let n = 0;
   const deps: BrokerDeps = {
-    platform: opts.platform ?? 'linux',
     resolveSudoParent: opts.sudoPid ?? ((pid) => pid + 1000),
     vault,
-    writeToFd1,
     send,
     timeoutMs: 300_000,
-    setTimer: (fn) => { const t = { fn, cleared: false }; timers.push(t); return t; },
-    clearTimer: (h) => { (h as { cleared: boolean }).cleared = true; },
+    autofillHoldMs: AUTOFILL_HOLD_MS,
+    setTimer: (fn, ms) => { const t = { fn, due: now + ms, cleared: false }; timers.push(t); return t; },
+    clearTimer: (h) => { if (h) (h as { cleared: boolean }).cleared = true; },
     newId: () => `req-${++n}`,
   };
   const broker = new AskpassBroker(deps);
@@ -787,8 +709,17 @@ function setup(opts: { platform?: NodeJS.Platform; vault?: ReturnType<typeof mak
     const cancel = broker.handleRequest({ pid, key, prompt: '[sudo] password for me:' }, reply);
     return { reply, cancel };
   };
-  const fireTimers = () => timers.filter((t) => !t.cleared).forEach((t) => t.fn());
-  return { broker, deps, send, writeToFd1, vault, request, fireTimers, timers };
+  /** Fake clock: move time forward and run every timer now due, in due order. */
+  const advance = (ms: number) => {
+    now += ms;
+    for (;;) {
+      const next = timers.filter((t) => !t.cleared && t.due <= now).sort((a, b) => a.due - b.due)[0];
+      if (!next) return;
+      next.cleared = true;
+      next.fn();
+    }
+  };
+  return { broker, deps, send, vault, request, advance, timers };
 }
 
 function messages(send: ReturnType<typeof vi.fn>, key = 'tab_1') {
@@ -812,29 +743,12 @@ describe('AskpassBroker', () => {
     expect(messages(send)).toEqual([{ type: 'sudo_prompt', requestId: 'req-1', prompt: '[sudo] password for me:' }]);
   });
 
-  it('linux: an answer is written to the helper fd, never returned over the socket', () => {
-    const { broker, request, writeToFd1, send } = setup();
+  it('returns an answer to the helper over the socket', () => {
+    const { broker, request, send } = setup();
     const { reply } = request(42);
     broker.answer('req-1', SECRET, false);
-    expect(writeToFd1).toHaveBeenCalledWith(42, `${SECRET}\n`);
-    expect(reply).toHaveBeenCalledWith({ ok: true });
-    expect(messages(send)).toContainEqual({ type: 'sudo_resolved', requestId: 'req-1', outcome: 'answered' });
-  });
-
-  it('darwin: an answer is returned over the socket', () => {
-    const { broker, request, writeToFd1 } = setup({ platform: 'darwin' });
-    const { reply } = request(42);
-    broker.answer('req-1', SECRET, false);
-    expect(writeToFd1).not.toHaveBeenCalled();
     expect(reply).toHaveBeenCalledWith({ ok: true, secret: SECRET });
-  });
-
-  it('linux: a failed fd write replies not-ok', () => {
-    const { broker, request, writeToFd1 } = setup();
-    writeToFd1.mockImplementation(() => { throw new Error('EACCES'); });
-    const { reply } = request(42);
-    broker.answer('req-1', SECRET, false);
-    expect(reply).toHaveBeenCalledWith({ ok: false });
+    expect(messages(send)).toContainEqual({ type: 'sudo_resolved', requestId: 'req-1', outcome: 'answered' });
   });
 
   it('remember stores the secret and broadcasts cache state', () => {
@@ -845,50 +759,70 @@ describe('AskpassBroker', () => {
     expect(send).toHaveBeenCalledWith('pty:secret-state', true);
   });
 
-  it('auto-fills when cached, flashes, and never shows a prompt', () => {
-    const { request, writeToFd1, send } = setup({ vault: makeVault(SECRET) });
+  it('auto-fills when cached only after the hold, flashes, and never shows a prompt', () => {
+    const { request, send, advance } = setup({ vault: makeVault(SECRET) });
     const { reply } = request(42);
-    expect(writeToFd1).toHaveBeenCalledWith(42, `${SECRET}\n`);
-    expect(reply).toHaveBeenCalledWith({ ok: true });
+    advance(AUTOFILL_HOLD_MS - 1);
+    expect(reply).not.toHaveBeenCalled();
+    expect(messages(send)).toEqual([]);
+    advance(1);
+    expect(reply).toHaveBeenCalledWith({ ok: true, secret: SECRET });
     expect(messages(send)).toEqual([{ type: 'sudo_auth' }]);
+  });
+
+  it('prompts instead if the cache is cleared during the hold', () => {
+    const vault = makeVault(SECRET);
+    const { request, send, advance } = setup({ vault });
+    const { reply } = request(42);
+    vault.clear();
+    advance(AUTOFILL_HOLD_MS);
+    expect(reply).not.toHaveBeenCalled();
+    expect(messages(send).at(-1)).toEqual({ type: 'sudo_prompt', requestId: 'req-1', prompt: '[sudo] password for me:' });
   });
 
   it('same sudo asking again after an auto-fill: clears cache and prompts', () => {
     const vault = makeVault(SECRET);
-    const { request, writeToFd1, send } = setup({ vault, sudoPid: () => 900 });
+    const { request, send, advance } = setup({ vault, sudoPid: () => 900 });
     request(42);                 // auto-fill for sudo 900
-    request(43);                 // sudo 900 asks again → wrong secret
-    expect(writeToFd1).toHaveBeenCalledTimes(1);
+    advance(AUTOFILL_HOLD_MS);
+    const second = request(43);  // sudo 900 asks again → wrong secret
+    advance(AUTOFILL_HOLD_MS);
+    expect(second.reply).not.toHaveBeenCalled();
     expect(vault.clear).toHaveBeenCalled();
     expect(send).toHaveBeenCalledWith('pty:secret-state', false);
     expect(messages(send).at(-1)).toEqual({ type: 'sudo_prompt', requestId: 'req-2', prompt: '[sudo] password for me:' });
   });
 
   it('a different sudo process after an auto-fill auto-fills again', () => {
-    const { request, writeToFd1 } = setup({ vault: makeVault(SECRET) });
-    request(42);  // sudo 1042
-    request(43);  // sudo 1043
-    expect(writeToFd1).toHaveBeenCalledTimes(2);
+    const { request, advance } = setup({ vault: makeVault(SECRET) });
+    const a = request(42);  // sudo 1042
+    advance(AUTOFILL_HOLD_MS);
+    const b = request(43);  // sudo 1043
+    advance(AUTOFILL_HOLD_MS);
+    expect(a.reply).toHaveBeenCalledWith({ ok: true, secret: SECRET });
+    expect(b.reply).toHaveBeenCalledWith({ ok: true, secret: SECRET });
   });
 
   it('a remembered answer followed by the same sudo re-asking is rejected, not replayed', () => {
     const vault = makeVault();
-    const { broker, request, writeToFd1 } = setup({ vault, sudoPid: () => 900 });
+    const { broker, request, advance } = setup({ vault, sudoPid: () => 900 });
     request(42);
     broker.answer('req-1', 'typo', true);
-    request(43);
-    expect(writeToFd1).toHaveBeenCalledTimes(1);
+    const second = request(43);
+    advance(AUTOFILL_HOLD_MS);
+    expect(second.reply).not.toHaveBeenCalled();
     expect(vault.clear).toHaveBeenCalled();
   });
 
   it('queues per key: shows one prompt at a time, remember drains the rest', () => {
-    const { broker, request, send, writeToFd1 } = setup();
+    const { broker, request, send, advance } = setup();
     request(42);
-    request(43);
+    const b = request(43);
     expect(messages(send).filter((m) => m.type === 'sudo_prompt')).toHaveLength(1);
     broker.answer('req-1', SECRET, true);
-    expect(writeToFd1).toHaveBeenCalledTimes(2);
-    expect(writeToFd1).toHaveBeenLastCalledWith(43, `${SECRET}\n`);
+    advance(AUTOFILL_HOLD_MS);
+    expect(b.reply).toHaveBeenCalledWith({ ok: true, secret: SECRET });
+    expect(messages(send).filter((m) => m.type === 'sudo_prompt')).toHaveLength(1);
   });
 
   it('without remember, the next queued request is prompted', () => {
@@ -923,9 +857,9 @@ describe('AskpassBroker', () => {
   });
 
   it('timeout cancels', () => {
-    const { request, fireTimers } = setup();
+    const { request, advance } = setup();
     const { reply } = request(42);
-    fireTimers();
+    advance(300_000);
     expect(reply).toHaveBeenCalledWith({ ok: false });
   });
 
@@ -941,12 +875,13 @@ describe('AskpassBroker', () => {
   });
 
   it('answering an unknown or already-resolved request does nothing', () => {
-    const { broker, request, writeToFd1 } = setup();
-    request(42);
+    const { broker, request } = setup();
+    const a = request(42);
     broker.cancel('req-1');
     broker.answer('req-1', SECRET, true);
     broker.answer('nope', SECRET, true);
-    expect(writeToFd1).not.toHaveBeenCalled();
+    expect(a.reply).toHaveBeenCalledTimes(1);
+    expect(a.reply).toHaveBeenCalledWith({ ok: false });
   });
 
   it('clears timers when a request resolves', () => {
@@ -957,16 +892,109 @@ describe('AskpassBroker', () => {
   });
 
   it('never puts the secret in anything sent to the renderer', () => {
-    const { broker, request, send } = setup({ vault: makeVault(SECRET) });
+    const { broker, request, send, advance } = setup({ vault: makeVault(SECRET) });
     request(42);
     request(43);
+    advance(AUTOFILL_HOLD_MS);
+    advance(AUTOFILL_HOLD_MS);
     broker.answer('req-2', SECRET, true);
     expect(JSON.stringify(send.mock.calls)).not.toContain(SECRET);
   });
 });
+
+describe('AskpassBroker single use and duplicate-claim tripwire', () => {
+  const refused = (requestId: string) => ({ type: 'sudo_resolved', requestId, outcome: 'refused-duplicate' });
+
+  it('an answered pid is never answered again, and the re-claim trips the wire', () => {
+    const vault = makeVault();
+    const { broker, request, send, advance } = setup({ vault });
+    const first = request(42);
+    broker.answer('req-1', SECRET, true);
+    const again = request(42);
+    advance(10 * AUTOFILL_HOLD_MS);
+    expect(first.reply).toHaveBeenCalledTimes(1);
+    expect(again.reply).toHaveBeenCalledTimes(1);
+    expect(again.reply).toHaveBeenCalledWith({ ok: false });
+    expect(vault.clear).toHaveBeenCalled();
+    expect(vault.isSet()).toBe(false);
+    expect(send).toHaveBeenLastCalledWith('ai:message', 'tab_1', refused('req-1'));
+    expect(send).toHaveBeenCalledWith('pty:secret-state', false);
+  });
+
+  it('a duplicate while the prompt is shown refuses both and clears the vault', () => {
+    const vault = makeVault();
+    const { broker, request, send } = setup({ vault });
+    const original = request(42);
+    const dup = request(42);
+    expect(original.reply).toHaveBeenCalledWith({ ok: false });
+    expect(dup.reply).toHaveBeenCalledWith({ ok: false });
+    expect(vault.clear).toHaveBeenCalled();
+    expect(send).toHaveBeenCalledWith('pty:secret-state', false);
+    expect(messages(send)).toContainEqual(refused('req-1'));
+    broker.answer('req-1', SECRET, false);
+    expect(original.reply).toHaveBeenCalledTimes(1);
+  });
+
+  it('a duplicate during the auto-fill hold refuses both and the secret never goes out', () => {
+    const vault = makeVault(SECRET);
+    const { request, send, advance } = setup({ vault });
+    const real = request(42);
+    advance(AUTOFILL_HOLD_MS - 1);
+    const spoof = request(42);
+    advance(10 * AUTOFILL_HOLD_MS);
+    expect(real.reply).toHaveBeenCalledWith({ ok: false });
+    expect(spoof.reply).toHaveBeenCalledWith({ ok: false });
+    expect(JSON.stringify([...real.reply.mock.calls, ...spoof.reply.mock.calls])).not.toContain(SECRET);
+    expect(vault.isSet()).toBe(false);
+    expect(messages(send)).not.toContainEqual({ type: 'sudo_auth' });
+    expect(messages(send)).toContainEqual(refused('req-1'));
+  });
+
+  it('further claims on a tripped pid keep tripping', () => {
+    const vault = makeVault(SECRET);
+    const { request, advance } = setup({ vault });
+    request(42);
+    request(42);
+    vault.set(Buffer.from(SECRET));
+    const third = request(42);
+    advance(10 * AUTOFILL_HOLD_MS);
+    expect(third.reply).toHaveBeenCalledWith({ ok: false });
+    expect(vault.isSet()).toBe(false);
+  });
+
+  it('a cancelled request releases its claim', () => {
+    const { broker, request, send, vault } = setup();
+    request(42);
+    broker.cancel('req-1');
+    const retry = request(42);
+    expect(retry.reply).not.toHaveBeenCalled();
+    expect(vault.clear).not.toHaveBeenCalled();
+    expect(messages(send).at(-1)).toEqual({ type: 'sudo_prompt', requestId: 'req-2', prompt: '[sudo] password for me:' });
+  });
+
+  it('a recycled pid under a different sudo is not a duplicate', () => {
+    let parent = 900;
+    const { broker, request, send, vault } = setup({ sudoPid: () => parent });
+    request(42);
+    broker.answer('req-1', SECRET, false);
+    parent = 901;
+    const next = request(42);
+    expect(next.reply).not.toHaveBeenCalled();
+    expect(vault.clear).not.toHaveBeenCalled();
+    expect(messages(send).at(-1)).toEqual({ type: 'sudo_prompt', requestId: 'req-2', prompt: '[sudo] password for me:' });
+  });
+
+  it('a duplicate claimed from another key warns both keys', () => {
+    const { request, send } = setup();
+    request(42, 'tab_1');
+    request(42, 'tab_2');
+    expect(messages(send, 'tab_1')).toContainEqual(refused('req-1'));
+    expect(messages(send, 'tab_2')).toEqual([refused('req-1')]);
+  });
+});
 ```
 
-Note: the "never puts the secret" test issues `request(43)` against a cached vault, so it auto-fills and `req-2` never exists; `answer('req-2', …)` is a no-op. That is intentional — the assertion covers both the auto-fill and answer paths.
+Note: the "never puts the secret" test issues `request(43)` against a cached vault, so it auto-fills and `req-2` is never shown; `answer('req-2', …)` is a no-op. That is intentional — the assertion covers both the auto-fill and answer paths.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -979,6 +1007,16 @@ Expected: FAIL — module not found.
 // electron/services/askpassBroker.ts
 import { randomUUID } from 'crypto';
 import { decideAskpass } from './askpassDecision';
+
+/**
+ * How long an auto-fill waits before replying. A client spoofing a helper's pid
+ * must connect before or alongside the real helper, so a duplicate claim that
+ * lands inside this window trips the wire instead of racing the secret out.
+ */
+export const AUTOFILL_HOLD_MS = 150;
+
+/** Claims kept for single-use checks; the oldest are dropped beyond this. */
+const MAX_CLAIMS = 1024;
 
 export interface AskpassRequest {
   pid: number;
@@ -998,13 +1036,14 @@ export interface SecretStore {
   clear(): void;
 }
 
+export type SudoOutcome = 'answered' | 'cancelled' | 'refused-duplicate';
+
 export interface BrokerDeps {
-  platform: NodeJS.Platform;
   resolveSudoParent(pid: number): number | null;
   vault: SecretStore;
-  writeToFd1(pid: number, data: string): void;
   send(channel: string, ...args: unknown[]): void;
   timeoutMs: number;
+  autofillHoldMs?: number;
   setTimer(fn: () => void, ms: number): unknown;
   clearTimer(handle: unknown): void;
   newId?: () => string;
@@ -1018,16 +1057,29 @@ interface Pending {
   prompt: string;
   reply: (r: AskpassReply) => void;
   timer: unknown;
-  shown: boolean;
+  holdTimer: unknown;
+  state: 'queued' | 'holding' | 'shown';
+}
+
+interface Claim {
+  sudoPid: number;
+  requestId: string;
+  key: string;
 }
 
 /**
- * Answers sudo askpass requests from AI tool processes. One prompt is visible
- * per key (tab) at a time; the rest wait in arrival order.
+ * Answers sudo askpass requests from AI tool processes. The secret goes back
+ * over the socket, so the only thing standing between it and a lying client is
+ * the parent check plus two rules: each helper pid is answered at most once,
+ * and any second claim on a pid refuses both claimants and clears the cache.
+ * One prompt is visible (or one auto-fill holding) per key at a time; the rest
+ * wait in arrival order.
  */
 export class AskpassBroker {
   private pending: Pending[] = [];
   private lastFilled = new Map<string, number>();
+  /** Helper pid → the request that claimed it: pending, answered, or burned by a duplicate. */
+  private claims = new Map<number, Claim>();
 
   constructor(private readonly deps: BrokerDeps) {}
 
@@ -1038,9 +1090,20 @@ export class AskpassBroker {
       reply({ ok: false });
       return () => {};
     }
+
+    const prior = this.claims.get(req.pid);
+    // A different sudo parent means the old helper is gone and the pid was
+    // recycled; a spoofer claiming a live helper's pid resolves the same sudo.
+    if (prior && prior.sudoPid === sudoPid) {
+      this.tripDuplicate(prior, req.key, reply);
+      return () => {};
+    }
+
     const id = (this.deps.newId ?? randomUUID)();
+    this.claim(req.pid, { sudoPid: sudoPid!, requestId: id, key: req.key });
     const p: Pending = {
-      id, key: req.key, pid: req.pid, sudoPid: sudoPid!, prompt: req.prompt, reply, timer: null, shown: false,
+      id, key: req.key, pid: req.pid, sudoPid: sudoPid!, prompt: req.prompt, reply,
+      timer: null, holdTimer: null, state: 'queued',
     };
     p.timer = this.deps.setTimer(() => this.cancel(id), this.deps.timeoutMs);
     this.pending.push(p);
@@ -1049,7 +1112,7 @@ export class AskpassBroker {
   }
 
   answer(requestId: string, secret: string, remember: boolean): void {
-    const p = this.pending.find((x) => x.id === requestId && x.shown);
+    const p = this.pending.find((x) => x.id === requestId && x.state === 'shown');
     if (!p || typeof secret !== 'string') return;
     if (remember && secret.length > 0) {
       this.deps.vault.set(Buffer.from(secret, 'utf8'));
@@ -1059,8 +1122,8 @@ export class AskpassBroker {
       this.deps.send('pty:secret-state', true);
     }
     this.remove(p);
-    this.deliver(p, secret);
-    this.deps.send('ai:message', p.key, { type: 'sudo_resolved', requestId: p.id, outcome: 'answered' });
+    p.reply({ ok: true, secret });
+    this.deps.send('ai:message', p.key, { type: 'sudo_resolved', requestId: p.id, outcome: 'answered' satisfies SudoOutcome });
     this.pump(p.key);
   }
 
@@ -1079,67 +1142,100 @@ export class AskpassBroker {
     for (const p of [...this.pending]) this.dismiss(p);
   }
 
+  private claim(pid: number, c: Claim): void {
+    this.claims.delete(pid);
+    this.claims.set(pid, c);
+    if (this.claims.size > MAX_CLAIMS) {
+      const oldest = this.claims.keys().next().value;
+      if (oldest !== undefined) this.claims.delete(oldest);
+    }
+  }
+
+  /**
+   * Two clients claim one helper pid: one of them is impersonating a helper.
+   * We cannot tell which, so neither gets anything, the cached secret is
+   * dropped, and the user is told. The claim stays burned.
+   */
+  private tripDuplicate(prior: Claim, newcomerKey: string, reply: (r: AskpassReply) => void): void {
+    reply({ ok: false });
+    const p = this.pending.find((x) => x.id === prior.requestId);
+    if (p) {
+      this.remove(p);
+      p.reply({ ok: false });
+    }
+    this.deps.vault.clear();
+    this.lastFilled.delete(prior.key);
+    this.deps.send('pty:secret-state', false);
+    const notice = { type: 'sudo_resolved', requestId: prior.requestId, outcome: 'refused-duplicate' satisfies SudoOutcome };
+    this.deps.send('ai:message', prior.key, notice);
+    if (newcomerKey !== prior.key) this.deps.send('ai:message', newcomerKey, notice);
+    if (p) this.pump(prior.key);
+  }
+
   private dismiss(p: Pending): void {
     this.remove(p);
+    // Never answered, so the pid is free again (single use counts answers).
+    if (this.claims.get(p.pid)?.requestId === p.id) this.claims.delete(p.pid);
     p.reply({ ok: false });
-    if (p.shown) {
-      this.deps.send('ai:message', p.key, { type: 'sudo_resolved', requestId: p.id, outcome: 'cancelled' });
+    if (p.state === 'shown') {
+      this.deps.send('ai:message', p.key, { type: 'sudo_resolved', requestId: p.id, outcome: 'cancelled' satisfies SudoOutcome });
     }
   }
 
   private remove(p: Pending): void {
     this.pending = this.pending.filter((x) => x !== p);
     this.deps.clearTimer(p.timer);
+    if (p.holdTimer !== null) {
+      this.deps.clearTimer(p.holdTimer);
+      p.holdTimer = null;
+    }
   }
 
-  private deliver(p: Pending, secret: string): void {
-    if (this.deps.platform === 'linux') {
-      // Into sudo's pipe directly. The secret never crosses the socket, so a
-      // client lying about its pid only feeds the real helper's reader: sudo.
-      try {
-        this.deps.writeToFd1(p.pid, `${secret}\n`);
-      } catch {
-        p.reply({ ok: false });
-        return;
-      }
-      p.reply({ ok: true });
+  private finishAutofill(id: string): void {
+    const p = this.pending.find((x) => x.id === id && x.state === 'holding');
+    if (!p) return;
+    p.holdTimer = null;
+    const secret = this.deps.vault.get();
+    if (!secret) {
+      // Cache cleared during the hold (forgotten, or a reject): ask instead.
+      p.state = 'queued';
+      this.pump(p.key);
       return;
     }
-    p.reply({ ok: true, secret });
+    this.lastFilled.set(p.key, p.sudoPid);
+    this.remove(p);
+    p.reply({ ok: true, secret: secret.toString('utf8') });
+    this.deps.send('ai:message', p.key, { type: 'sudo_auth' });
+    this.pump(p.key);
   }
 
   private pump(key: string): void {
-    for (;;) {
-      const head = this.pending.find((x) => x.key === key);
-      if (!head || head.shown) return;
+    const head = this.pending.find((x) => x.key === key);
+    if (!head || head.state !== 'queued') return;
 
-      const decision = decideAskpass({
-        sudoPid: head.sudoPid,
-        vaultSet: this.deps.vault.isSet(),
-        lastFilledSudoPid: this.lastFilled.get(key) ?? null,
-      });
+    const decision = decideAskpass({
+      sudoPid: head.sudoPid,
+      vaultSet: this.deps.vault.isSet(),
+      lastFilledSudoPid: this.lastFilled.get(key) ?? null,
+    });
 
-      if (decision === 'auto-fill') {
-        const secret = this.deps.vault.get();
-        if (secret) {
-          this.lastFilled.set(key, head.sudoPid);
-          this.remove(head);
-          this.deliver(head, secret.toString('utf8'));
-          this.deps.send('ai:message', key, { type: 'sudo_auth' });
-          continue;
-        }
-      }
-
-      if (decision === 'reject') {
-        this.deps.vault.clear();
-        this.lastFilled.delete(key);
-        this.deps.send('pty:secret-state', false);
-      }
-
-      head.shown = true;
-      this.deps.send('ai:message', key, { type: 'sudo_prompt', requestId: head.id, prompt: head.prompt });
+    if (decision === 'auto-fill') {
+      head.state = 'holding';
+      head.holdTimer = this.deps.setTimer(
+        () => this.finishAutofill(head.id),
+        this.deps.autofillHoldMs ?? AUTOFILL_HOLD_MS,
+      );
       return;
     }
+
+    if (decision === 'reject') {
+      this.deps.vault.clear();
+      this.lastFilled.delete(key);
+      this.deps.send('pty:secret-state', false);
+    }
+
+    head.state = 'shown';
+    this.deps.send('ai:message', key, { type: 'sudo_prompt', requestId: head.id, prompt: head.prompt });
   }
 }
 ```
@@ -1153,7 +1249,7 @@ Expected: PASS (all tests).
 
 ```bash
 git add electron/services/askpassBroker.ts tests/unit/askpassBroker.test.ts
-git commit -m "feat(askpass): broker that queues, auto-fills and prompts for AI sudo
+git commit -m "feat(askpass): broker with single-use pids, duplicate tripwire and auto-fill hold
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
@@ -1171,7 +1267,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Produces:
   - `parseAskpassRequest(value: unknown): AskpassRequest | null`
   - `startAskpassServer(broker: Pick<AskpassBroker, 'handleRequest'>, socketPath: string): Promise<net.Server>`
-  - `writeToProcFd1(pid: number, data: string): void`
+- The server is platform-agnostic: it relays the broker's `AskpassReply` (including `secret` on success) as one JSON line, identically on Linux and macOS.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1183,7 +1279,7 @@ import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
 import { spawn } from 'child_process';
-import { parseAskpassRequest, startAskpassServer, writeToProcFd1 } from '../../electron/services/askpassServer';
+import { parseAskpassRequest, startAskpassServer } from '../../electron/services/askpassServer';
 import { AskpassBroker } from '../../electron/services/askpassBroker';
 import { resolveSudoParent } from '../../electron/services/sudoParent';
 import { generateAskpassHelperScript, generateAskpassWrapper } from '../../electron/services/askpassHelper';
@@ -1251,12 +1347,9 @@ describe.skipIf(process.platform === 'win32')('askpass server (real sockets and 
       clear: vi.fn(),
     };
     const send = vi.fn();
-    const writeToFd1 = vi.fn();
     const broker = new AskpassBroker({
-      platform: process.platform,
       resolveSudoParent,            // the real check; our parent is vitest, not sudo
       vault,
-      writeToFd1,
       send,
       timeoutMs: 5_000,
       setTimer: (fn, ms) => setTimeout(fn, ms),
@@ -1268,8 +1361,31 @@ describe.skipIf(process.platform === 'win32')('askpass server (real sockets and 
 
     expect(r).toEqual({ code: 1, stdout: '' });
     expect(vault.get).not.toHaveBeenCalled();
-    expect(writeToFd1).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it('delivers a verified auto-fill end-to-end over the socket', async () => {
+    const SECRET = 'e2e-secret';
+    const vault = {
+      isSet: () => true,
+      get: vi.fn(() => Buffer.from(SECRET)),
+      set: vi.fn(),
+      clear: vi.fn(),
+    };
+    const send = vi.fn();
+    const broker = new AskpassBroker({
+      resolveSudoParent: () => 4100,  // stand-in for a verified sudo parent
+      vault,
+      send,
+      timeoutMs: 5_000,
+      setTimer: (fn, ms) => setTimeout(fn, ms),
+      clearTimer: (h) => clearTimeout(h as NodeJS.Timeout),
+    });
+    server = await startAskpassServer(broker, socketPath);
+
+    expect(await runHelper()).toEqual({ code: 0, stdout: `${SECRET}\n` });
+    expect(send).toHaveBeenCalledWith('ai:message', 'tab_1', { type: 'sudo_auth' });
+    expect(JSON.stringify(send.mock.calls)).not.toContain(SECRET);
   });
 
   it('relays a broker reply to the helper', async () => {
@@ -1311,19 +1427,6 @@ describe.skipIf(process.platform === 'win32')('askpass server (real sockets and 
     expect(fs.statSync(socketPath).mode & 0o077).toBe(0);
   });
 });
-
-describe.skipIf(process.platform !== 'linux')('writeToProcFd1 (linux)', () => {
-  it("writes into another process's stdout pipe", async () => {
-    const child = spawn('sleep', ['5'], { stdio: ['ignore', 'pipe', 'ignore'] });
-    const got = new Promise<string>((resolve) => {
-      child.stdout!.setEncoding('utf8');
-      child.stdout!.once('data', (c: string) => resolve(c));
-    });
-    writeToProcFd1(child.pid!, 'delivered\n');
-    expect(await got).toBe('delivered\n');
-    child.kill();
-  });
-});
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -1350,11 +1453,6 @@ export function parseAskpassRequest(value: unknown): AskpassRequest | null {
   if (typeof v.key !== 'string' || v.key.length > MAX_KEY) return null;
   const prompt = typeof v.prompt === 'string' ? v.prompt.slice(0, MAX_PROMPT) : '';
   return { pid: v.pid, key: v.key, prompt };
-}
-
-/** Linux: write straight into a process's stdout (for askpass, sudo's pipe). */
-export function writeToProcFd1(pid: number, data: string): void {
-  fs.writeFileSync(`/proc/${pid}/fd/1`, data);
 }
 
 const REFUSE = '{"ok":false}\n';
@@ -1408,13 +1506,13 @@ export function startAskpassServer(
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run --config tests/vitest.config.ts tests/unit/askpassServer.test.ts`
-Expected: PASS (all tests; the linux-only block runs on Linux).
+Expected: PASS (all tests).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add electron/services/askpassServer.ts tests/unit/askpassServer.test.ts
-git commit -m "feat(askpass): unix socket server with real-process refusal test
+git commit -m "feat(askpass): unix socket server with real-process refusal and delivery tests
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
@@ -1474,7 +1572,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { ipcMain, type BrowserWindow } from 'electron';
 import { AskpassBroker } from './askpassBroker';
-import { startAskpassServer, writeToProcFd1 } from './askpassServer';
+import { startAskpassServer } from './askpassServer';
 import { buildAskpassEnv, generateAskpassHelperScript, generateAskpassWrapper } from './askpassHelper';
 import { resolveSudoParent } from './sudoParent';
 import { credentialVault } from './credentialVault';
@@ -1489,7 +1587,8 @@ let askpassPath: string | null = null;
 /**
  * Routes sudo from AI tool processes (no tty → $SUDO_ASKPASS) to TAI's own
  * password field and session cache. Linux and macOS only: Windows sudo has no
- * askpass mechanism. If anything fails to start, AI sudo behaves as before.
+ * askpass mechanism. The secret is returned over the private socket on both
+ * platforms. If anything fails to start, AI sudo behaves as before.
  */
 export async function setupAskpassService(getWindow: () => BrowserWindow | null): Promise<void> {
   if (process.platform !== 'linux' && process.platform !== 'darwin') return;
@@ -1502,10 +1601,8 @@ export async function setupAskpassService(getWindow: () => BrowserWindow | null)
   };
 
   broker = new AskpassBroker({
-    platform: process.platform,
     resolveSudoParent: (pid) => resolveSudoParent(pid),
     vault: credentialVault,
-    writeToFd1: writeToProcFd1,
     send,
     timeoutMs: PROMPT_TIMEOUT_MS,
     setTimer: (fn, ms) => setTimeout(fn, ms),
@@ -1661,22 +1758,23 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Create: `src/components/PasswordField.tsx`
 - Modify: `src/components/PasswordPrompt.tsx` (full replacement below)
 - Create: `src/components/SudoPrompt.tsx`
-- Create: `src/utils/hasPendingSudo.ts`
+- Create: `src/utils/sudoDisplay.ts`
 - Modify: `src/components/BlockList.tsx` (`DisplayItem` union at lines 21-24; render branch before `if (item.type === 'approval')`; import)
 - Modify: `src/components/BlockList.module.css` (append)
 - Modify: `src/components/TerminalSession.tsx` (props interface; destructuring; effect beside the `aiWorking` effect at ~449-452; message handler before `if (msg.type === 'approval_needed')` at ~1102)
 - Modify: `src/types.ts` (`TabState`)
 - Modify: `src/App.tsx` (handler beside `handleAiWorkingChange`; prop beside `onAiWorkingChange` at ~280)
 - Modify: `src/components/TabSidebar.tsx` (beside the `workingDot` span at ~169) and `src/components/TabSidebar.module.css` (append)
-- Test: `tests/unit/PasswordField.test.tsx`, `tests/unit/SudoPrompt.test.tsx`, `tests/unit/hasPendingSudo.test.ts`
+- Test: `tests/unit/PasswordField.test.tsx`, `tests/unit/SudoPrompt.test.tsx`, `tests/unit/sudoDisplay.test.ts`
 
 **Interfaces:**
-- Consumes: `window.tai.ai.sudoAnswer`, `window.tai.ai.sudoCancel` (Task 7); `ai:message` types `sudo_prompt`, `sudo_resolved`, `sudo_auth` (Task 5).
+- Consumes: `window.tai.ai.sudoAnswer`, `window.tai.ai.sudoCancel` (Task 7); `ai:message` types `sudo_prompt`, `sudo_resolved` (`outcome: SudoOutcome` = `'answered' | 'cancelled' | 'refused-duplicate'`), `sudo_auth` (Task 5).
 - Produces:
   - `PasswordField(props: { onChar?: (c: string) => void; onBackspace?: () => void; onSubmit: (secret: string, remember: boolean) => void; onCancel: () => void; cancelOnEscape?: boolean })`
   - `SudoPrompt(props: { requestId: string; prompt: string })`
-  - `DisplayItem` member `{ type: 'sudo'; id: string; requestId: string; prompt: string; status: 'pending' | 'answered' | 'cancelled' | 'auto' }`
+  - `DisplayItem` member `{ type: 'sudo'; id: string; requestId: string; prompt: string; status: 'pending' | 'answered' | 'cancelled' | 'auto' | 'refused' }`
   - `hasPendingSudo(items: DisplayItem[]): boolean`
+  - `applySudoResolved(items: DisplayItem[], requestId: string, outcome: unknown, newId: () => string): DisplayItem[]` — marks the pending item for `requestId`; for `'refused-duplicate'` with no pending item (the request was queued, holding or already answered) it appends a `refused` warning item
   - `TabState.aiNeedsInput?: boolean`; `TerminalSessionProps.onAiNeedsInputChange?: (needsInput: boolean) => void`
 
 - [ ] **Step 1: Write the failing tests**
@@ -1787,26 +1885,56 @@ describe('SudoPrompt', () => {
 ```
 
 ```ts
-// tests/unit/hasPendingSudo.test.ts
+// tests/unit/sudoDisplay.test.ts
 import { describe, it, expect } from 'vitest';
-import { hasPendingSudo } from '../../src/utils/hasPendingSudo';
+import { hasPendingSudo, applySudoResolved } from '../../src/utils/sudoDisplay';
 import type { DisplayItem } from '../../src/components/BlockList';
 
-const sudo = (status: 'pending' | 'answered' | 'cancelled' | 'auto'): DisplayItem =>
-  ({ type: 'sudo', id: `s-${status}`, requestId: 'r', prompt: '', status });
+type SudoStatus = 'pending' | 'answered' | 'cancelled' | 'auto' | 'refused';
+const sudo = (status: SudoStatus, requestId = 'r'): DisplayItem =>
+  ({ type: 'sudo', id: `s-${status}-${requestId}`, requestId, prompt: '', status });
+const newId = () => 'new-1';
 
 describe('hasPendingSudo', () => {
   it('is true only while a sudo item is pending', () => {
     expect(hasPendingSudo([])).toBe(false);
-    expect(hasPendingSudo([sudo('answered'), sudo('cancelled'), sudo('auto')])).toBe(false);
+    expect(hasPendingSudo([sudo('answered'), sudo('cancelled'), sudo('auto'), sudo('refused')])).toBe(false);
     expect(hasPendingSudo([sudo('answered'), sudo('pending')])).toBe(true);
+  });
+});
+
+describe('applySudoResolved', () => {
+  it('marks the pending item answered or cancelled', () => {
+    expect(applySudoResolved([sudo('pending', 'req-1')], 'req-1', 'answered', newId))
+      .toEqual([{ ...sudo('pending', 'req-1'), status: 'answered' }]);
+    expect(applySudoResolved([sudo('pending', 'req-1')], 'req-1', 'cancelled', newId))
+      .toEqual([{ ...sudo('pending', 'req-1'), status: 'cancelled' }]);
+  });
+
+  it('turns a pending field into a refused warning on a duplicate claim', () => {
+    expect(applySudoResolved([sudo('pending', 'req-1')], 'req-1', 'refused-duplicate', newId))
+      .toEqual([{ ...sudo('pending', 'req-1'), status: 'refused' }]);
+  });
+
+  it('appends a refused warning when no field was showing', () => {
+    const items = [sudo('auto', '')];
+    expect(applySudoResolved(items, 'req-1', 'refused-duplicate', newId)).toEqual([
+      ...items,
+      { type: 'sudo', id: 'new-1', requestId: 'req-1', prompt: '', status: 'refused' },
+    ]);
+  });
+
+  it('ignores an answer or cancel for an unknown request', () => {
+    const items = [sudo('answered', 'req-1')];
+    expect(applySudoResolved(items, 'req-9', 'answered', newId)).toBe(items);
+    expect(applySudoResolved(items, 'req-1', 'cancelled', newId)).toBe(items);
   });
 });
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `npx vitest run --config tests/vitest.config.ts tests/unit/PasswordField.test.tsx tests/unit/SudoPrompt.test.tsx tests/unit/hasPendingSudo.test.ts`
+Run: `npx vitest run --config tests/vitest.config.ts tests/unit/PasswordField.test.tsx tests/unit/SudoPrompt.test.tsx tests/unit/sudoDisplay.test.ts`
 Expected: FAIL — modules not found.
 
 - [ ] **Step 3: Create `PasswordField`**
@@ -1943,7 +2071,7 @@ export function PasswordPrompt({ ptyId, onDone }: PasswordPromptProps) {
 }
 ```
 
-- [ ] **Step 5: Create `SudoPrompt` and `hasPendingSudo`**
+- [ ] **Step 5: Create `SudoPrompt` and `sudoDisplay`**
 
 ```tsx
 // src/components/SudoPrompt.tsx
@@ -1977,24 +2105,48 @@ export function SudoPrompt({ requestId, prompt }: SudoPromptProps) {
 ```
 
 ```ts
-// src/utils/hasPendingSudo.ts
+// src/utils/sudoDisplay.ts
 import type { DisplayItem } from '@/components/BlockList';
 
 export function hasPendingSudo(items: DisplayItem[]): boolean {
   return items.some(item => item.type === 'sudo' && item.status === 'pending');
 }
+
+/**
+ * Apply a `sudo_resolved` message. A duplicate-claim refusal must always be
+ * visible, so when there is no pending field to replace (the request was still
+ * queued, holding for auto-fill, or already answered) a warning is appended.
+ */
+export function applySudoResolved(
+  items: DisplayItem[],
+  requestId: string,
+  outcome: unknown,
+  newId: () => string,
+): DisplayItem[] {
+  const status = outcome === 'cancelled' ? 'cancelled' as const
+    : outcome === 'refused-duplicate' ? 'refused' as const
+    : 'answered' as const;
+  const hasPending = items.some(di => di.type === 'sudo' && di.requestId === requestId && di.status === 'pending');
+  if (hasPending) {
+    return items.map(di =>
+      di.type === 'sudo' && di.requestId === requestId && di.status === 'pending' ? { ...di, status } : di
+    );
+  }
+  if (status !== 'refused') return items;
+  return [...items, { type: 'sudo' as const, id: newId(), requestId, prompt: '', status }];
+}
 ```
 
 - [ ] **Step 6: Run the new tests**
 
-Run: `npx vitest run --config tests/vitest.config.ts tests/unit/PasswordField.test.tsx tests/unit/SudoPrompt.test.tsx tests/unit/hasPendingSudo.test.ts`
+Run: `npx vitest run --config tests/vitest.config.ts tests/unit/PasswordField.test.tsx tests/unit/SudoPrompt.test.tsx tests/unit/sudoDisplay.test.ts`
 Expected: all three PASS. (vitest does not typecheck; the `'sudo'` `DisplayItem` member is added in Step 7 and checked by `tsc` in Step 10.)
 
 - [ ] **Step 7: Add the `sudo` display item and its render in `BlockList.tsx`**
 
 Extend the union (the last member currently ends with `answers?: Record<string, string> };`). Change that `;` to a new line and add:
 ```ts
-  | { type: 'sudo'; id: string; requestId: string; prompt: string; status: 'pending' | 'answered' | 'cancelled' | 'auto' };
+  | { type: 'sudo'; id: string; requestId: string; prompt: string; status: 'pending' | 'answered' | 'cancelled' | 'auto' | 'refused' };
 ```
 Add import beside `import { ApprovalPrompt } from './ApprovalPrompt';`:
 ```ts
@@ -2007,6 +2159,13 @@ Directly before `if (item.type === 'approval') {` add:
         return (
           <div key={item.id}>
             <SudoPrompt requestId={item.requestId} prompt={item.prompt} />
+          </div>
+        );
+      }
+      if (item.status === 'refused') {
+        return (
+          <div key={item.id} role="alert" className={styles.sudoWarning}>
+            sudo refused: another process claimed this password prompt. Nothing was sent and the cached password was cleared.
           </div>
         );
       }
@@ -2023,6 +2182,15 @@ Append to `src/components/BlockList.module.css`:
   font-size: 11px;
   color: var(--text-muted);
   border-left: 2px solid rgba(234, 179, 8, 0.3);
+  padding: 2px 0 2px 8px;
+  margin-bottom: 4px;
+}
+
+.sudoWarning {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #eab308;
+  border-left: 2px solid #eab308;
   padding: 2px 0 2px 8px;
   margin-bottom: 4px;
 }
@@ -2045,11 +2213,8 @@ Directly before `if (msg.type === 'approval_needed') {` add:
       }
 
       if (msg.type === 'sudo_resolved') {
-        setDisplayItems(prev => prev.map(di =>
-          di.type === 'sudo' && di.requestId === msg.requestId && di.status === 'pending'
-            ? { ...di, status: msg.outcome === 'cancelled' ? 'cancelled' as const : 'answered' as const }
-            : di
-        ));
+        const requestId = String(msg.requestId);
+        setDisplayItems(prev => applySudoResolved(prev, requestId, msg.outcome, nextBlockId));
         return;
       }
 
@@ -2065,7 +2230,7 @@ Add `onAiNeedsInputChange?: (needsInput: boolean) => void;` to `TerminalSessionP
 
 Add import beside `hasActiveAi`'s import:
 ```ts
-import { hasPendingSudo } from '@/utils/hasPendingSudo';
+import { hasPendingSudo, applySudoResolved } from '@/utils/sudoDisplay';
 ```
 Directly after the existing effect that calls `onAiWorkingChange?.(aiWorking);`, add:
 ```ts
@@ -2125,10 +2290,10 @@ Expected: all pass, including existing `inputSurface.test.ts` (which references 
 
 ```bash
 git add src/components/PasswordField.tsx src/components/PasswordPrompt.tsx src/components/SudoPrompt.tsx \
-  src/utils/hasPendingSudo.ts src/components/BlockList.tsx src/components/BlockList.module.css \
+  src/utils/sudoDisplay.ts src/components/BlockList.tsx src/components/BlockList.module.css \
   src/components/TerminalSession.tsx src/types.ts src/App.tsx src/components/TabSidebar.tsx \
   src/components/TabSidebar.module.css \
-  tests/unit/PasswordField.test.tsx tests/unit/SudoPrompt.test.tsx tests/unit/hasPendingSudo.test.ts
+  tests/unit/PasswordField.test.tsx tests/unit/SudoPrompt.test.tsx tests/unit/sudoDisplay.test.ts
 git commit -m "feat(askpass): answer AI sudo from a password field in the AI block
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
@@ -2187,10 +2352,13 @@ Start `npm run dev`. Use CDP on `127.0.0.1:9222` (see memory `reference_cdp_in_a
 1. Ensure nothing cached (no "sudo cached" badge). Ask the AI: "run `sudo -k; sudo true` and tell me the exit code". Approve the Bash call.
    Expected: a password field appears inside the AI block (`[data-testid="password-field"]` present); **no** `ksshaskpass` window. User types password with Remember **off** → exit code 0; block shows "sudo password sent".
 2. Ask again with Remember **on** → exit 0; terminal badge shows "sudo cached".
-3. Ask: "run `sudo -k; sudo true`" again → no field; block shows "sudo authenticated"; exit 0.
-4. **Security check:** Ask: "run `\"$SUDO_ASKPASS\"; echo EXIT=$?` and show me the raw output". Expected output: empty line(s) and `EXIT=1`. The cached password must not appear.
+3. Ask: "run `sudo -k; sudo true`" again → no field; block shows "sudo authenticated" (after the 150 ms hold, not perceptible); exit 0.
+4. **Security check:** Ask: "run `\"$SUDO_ASKPASS\"; echo EXIT=$?` and show me the raw output". Expected output: empty line(s) and `EXIT=1`. The cached password must not appear. The badge still shows "sudo cached" and no "sudo refused" warning appears (a non-sudo parent is refused before any claim, so it must not trip the duplicate wire).
 5. Click the badge to forget → ask for `sudo -k; sudo true` → field appears again. Press Escape → block shows "sudo prompt cancelled"; AI reports a non-zero exit.
 6. Switch to another tab before approving a sudo command in step 1's flow; confirm the original tab shows the amber attention dot while the field is pending, and it clears after answering.
+7. **Probe check C:** right after step 5's cancel, the user runs `faillock --user "$USER"` in a terminal. Record whether the cancel appears as a failure record (the probe did not reach this).
+
+The duplicate-claim tripwire (`sudo refused: another process claimed this password prompt…`) cannot be triggered in-app without deliberately spoofing a live sudo helper's pid; it is covered by the Task 5 broker tests and the Task 8 `applySudoResolved` tests. Do not attempt it against the real account.
 
 Record results for the final report. Also note: Codex in its default `--full-auto` sandbox sets no-new-privileges, so `sudo` cannot elevate there regardless of askpass — do not treat a Codex sandbox failure as a bug in this feature.
 
