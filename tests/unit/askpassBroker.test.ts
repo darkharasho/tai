@@ -1,0 +1,336 @@
+import { describe, it, expect, vi } from 'vitest';
+import {
+  AskpassBroker, AUTOFILL_HOLD_MS, type BrokerDeps, type AskpassReply,
+} from '../../electron/services/askpassBroker';
+
+const SECRET = 'correct horse';
+
+function makeVault(initial: string | null = null) {
+  let s: Buffer | null = initial === null ? null : Buffer.from(initial);
+  return {
+    isSet: () => s !== null,
+    get: vi.fn(() => s),
+    set: vi.fn((b: Buffer) => { s = Buffer.from(b); }),
+    clear: vi.fn(() => { s = null; }),
+  };
+}
+
+function setup(opts: { vault?: ReturnType<typeof makeVault>; sudoPid?: (pid: number) => number | null } = {}) {
+  let now = 0;
+  const timers: Array<{ fn: () => void; due: number; cleared: boolean }> = [];
+  const send = vi.fn();
+  const vault = opts.vault ?? makeVault();
+  let n = 0;
+  const deps: BrokerDeps = {
+    resolveSudoParent: opts.sudoPid ?? ((pid) => pid + 1000),
+    vault,
+    send,
+    timeoutMs: 300_000,
+    autofillHoldMs: AUTOFILL_HOLD_MS,
+    setTimer: (fn, ms) => { const t = { fn, due: now + ms, cleared: false }; timers.push(t); return t; },
+    clearTimer: (h) => { if (h) (h as { cleared: boolean }).cleared = true; },
+    newId: () => `req-${++n}`,
+  };
+  const broker = new AskpassBroker(deps);
+  const request = (pid: number, key = 'tab_1') => {
+    const reply = vi.fn<(r: AskpassReply) => void>();
+    const cancel = broker.handleRequest({ pid, key, prompt: '[sudo] password for me:' }, reply);
+    return { reply, cancel };
+  };
+  /** Fake clock: move time forward and run every timer now due, in due order. */
+  const advance = (ms: number) => {
+    now += ms;
+    for (;;) {
+      const next = timers.filter((t) => !t.cleared && t.due <= now).sort((a, b) => a.due - b.due)[0];
+      if (!next) return;
+      next.cleared = true;
+      next.fn();
+    }
+  };
+  return { broker, deps, send, vault, request, advance, timers };
+}
+
+function messages(send: ReturnType<typeof vi.fn>, key = 'tab_1') {
+  return send.mock.calls.filter((c) => c[0] === 'ai:message' && c[1] === key).map((c) => c[2]);
+}
+
+describe('AskpassBroker', () => {
+  it('refuses immediately when the parent is not sudo, without touching the vault', () => {
+    const vault = makeVault(SECRET);
+    const { request, send } = setup({ vault, sudoPid: () => null });
+    const { reply } = request(42);
+    expect(reply).toHaveBeenCalledWith({ ok: false });
+    expect(vault.get).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('prompts the renderer when nothing is cached', () => {
+    const { request, send } = setup();
+    const { reply } = request(42);
+    expect(reply).not.toHaveBeenCalled();
+    expect(messages(send)).toEqual([{ type: 'sudo_prompt', requestId: 'req-1', prompt: '[sudo] password for me:' }]);
+  });
+
+  it('returns an answer to the helper over the socket', () => {
+    const { broker, request, send } = setup();
+    const { reply } = request(42);
+    broker.answer('req-1', SECRET, false);
+    expect(reply).toHaveBeenCalledWith({ ok: true, secret: SECRET });
+    expect(messages(send)).toContainEqual({ type: 'sudo_resolved', requestId: 'req-1', outcome: 'answered' });
+  });
+
+  it('remember stores the secret and broadcasts cache state', () => {
+    const { broker, request, vault, send } = setup();
+    request(42);
+    broker.answer('req-1', SECRET, true);
+    expect(vault.set).toHaveBeenCalled();
+    expect(send).toHaveBeenCalledWith('pty:secret-state', true);
+  });
+
+  it('auto-fills when cached only after the hold, flashes, and never shows a prompt', () => {
+    const { request, send, advance } = setup({ vault: makeVault(SECRET) });
+    const { reply } = request(42);
+    advance(AUTOFILL_HOLD_MS - 1);
+    expect(reply).not.toHaveBeenCalled();
+    expect(messages(send)).toEqual([]);
+    advance(1);
+    expect(reply).toHaveBeenCalledWith({ ok: true, secret: SECRET });
+    expect(messages(send)).toEqual([{ type: 'sudo_auth' }]);
+  });
+
+  it('prompts instead if the cache is cleared during the hold', () => {
+    const vault = makeVault(SECRET);
+    const { request, send, advance } = setup({ vault });
+    const { reply } = request(42);
+    vault.clear();
+    advance(AUTOFILL_HOLD_MS);
+    expect(reply).not.toHaveBeenCalled();
+    expect(messages(send).at(-1)).toEqual({ type: 'sudo_prompt', requestId: 'req-1', prompt: '[sudo] password for me:' });
+  });
+
+  it('same sudo asking again after an auto-fill: clears cache and prompts', () => {
+    const vault = makeVault(SECRET);
+    const { request, send, advance } = setup({ vault, sudoPid: () => 900 });
+    request(42);                 // auto-fill for sudo 900
+    advance(AUTOFILL_HOLD_MS);
+    const second = request(43);  // sudo 900 asks again → wrong secret
+    advance(AUTOFILL_HOLD_MS);
+    expect(second.reply).not.toHaveBeenCalled();
+    expect(vault.clear).toHaveBeenCalled();
+    expect(send).toHaveBeenCalledWith('pty:secret-state', false);
+    expect(messages(send).at(-1)).toEqual({ type: 'sudo_prompt', requestId: 'req-2', prompt: '[sudo] password for me:' });
+  });
+
+  it('a different sudo process after an auto-fill auto-fills again', () => {
+    const { request, advance } = setup({ vault: makeVault(SECRET) });
+    const a = request(42);  // sudo 1042
+    advance(AUTOFILL_HOLD_MS);
+    const b = request(43);  // sudo 1043
+    advance(AUTOFILL_HOLD_MS);
+    expect(a.reply).toHaveBeenCalledWith({ ok: true, secret: SECRET });
+    expect(b.reply).toHaveBeenCalledWith({ ok: true, secret: SECRET });
+  });
+
+  it('a remembered answer followed by the same sudo re-asking is rejected, not replayed', () => {
+    const vault = makeVault();
+    const { broker, request, advance } = setup({ vault, sudoPid: () => 900 });
+    request(42);
+    broker.answer('req-1', 'typo', true);
+    const second = request(43);
+    advance(AUTOFILL_HOLD_MS);
+    expect(second.reply).not.toHaveBeenCalled();
+    expect(vault.clear).toHaveBeenCalled();
+  });
+
+  it('queues per key: shows one prompt at a time, remember drains the rest', () => {
+    const { broker, request, send, advance } = setup();
+    request(42);
+    const b = request(43);
+    expect(messages(send).filter((m) => m.type === 'sudo_prompt')).toHaveLength(1);
+    broker.answer('req-1', SECRET, true);
+    advance(AUTOFILL_HOLD_MS);
+    expect(b.reply).toHaveBeenCalledWith({ ok: true, secret: SECRET });
+    expect(messages(send).filter((m) => m.type === 'sudo_prompt')).toHaveLength(1);
+  });
+
+  it('without remember, the next queued request is prompted', () => {
+    const { broker, request, send } = setup();
+    request(42);
+    request(43);
+    broker.answer('req-1', SECRET, false);
+    expect(messages(send).filter((m) => m.type === 'sudo_prompt').map((m) => m.requestId)).toEqual(['req-1', 'req-2']);
+  });
+
+  it('keys are independent', () => {
+    const { request, send } = setup();
+    request(42, 'tab_1');
+    request(43, 'tab_2');
+    expect(messages(send, 'tab_1')).toHaveLength(1);
+    expect(messages(send, 'tab_2')).toHaveLength(1);
+  });
+
+  it('cancel replies not-ok and resolves the prompt', () => {
+    const { broker, request, send } = setup();
+    const { reply } = request(42);
+    broker.cancel('req-1');
+    expect(reply).toHaveBeenCalledWith({ ok: false });
+    expect(messages(send)).toContainEqual({ type: 'sudo_resolved', requestId: 'req-1', outcome: 'cancelled' });
+  });
+
+  it('the returned canceller (socket closed) cancels', () => {
+    const { request } = setup();
+    const { reply, cancel } = request(42);
+    cancel();
+    expect(reply).toHaveBeenCalledWith({ ok: false });
+  });
+
+  it('timeout cancels', () => {
+    const { request, advance } = setup();
+    const { reply } = request(42);
+    advance(300_000);
+    expect(reply).toHaveBeenCalledWith({ ok: false });
+  });
+
+  it('cancelKey cancels only that key; cancelAll cancels everything', () => {
+    const { broker, request } = setup();
+    const a = request(42, 'tab_1');
+    const b = request(43, 'tab_2');
+    broker.cancelKey('tab_1');
+    expect(a.reply).toHaveBeenCalledWith({ ok: false });
+    expect(b.reply).not.toHaveBeenCalled();
+    broker.cancelAll();
+    expect(b.reply).toHaveBeenCalledWith({ ok: false });
+  });
+
+  it('answering an unknown or already-resolved request does nothing', () => {
+    const { broker, request } = setup();
+    const a = request(42);
+    broker.cancel('req-1');
+    broker.answer('req-1', SECRET, true);
+    broker.answer('nope', SECRET, true);
+    expect(a.reply).toHaveBeenCalledTimes(1);
+    expect(a.reply).toHaveBeenCalledWith({ ok: false });
+  });
+
+  it('clears timers when a request resolves', () => {
+    const { broker, request, timers } = setup();
+    request(42);
+    broker.answer('req-1', SECRET, false);
+    expect(timers.every((t) => t.cleared)).toBe(true);
+  });
+
+  it('never puts the secret in anything sent to the renderer (auto-fill and answer paths)', () => {
+    const vault = makeVault(SECRET);
+    const { broker, request, send, advance } = setup({ vault });
+    const filled = request(42);          // auto-fill path
+    advance(AUTOFILL_HOLD_MS);
+    expect(filled.reply).toHaveBeenCalledWith({ ok: true, secret: SECRET });
+    vault.clear();
+    const prompted = request(43);        // prompt + remembered answer path (req-2)
+    broker.answer('req-2', SECRET, true);
+    expect(prompted.reply).toHaveBeenCalledWith({ ok: true, secret: SECRET });
+    expect(messages(send).map((m) => m.type)).toEqual(['sudo_auth', 'sudo_prompt', 'sudo_resolved']);
+    expect(send).toHaveBeenCalledWith('pty:secret-state', true);
+    expect(JSON.stringify(send.mock.calls)).not.toContain(SECRET);
+  });
+
+  it('the claim cap never evicts a claim that is still pending', () => {
+    const { request } = setup();
+    const first = request(2, 'tab_first');
+    for (let pid = 3; pid < 3 + 1100; pid++) request(pid, `tab_${pid}`);
+    const dup = request(2, 'tab_first');
+    expect(dup.reply).toHaveBeenCalledWith({ ok: false });
+    expect(first.reply).toHaveBeenCalledWith({ ok: false });
+  });
+});
+
+describe('AskpassBroker single use and duplicate-claim tripwire', () => {
+  const refused = (requestId: string) => ({ type: 'sudo_resolved', requestId, outcome: 'refused-duplicate' });
+
+  it('an answered pid is never answered again, and the re-claim trips the wire', () => {
+    const vault = makeVault();
+    const { broker, request, send, advance } = setup({ vault });
+    const first = request(42);
+    broker.answer('req-1', SECRET, true);
+    const again = request(42);
+    advance(10 * AUTOFILL_HOLD_MS);
+    expect(first.reply).toHaveBeenCalledTimes(1);
+    expect(again.reply).toHaveBeenCalledTimes(1);
+    expect(again.reply).toHaveBeenCalledWith({ ok: false });
+    expect(vault.clear).toHaveBeenCalled();
+    expect(vault.isSet()).toBe(false);
+    expect(send).toHaveBeenLastCalledWith('ai:message', 'tab_1', refused('req-1'));
+    expect(send).toHaveBeenCalledWith('pty:secret-state', false);
+  });
+
+  it('a duplicate while the prompt is shown refuses both and clears the vault', () => {
+    const vault = makeVault();
+    const { broker, request, send } = setup({ vault });
+    const original = request(42);
+    const dup = request(42);
+    expect(original.reply).toHaveBeenCalledWith({ ok: false });
+    expect(dup.reply).toHaveBeenCalledWith({ ok: false });
+    expect(vault.clear).toHaveBeenCalled();
+    expect(send).toHaveBeenCalledWith('pty:secret-state', false);
+    expect(messages(send)).toContainEqual(refused('req-1'));
+    broker.answer('req-1', SECRET, false);
+    expect(original.reply).toHaveBeenCalledTimes(1);
+  });
+
+  it('a duplicate during the auto-fill hold refuses both and the secret never goes out', () => {
+    const vault = makeVault(SECRET);
+    const { request, send, advance } = setup({ vault });
+    const real = request(42);
+    advance(AUTOFILL_HOLD_MS - 1);
+    const spoof = request(42);
+    advance(10 * AUTOFILL_HOLD_MS);
+    expect(real.reply).toHaveBeenCalledWith({ ok: false });
+    expect(spoof.reply).toHaveBeenCalledWith({ ok: false });
+    expect(JSON.stringify([...real.reply.mock.calls, ...spoof.reply.mock.calls])).not.toContain(SECRET);
+    expect(vault.isSet()).toBe(false);
+    expect(messages(send)).not.toContainEqual({ type: 'sudo_auth' });
+    expect(messages(send)).toContainEqual(refused('req-1'));
+  });
+
+  it('further claims on a tripped pid keep tripping', () => {
+    const vault = makeVault(SECRET);
+    const { request, advance } = setup({ vault });
+    request(42);
+    request(42);
+    vault.set(Buffer.from(SECRET));
+    const third = request(42);
+    advance(10 * AUTOFILL_HOLD_MS);
+    expect(third.reply).toHaveBeenCalledWith({ ok: false });
+    expect(vault.isSet()).toBe(false);
+  });
+
+  it('a cancelled request releases its claim', () => {
+    const { broker, request, send, vault } = setup();
+    request(42);
+    broker.cancel('req-1');
+    const retry = request(42);
+    expect(retry.reply).not.toHaveBeenCalled();
+    expect(vault.clear).not.toHaveBeenCalled();
+    expect(messages(send).at(-1)).toEqual({ type: 'sudo_prompt', requestId: 'req-2', prompt: '[sudo] password for me:' });
+  });
+
+  it('a recycled pid under a different sudo is not a duplicate', () => {
+    let parent = 900;
+    const { broker, request, send, vault } = setup({ sudoPid: () => parent });
+    request(42);
+    broker.answer('req-1', SECRET, false);
+    parent = 901;
+    const next = request(42);
+    expect(next.reply).not.toHaveBeenCalled();
+    expect(vault.clear).not.toHaveBeenCalled();
+    expect(messages(send).at(-1)).toEqual({ type: 'sudo_prompt', requestId: 'req-2', prompt: '[sudo] password for me:' });
+  });
+
+  it('a duplicate claimed from another key warns both keys', () => {
+    const { request, send } = setup();
+    request(42, 'tab_1');
+    request(42, 'tab_2');
+    expect(messages(send, 'tab_1')).toContainEqual(refused('req-1'));
+    expect(messages(send, 'tab_2')).toEqual([refused('req-1')]);
+  });
+});
