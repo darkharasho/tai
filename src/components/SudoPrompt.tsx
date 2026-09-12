@@ -19,6 +19,7 @@ export function SudoPrompt({ requestId, prompt }: SudoPromptProps) {
       )}
       <PasswordField
         cancelOnEscape
+        yieldToTyping
         onSubmit={(secret, remember) => window.tai?.ai?.sudoAnswer?.(requestId, secret, remember)}
         onCancel={() => window.tai?.ai?.sudoCancel?.(requestId)}
       />

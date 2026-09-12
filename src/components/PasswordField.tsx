@@ -9,10 +9,25 @@ interface PasswordFieldProps {
   onSubmit: (secret: string, remember: boolean) => void;
   onCancel: () => void;
   cancelOnEscape?: boolean;
+  /**
+   * Don't grab focus on mount while the user is typing elsewhere (focus in a
+   * text field that already holds text): a following Enter would submit that
+   * text as the password. The caller's attention UI + click takes over instead.
+   */
+  yieldToTyping?: boolean;
+}
+
+/** True when focus sits in an editable element that already holds typed text. */
+function userIsTypingElsewhere(): boolean {
+  const el = typeof document !== 'undefined' ? document.activeElement : null;
+  if (!(el instanceof HTMLElement)) return false;
+  if (el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement) return el.value.length > 0;
+  if (el.isContentEditable) return (el.textContent ?? '').length > 0;
+  return false;
 }
 
 /** The shared password input: masked dots, Remember toggle, keyboard handling. */
-export function PasswordField({ onChar, onBackspace, onSubmit, onCancel, cancelOnEscape }: PasswordFieldProps) {
+export function PasswordField({ onChar, onBackspace, onSubmit, onCancel, cancelOnEscape, yieldToTyping }: PasswordFieldProps) {
   const [dots, setDots] = useState(0);
   const [remember, setRemember] = useState(false);
   const secretRef = useRef('');
@@ -20,7 +35,10 @@ export function PasswordField({ onChar, onBackspace, onSubmit, onCancel, cancelO
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { rememberRef.current = remember; }, [remember]);
-  useEffect(() => { containerRef.current?.focus(); }, []);
+  useEffect(() => {
+    if (yieldToTyping && userIsTypingElsewhere()) return;
+    containerRef.current?.focus();
+  }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     e.preventDefault();
