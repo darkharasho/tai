@@ -243,3 +243,21 @@
 [data-resume-rows] .cardWindow + .cardWindow {
   border-top: none;
 }
+
+.sudoResolved {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  border-left: 2px solid rgba(234, 179, 8, 0.3);
+  padding: 2px 0 2px 8px;
+  margin-bottom: 4px;
+}
+
+.sudoWarning {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #eab308;
+  border-left: 2px solid #eab308;
+  padding: 2px 0 2px 8px;
+  margin-bottom: 4px;
+}

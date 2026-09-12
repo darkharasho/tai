@@ -4,6 +4,7 @@ import { CommandBlock } from './CommandBlock';
 import { InlineAIBlock } from './InlineAIBlock';
 import { AIConversation } from './AIConversation';
 import { ApprovalPrompt } from './ApprovalPrompt';
+import { SudoPrompt } from './SudoPrompt';
 import { AskUserQuestionView } from './AskUserQuestionView';
 import { parseAskUserQuestion } from '@/utils/askUserQuestion';
 import type { SegmentedBlock, AIEntry, AIProvider, BlockBodyMode } from '@/types';
@@ -21,7 +22,8 @@ const PALETTE_KEY =
 export type DisplayItem =
   | { type: 'command'; block: SegmentedBlock; aiSuggested?: boolean; active?: boolean; awaitingInput?: boolean; restored?: boolean }
   | { type: 'ai'; id: string; question: string; content: string; suggestedCommands: string[]; streaming: boolean; duration?: number; entries?: AIEntry[]; remote?: boolean }
-  | { type: 'approval'; id: string; command: string; toolUseId: string; toolName: string; status: 'pending' | 'approved' | 'rejected'; input?: unknown; answers?: Record<string, string> };
+  | { type: 'approval'; id: string; command: string; toolUseId: string; toolName: string; status: 'pending' | 'approved' | 'rejected'; input?: unknown; answers?: Record<string, string> }
+  | { type: 'sudo'; id: string; requestId: string; prompt: string; status: 'pending' | 'answered' | 'cancelled' | 'auto' | 'refused' };
 
 interface BlockListProps {
   items: DisplayItem[];
@@ -265,6 +267,26 @@ export function BlockList({
       );
     }
 
+    if (item.type === 'sudo') {
+      if (item.status === 'pending') {
+        return (
+          <div key={item.id}>
+            <SudoPrompt requestId={item.requestId} prompt={item.prompt} />
+          </div>
+        );
+      }
+      if (item.status === 'refused') {
+        return (
+          <div key={item.id} role="alert" className={styles.sudoWarning}>
+            sudo refused: another process claimed this password prompt. Nothing was sent and the cached password was cleared.
+          </div>
+        );
+      }
+      const label = item.status === 'auto'
+        ? '\u{1F513} sudo authenticated'
+        : item.status === 'answered' ? '\u{1F513} sudo password sent' : 'sudo prompt cancelled';
+      return <div key={item.id} className={styles.sudoResolved}>{label}</div>;
+    }
     if (item.type === 'approval') {
       // `command` is the JSON blob when the input has no obvious string to show,
       // so it is the fallback source for sessions restored without `input`.

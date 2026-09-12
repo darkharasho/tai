@@ -150,6 +150,14 @@ export default function App() {
     });
   }, []);
 
+  const handleAiNeedsInputChange = useCallback((tabId: string, needsInput: boolean) => {
+    setTabs(prev => {
+      const tab = prev.find(t => t.id === tabId);
+      if (!tab || !!tab.aiNeedsInput === needsInput) return prev;
+      return prev.map(t => t.id === tabId ? { ...t, aiNeedsInput: needsInput } : t);
+    });
+  }, []);
+
   const handleTrustLevelChange = useCallback((level: TrustLevel) => {
     setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, trustLevel: level } : t));
     setSetting('ai.trustLevel', level);
@@ -278,6 +286,7 @@ export default function App() {
             remoteExecMode={tab.remoteExecMode}
             onRemoteExecModeChange={(mode) => handleRemoteExecModeChange(tab.id, mode)}
             onAiWorkingChange={(working) => handleAiWorkingChange(tab.id, working)}
+            onAiNeedsInputChange={(needsInput) => handleAiNeedsInputChange(tab.id, needsInput)}
             onTrustLevelChange={(level) => {
               setTabs(prev => prev.map(t => t.id === tab.id ? { ...t, trustLevel: level } : t));
             }}

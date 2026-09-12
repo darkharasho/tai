@@ -64,6 +64,7 @@ export interface TabState {
   remoteExecMode: 'auto' | 'local';
   aiProvider: AIProvider;
   aiWorking?: boolean;
+  aiNeedsInput?: boolean;
 }
 
 export interface ClaudeModelOption {

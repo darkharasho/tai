@@ -26,6 +26,7 @@ import { createGeminiProvider } from '@/providers/gemini';
 import { useSettings } from '@/hooks/useSettings';
 import type { AIProvider, ContextMode, TrustLevel, AIEntry } from '@/types';
 import { hasActiveAi } from '@/utils/hasActiveAi';
+import { hasPendingSudo, applySudoResolved, cancelPendingSudo } from '@/utils/sudoDisplay';
 import { patchBlock } from '@/utils/blockMeta';
 import { BlockFinder } from './BlockFinder';
 import { SessionSideChat } from './SessionSideChat';
@@ -65,6 +66,7 @@ import {
   joinQueuedPrompts,
 } from '@/utils/queuedPrompts';
 import { useAiCleanupOnUnmount } from '@/hooks/useAiCleanupOnUnmount';
+import { useSudoCancelOnUnmount } from '@/hooks/useSudoCancelOnUnmount';
 import { useSingleShotAi } from '@/hooks/useSingleShotAi';
 import { CommandPalette } from './CommandPalette';
 import { WorkflowRunDialog } from './WorkflowRunDialog';
@@ -88,6 +90,7 @@ interface TerminalSessionProps {
   onRemoteExecModeChange: (mode: 'auto' | 'local') => void;
   onTrustLevelChange: (level: TrustLevel) => void;
   onAiWorkingChange?: (working: boolean) => void;
+  onAiNeedsInputChange?: (needsInput: boolean) => void;
 }
 
 function createProvider(provider: AIProvider, tabId: string) {
@@ -102,7 +105,7 @@ function nextBlockId(): string {
   return `tm-${crypto.randomUUID()}`;
 }
 
-export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visible, trustLevel, aiProvider, onContextModeChange, onRemoteChange, remoteExecMode, onRemoteExecModeChange, onTrustLevelChange, onAiWorkingChange }: TerminalSessionProps) {
+export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visible, trustLevel, aiProvider, onContextModeChange, onRemoteChange, remoteExecMode, onRemoteExecModeChange, onTrustLevelChange, onAiWorkingChange, onAiNeedsInputChange }: TerminalSessionProps) {
   const { config } = useSettings();
   const claudeModel = config['claude.model'] || 'sonnet';
   const claudeEffort = config['claude.effort'] || 'auto';
@@ -253,6 +256,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const inputRef = useRef<TerminalInputHandle>(null);
   const providerRef = useRef(createProvider(aiProvider, tabId));
   const aiCleanupRef = useRef<(() => void) | null>(null);
+  // Declared before useAiCleanupOnUnmount so pending sudo requests are
+  // cancelled before the provider is stopped on tab close.
+  useSudoCancelOnUnmount(displayItemsRef);
   useAiCleanupOnUnmount(tabId, aiCleanupRef);
   // Single-shot AI for predictive next-command refine. Uses a dedicated key
   // (${tabId}::predict) so it never collides with the tab's real AI session.
@@ -368,6 +374,26 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         setRemoteSystemInfo(''); remoteSystemInfoRef.current = '';
         showDaemonToast('Daemon disconnected', false);
       }
+      // AI sudo (askpass broker). Handled here, not in the per-turn listener,
+      // so a resolution that arrives after Stop or outside a turn still lands.
+      if (msg.type === 'sudo_prompt') {
+        setDisplayItems(prev => [...prev, {
+          type: 'sudo' as const,
+          id: nextBlockId(),
+          requestId: String(msg.requestId),
+          prompt: typeof msg.prompt === 'string' ? msg.prompt : '',
+          status: 'pending' as const,
+        }]);
+      }
+      if (msg.type === 'sudo_resolved') {
+        const requestId = String(msg.requestId);
+        setDisplayItems(prev => applySudoResolved(prev, requestId, msg.outcome, nextBlockId));
+      }
+      if (msg.type === 'sudo_auth') {
+        setDisplayItems(prev => [...prev, {
+          type: 'sudo' as const, id: nextBlockId(), requestId: '', prompt: '', status: 'auto' as const,
+        }]);
+      }
     });
     return cleanup;
   }, [tabId]);
@@ -413,11 +439,18 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     setDaemonCardState(null);
   };
 
+  const aiNeedsInput = hasPendingSudo(displayItems);
   useEffect(() => {
-    if (visible) {
+    onAiNeedsInputChange?.(aiNeedsInput);
+  }, [aiNeedsInput, onAiNeedsInputChange]);
+
+  // Never pull focus to the composer while an AI sudo field is pending — a
+  // password typed there would be sent to the AI.
+  useEffect(() => {
+    if (visible && !aiNeedsInput) {
       requestAnimationFrame(() => inputRef.current?.focus());
     }
-  }, [visible]);
+  }, [visible, aiNeedsInput]);
 
   const refreshCwd = useCallback(async (id: number) => {
     try {
@@ -1099,6 +1132,13 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         if (hasNewData) updateItem();
       }
 
+      if (msg.type === 'sudo_prompt' || msg.type === 'sudo_auth') {
+        // The sudo item was appended by the always-on listener; later AI text
+        // starts a new block below it instead of growing the one above.
+        needsNewBlock = true;
+        return;
+      }
+      if (msg.type === 'sudo_resolved') return;
       if (msg.type === 'approval_needed') {
         setDisplayItems(prev => {
           const updated = prev.map(item =>
@@ -1308,6 +1348,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     if (aiCleanupRef.current) {
       const blockId = aiBlockIdRef.current;
       providerRef.current.stop();
+      // Belt and braces: the broker's cancel notice follows, but a dead field
+      // must not linger even if it is late.
+      setDisplayItems(prev => cancelPendingSudo(prev));
       if (blockId) {
         setDisplayItems(prev => prev.map(item =>
           item.type === 'ai' && item.id === blockId
@@ -1499,11 +1542,11 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   useEffect(() => {
     if (!visible) return;
     const handleFocus = () => {
-      if (!modeSignals.altScreenVisible && !awaitingInput && !passwordPrompt) inputRef.current?.focus();
+      if (!modeSignals.altScreenVisible && !awaitingInput && !passwordPrompt && !aiNeedsInput) inputRef.current?.focus();
     };
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [visible, modeSignals.altScreenVisible, awaitingInput, passwordPrompt]);
+  }, [visible, modeSignals.altScreenVisible, awaitingInput, passwordPrompt, aiNeedsInput]);
 
   const surface = deriveInputSurface({
     ...modeSignals,
@@ -1579,7 +1622,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   useEffect(() => {
     const target = focusTargetFor(surface);
     if (target === 'composer') {
-      requestAnimationFrame(() => inputRef.current?.focus());
+      if (!aiNeedsInput) requestAnimationFrame(() => inputRef.current?.focus());
     } else if (target === 'xterm') {
       inputRef.current?.blur();
       requestAnimationFrame(() => hiddenXtermRef.current?.focus());
@@ -1587,7 +1630,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       // tier1: the card's own line/password input self-focuses (CommandBlock effect).
       inputRef.current?.blur();
     }
-  }, [surface]);
+  }, [surface, aiNeedsInput]);
 
   // Welcome-card actions. Each one does exactly what its keybinding does —
   // the card is a second door onto the same room, not a separate feature.

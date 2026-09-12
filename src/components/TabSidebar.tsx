@@ -167,6 +167,7 @@ export function TabSidebar({ tabs, activeTabId, onSelectTab, onNewTab, onCloseTa
                 </div>
               </div>
               {tab.aiWorking && <span className={styles.workingDot} aria-label="AI working" />}
+              {tab.aiNeedsInput && !isActive && <span className={styles.attentionDot} aria-label="Needs your input" />}
               {isActive && (
                 <TrustBadge level={tab.trustLevel} modeColor={modeColor} contextMode={tab.contextMode} isRemote={tab.isRemote} />
               )}
