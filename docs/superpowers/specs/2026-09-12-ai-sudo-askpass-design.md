@@ -1,7 +1,7 @@
 # AI sudo via TAI askpass — design
 
 Date: 2026-09-12
-Status: approved in brainstorming; revised after the feasibility probe (secret now returned over the socket on both platforms)
+Status: approved, implemented
 
 ## Problem
 
@@ -23,6 +23,10 @@ tty; the terminal shell (`bash`, `pts/5`) has one.
 
 AI-initiated `sudo` uses TAI's own password widget, inside the AI block that
 ran the command, and shares the same session-scoped cache as the terminal.
+Under normal (non-adversarial) operation, the plaintext password stays out of
+the AI's environment, tool output, logs, transcripts and renderer payloads.
+(See Threat model for what this does not cover against a deliberately
+adversarial AI.)
 
 ## Decisions
 
@@ -57,9 +61,12 @@ Two sibling apps solve a similar problem
 
 Why TAI differs:
 
-1. **Plaintext never reaches the AI.** A readable password file contradicts
-   TAI's threat model, so the secret stays in the main process and is only
-   released to a verified sudo child.
+1. **Plaintext stays out of the AI's ordinary reach.** A readable password
+   file hands the secret to the AI unconditionally; here the secret stays in
+   the main process and is released only to a verified sudo child, so a
+   non-adversarial AI never sees it. (A deliberately adversarial AI can still
+   obtain it — see Threat model — but only by actively working for it, not by
+   reading a known path.)
 2. **Provider-agnostic.** The askpass socket works for Claude, Codex and
    Gemini alike; a `PreToolUse` hook is Claude-only.
 3. **Prompts on sudo's actual request**, not a regex guess about whether a
@@ -71,36 +78,100 @@ exist to explain its failures.
 
 ## Threat model
 
-The AI process can read its own environment, execute `$SUDO_ASKPASS`, read and
-modify the generated helper file, connect to TAI's socket, and send signals to
-any process running as the same user. It must not be able to obtain the cached
-secret.
+**What this design achieves:** under normal, non-adversarial operation, the
+plaintext password never enters the AI's context — not in its environment, not
+in tool output, not in logs, not in any transcript, not in any renderer
+payload the AI could later read back. It stays in the main process and is
+released only over the socket to a verified sudo child. This also stops
+*accidental* disclosure: the helper never echoes the secret anywhere the AI's
+tool output would capture it, and nothing prints `$SUDO_ASKPASS` or the env to
+a log the AI might read.
 
-It is **not** a goal to stop the AI from running root commands once a secret is
-cached — auto-fill (decision above) deliberately allows that, gated by TAI's
-existing tool approval in Ask mode. The goal is that the **plaintext password
-never reaches the AI**, since a password is reusable beyond sudo.
+**What it does not achieve:** it does not protect the password from an AI that
+is deliberately trying to exfiltrate it. The parent check (`resolveSudoParent`)
+only verifies that a claimant's parent is a root-owned `sudo` process — it does
+not and cannot verify that the claimant *is* TAI's own generated helper,
+because the helper is same-uid and non-dumpable, so its exe/fd/environ cannot
+be inspected from the broker (see `sudoParent`: `/proc/<ppid>/exe` is
+deliberately not read; the same non-dumpable-process limits mean the broker
+cannot inspect a *claimant's* identity either). Concretely, a deliberately
+malicious AI can obtain the secret with no race required:
 
-Therefore all trust decisions live in the main process. The helper is
-untrusted.
+- **Any direct child of root `sudo` works, not just TAI's helper.** With a
+  secret cached, the AI runs `SUDO_ASKPASS=/tmp/x sudo -A true` where `/tmp/x`
+  is its own program that connects to the broker's socket (the path is
+  readable inside `askpass.cjs`, which the AI can also read) and sends its own
+  pid. Its parent is root `sudo`, the pid has no prior claim, so after the
+  150 ms auto-fill hold the broker sends the secret straight to the AI's own
+  helper.
+- **Rewriting the generated helper.** The AI can overwrite the user-owned,
+  0700 `askpass.cjs` in place (e.g. append a line that also writes the secret
+  to a file it controls) before triggering any sudo, cached or not; the next
+  legitimate sudo invocation runs the tampered file.
+- **`sudo -u $USER` child.** A `sudo` invoked to run as the invoking user still
+  has a root parent and asks for a password the same way; same bypass applies.
+- **Nothing cached, user types the password.** The trusted field the user
+  types into still just answers whichever helper claimed the pid tied to that
+  `key` — if the AI has substituted its own `SUDO_ASKPASS`/helper for that
+  sudo invocation, the user's keystrokes are delivered to the AI's program,
+  not TAI's.
 
-Because the secret is returned over the socket, a client can receive it only
-by claiming the pid of a process whose parent is root-privileged `sudo`. Two
-broker rules close the accidental and naive cases:
+None of these need a timing race; they work every time. The spec previously
+called out a `SIGSTOP`-based race against the real helper as the weakest
+vector — that undersold it by a wide margin and is superseded by the above,
+which is a subset of the same underlying gap (same-uid, no way to authenticate
+the claimant beyond "child of sudo").
+
+**Why there is no complete fix.** The helper runs at the same uid as TAI and
+sudo's askpass child is non-dumpable, so the broker cannot inspect a
+claimant's binary, open fds, or environment to confirm it is the exact file
+TAI wrote. Any check the broker could add is itself spoofable by a same-uid
+process (see rejected hardening below). This is a structural limit of the
+askpass mechanism, not a bug in this implementation.
+
+**Root already implies AI compromise.** Once a secret is cached and
+auto-filled once, the AI already has root (that is what auto-fill is for,
+gated by TAI's tool-approval mode). Root can read TAI's own process memory,
+so an adversarial AI that reaches root through the *legitimate* path can
+recover the cached secret directly, regardless of the broker. The guarantee
+in this design was therefore only ever meaningful against a
+**non-adversarial** AI (bugs, prompt confusion, accidental leakage) — not one
+actively trying to exfiltrate the password.
+
+**Rejected hardening:** checking that the claimant's `/proc/<pid>/cmdline` is
+exactly `[process.execPath, helperPath, prompt]` and that `helperPath`'s file
+hash matches the in-memory script at request time. This would block the
+laziest spoofers but not a same-uid process that spawns
+`process.execPath helperPath prompt` itself, or one that reads the real
+helper's content and replays it verbatim, or races via `NODE_OPTIONS`/TOCTOU
+between the hash check and the read. It was rejected because it adds
+meaningful code for a check that is itself spoofable and would not close the
+actual gap above.
+
+**Still stronger than Otto/SAI.** Both siblings write the password to a
+`0600` file that the agent can `cat` directly, with no verification step at
+all. This design's remaining exposure requires the AI to actively construct a
+socket client or rewrite the helper; Otto/SAI's exposes the plaintext to a
+plain read of a known path. The guarantee here is narrower than originally
+stated, but it is not equivalent to "no protection."
+
+Given all of the above, all trust decisions still live in the main process
+and the helper remains untrusted — that discipline is what stops
+*accidental* leaks and keeps the bar for a deliberate exfiltration at "write
+and run a program," not "read a file." Two broker rules still close the
+accidental and naive cases:
 
 - **Single use per helper pid.** A pid is answered at most once. A spoofer that
   claims a real helper's pid after that helper was answered gets nothing.
-- **Duplicate-claim tripwire.** A spoofer must connect before or alongside the
-  real helper. Any second claim on a pid that already has a pending or answered
+- **Duplicate-claim tripwire.** A spoofer that races the *real* helper (rather
+  than substituting its own `SUDO_ASKPASS`) must connect before or alongside
+  it. Any second claim on a pid that already has a pending or answered
   request refuses **both**, clears the credential vault and shows a warning in
   the AI block. Auto-fill waits `AUTOFILL_HOLD_MS` (150 ms) before answering so
-  that a near-simultaneous duplicate trips the wire instead of racing it.
-
-**Residual risk (accepted):** a deliberately malicious agent that races sudo's
-helper spawn, `SIGSTOP`s the real helper before it connects (same-uid signals
-are allowed), and claims its pid would pass the parent check with no competing
-claim and could receive the secret. This requires a targeted attack on TAI,
-not accidental behaviour, and is accepted.
+  that a near-simultaneous duplicate trips the wire instead of racing it. This
+  defends against a race on the real helper; it does nothing against the
+  substituted-`SUDO_ASKPASS` bypass above, which never touches the real helper
+  at all.
 
 ## Architecture
 
@@ -264,7 +335,7 @@ Duplicate claim:
 | Parallel prompts | Queue per key. After any fill of sudo process P (auto-fill or answer), no *different* sudo process is auto-filled (any key) until P has gone `FILL_SETTLE_MS = 3000` without asking again; those requests stay queued (not prompted, not refused) and are re-evaluated when the window ends, one settle window per fill. If P re-asks inside the window, the reject path runs (vault cleared, `pty:secret-state false`, prompt) and the queued ones fall to prompt. So a wrong remembered/cached secret costs one faillock attempt, not one per parallel sudo. |
 | TAI quits mid-prompt | Socket closes → helper EOF → exit 1. |
 | Broker failed to start | `askpassEnv` returns `{}`; AI sudo behaves as today. |
-| Any secret handling | Never logged, never in env, never in transcripts, never in any renderer message; leaves the main process only as the socket reply to a verified, first claim on a helper pid. Renderer holds a typed secret only until Enter. |
+| Any secret handling | Never logged, never in env, never in transcripts, never in any renderer message; leaves the main process only as the socket reply to a verified, first claim on a helper pid. Renderer holds a typed secret only until Enter. This closes accidental disclosure and blocks a non-adversarial AI; it does not stop a deliberately adversarial AI from claiming the pid itself (see Threat model). |
 
 ## Testing
 
@@ -332,5 +403,6 @@ test only.
 - Remote-exec / SSH-routed AI tools.
 - Persisting the secret across restarts.
 - Changing terminal auto-fill behaviour, including enabling it on macOS.
-- Defending against a targeted same-uid attacker that stops the real helper
-  (see Threat model).
+- Defending against a deliberately adversarial AI trying to obtain the
+  password (substituted `SUDO_ASKPASS`, helper rewrite, or a targeted
+  same-uid race against the real helper — see Threat model).
