@@ -112,11 +112,20 @@ jobs:
       - run: npm run build
       - name: Build daemon binaries
         run: cd daemon && make all
+      - name: Import signing certificate
+        uses: apple-actions/import-codesign-certs@v7
+        with:
+          p12-file-base64: ${{ secrets.CSC_LINK }}
+          p12-password: ${{ secrets.CSC_KEY_PASSWORD }}
+          keychain: signing_temp
       - name: Build macOS
+        # Do not set CSC_LINK here. electron-builder would then build its own
+        # keychain and call `security set-key-partition-list -k` with the p12
+        # password instead of the keychain password, which macOS 25.6 rejects.
+        # Pointing at a keychain we imported ourselves skips that path.
         run: npx electron-builder --mac dmg zip --publish never
         env:
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          CSC_KEYCHAIN: signing_temp
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
