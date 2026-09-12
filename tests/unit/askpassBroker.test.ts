@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
-  AskpassBroker, AUTOFILL_HOLD_MS, type BrokerDeps, type AskpassReply,
+  AskpassBroker, AUTOFILL_HOLD_MS, FILL_SETTLE_MS, type BrokerDeps, type AskpassReply,
 } from '../../electron/services/askpassBroker';
 
 const SECRET = 'correct horse';
@@ -39,13 +39,15 @@ function setup(opts: { vault?: ReturnType<typeof makeVault>; sudoPid?: (pid: num
   };
   /** Fake clock: move time forward and run every timer now due, in due order. */
   const advance = (ms: number) => {
-    now += ms;
+    const target = now + ms;
     for (;;) {
-      const next = timers.filter((t) => !t.cleared && t.due <= now).sort((a, b) => a.due - b.due)[0];
-      if (!next) return;
+      const next = timers.filter((t) => !t.cleared && t.due <= target).sort((a, b) => a.due - b.due)[0];
+      if (!next) break;
+      now = Math.max(now, next.due); // timers scheduled while firing count from their fire time
       next.cleared = true;
       next.fn();
     }
+    now = target;
   };
   return { broker, deps, send, vault, request, advance, timers };
 }
@@ -121,12 +123,14 @@ describe('AskpassBroker', () => {
     expect(messages(send).at(-1)).toEqual({ type: 'sudo_prompt', requestId: 'req-2', prompt: '[sudo] password for me:' });
   });
 
-  it('a different sudo process after an auto-fill auto-fills again', () => {
+  it('a different sudo process after an auto-fill auto-fills again once the fill settles', () => {
     const { request, advance } = setup({ vault: makeVault(SECRET) });
     const a = request(42);  // sudo 1042
     advance(AUTOFILL_HOLD_MS);
     const b = request(43);  // sudo 1043
-    advance(AUTOFILL_HOLD_MS);
+    advance(FILL_SETTLE_MS - 1);
+    expect(b.reply).not.toHaveBeenCalled();
+    advance(1 + AUTOFILL_HOLD_MS);
     expect(a.reply).toHaveBeenCalledWith({ ok: true, secret: SECRET });
     expect(b.reply).toHaveBeenCalledWith({ ok: true, secret: SECRET });
   });
@@ -148,7 +152,7 @@ describe('AskpassBroker', () => {
     const b = request(43);
     expect(messages(send).filter((m) => m.type === 'sudo_prompt')).toHaveLength(1);
     broker.answer('req-1', SECRET, true);
-    advance(AUTOFILL_HOLD_MS);
+    advance(FILL_SETTLE_MS + AUTOFILL_HOLD_MS);
     expect(b.reply).toHaveBeenCalledWith({ ok: true, secret: SECRET });
     expect(messages(send).filter((m) => m.type === 'sudo_prompt')).toHaveLength(1);
   });
@@ -213,9 +217,10 @@ describe('AskpassBroker', () => {
   });
 
   it('clears timers when a request resolves', () => {
-    const { broker, request, timers } = setup();
+    const { broker, request, timers, advance } = setup();
     request(42);
     broker.answer('req-1', SECRET, false);
+    advance(FILL_SETTLE_MS);
     expect(timers.every((t) => t.cleared)).toBe(true);
   });
 
@@ -249,8 +254,10 @@ describe('AskpassBroker', () => {
     const { request, send, advance } = setup({ vault, sudoPid: (pid) => sudoPidFor[pid] });
     const a = request(42);   // sudo A (900) auto-fills
     advance(AUTOFILL_HOLD_MS);
+    advance(FILL_SETTLE_MS);
     const b = request(43);  // sudo B (901) auto-fills
     advance(AUTOFILL_HOLD_MS);
+    advance(FILL_SETTLE_MS);
     const a2 = request(44); // sudo A (900) asks again: must reject, not auto-fill
     advance(AUTOFILL_HOLD_MS);
     expect(a.reply).toHaveBeenCalledWith({ ok: true, secret: SECRET });
@@ -281,6 +288,110 @@ describe('AskpassBroker', () => {
     advance(AUTOFILL_HOLD_MS);
     expect(reply).toHaveBeenCalledTimes(1);
     expect(messages(send)).toEqual([]);
+  });
+});
+
+describe('AskpassBroker settle window for parallel sudos (pam_faillock)', () => {
+  const sudoPidFor: Record<number, number> = { 42: 900, 43: 901, 44: 902, 45: 900 };
+  const sudoPid = (pid: number) => sudoPidFor[pid];
+  const gotSecret = (r: ReturnType<typeof vi.fn>) => JSON.stringify(r.mock.calls).includes('"ok":true');
+
+  it('wrong remembered answer: only P gets the secret before its re-ask; B and C never do', () => {
+    const vault = makeVault();
+    const { broker, request, send, advance } = setup({ vault, sudoPid });
+    const a = request(42);
+    const b = request(43);
+    const c = request(44);
+    broker.answer('req-1', 'wrong', true);
+    expect(a.reply).toHaveBeenCalledWith({ ok: true, secret: 'wrong' });
+    advance(2000);                  // pam_faildelay; B and C must still be waiting
+    expect(b.reply).not.toHaveBeenCalled();
+    expect(c.reply).not.toHaveBeenCalled();
+    expect(messages(send).filter((m) => m.type === 'sudo_prompt')).toHaveLength(1);
+    request(45);                    // sudo A re-asks inside the window: reject
+    expect(vault.isSet()).toBe(false);
+    expect(send).toHaveBeenCalledWith('pty:secret-state', false);
+    expect(messages(send).at(-1)).toEqual({ type: 'sudo_prompt', requestId: 'req-4', prompt: '[sudo] password for me:' });
+    advance(10 * FILL_SETTLE_MS);
+    expect(b.reply).not.toHaveBeenCalled();
+    expect(c.reply).not.toHaveBeenCalled();
+    expect(JSON.stringify(send.mock.calls)).not.toContain('wrong');
+    broker.cancel('req-4');         // B then falls to a prompt, not an auto-fill
+    expect(messages(send).at(-1)).toEqual({ type: 'sudo_prompt', requestId: 'req-2', prompt: '[sudo] password for me:' });
+    expect(b.reply).not.toHaveBeenCalled();
+  });
+
+  it('wrong cached secret: the first auto-fill blocks B and C until its re-ask rejects', () => {
+    const vault = makeVault('stale');
+    const { request, send, advance } = setup({ vault, sudoPid });
+    const a = request(42);
+    const b = request(43, 'tab_2');
+    const c = request(44, 'tab_3');
+    advance(AUTOFILL_HOLD_MS);
+    expect(gotSecret(a.reply) || gotSecret(b.reply) || gotSecret(c.reply)).toBe(true);
+    const filled = [a, b, c].filter((x) => gotSecret(x.reply));
+    expect(filled).toEqual([a]);
+    advance(2000);
+    request(45);                    // sudo A re-asks
+    advance(10 * FILL_SETTLE_MS);
+    expect(b.reply).not.toHaveBeenCalled();
+    expect(c.reply).not.toHaveBeenCalled();
+    expect(messages(send, 'tab_2')).toEqual([{ type: 'sudo_prompt', requestId: 'req-2', prompt: '[sudo] password for me:' }]);
+    expect(messages(send, 'tab_3')).toEqual([{ type: 'sudo_prompt', requestId: 'req-3', prompt: '[sudo] password for me:' }]);
+  });
+
+  it('correct secret: B and C auto-fill after the window, one settle window apart', () => {
+    const vault = makeVault();
+    const { broker, request, send, advance } = setup({ vault, sudoPid });
+    request(42);
+    const b = request(43);
+    const c = request(44);
+    broker.answer('req-1', SECRET, true);
+    advance(FILL_SETTLE_MS - 1);
+    expect(b.reply).not.toHaveBeenCalled();
+    advance(1 + AUTOFILL_HOLD_MS);
+    expect(b.reply).toHaveBeenCalledWith({ ok: true, secret: SECRET });
+    expect(c.reply).not.toHaveBeenCalled();
+    advance(FILL_SETTLE_MS + AUTOFILL_HOLD_MS);
+    expect(c.reply).toHaveBeenCalledWith({ ok: true, secret: SECRET });
+    expect(messages(send).filter((m) => m.type === 'sudo_prompt')).toHaveLength(1);
+    expect(vault.isSet()).toBe(true);
+  });
+
+  it('a hold already running in another key waits if a fill lands first', () => {
+    const vault = makeVault();
+    const { broker, request, advance } = setup({ vault, sudoPid });
+    request(42);                    // tab_1 prompt
+    broker.answer('req-1', SECRET, true);
+    const b = request(43, 'tab_2');
+    advance(AUTOFILL_HOLD_MS);
+    expect(b.reply).not.toHaveBeenCalled();
+    advance(FILL_SETTLE_MS);
+    expect(b.reply).toHaveBeenCalledWith({ ok: true, secret: SECRET });
+  });
+
+  it('cancel, cancelKey and cancelAll leave no request or hold timers running; cancelAll clears settle timers', () => {
+    const vault = makeVault();
+    const { broker, request, advance, timers } = setup({ vault, sudoPid });
+    request(42);
+    const b = request(43);
+    const c = request(44, 'tab_2');
+    broker.answer('req-1', SECRET, true);
+    broker.cancel('req-2');
+    expect(b.reply).toHaveBeenCalledWith({ ok: false });
+    broker.cancelKey('tab_2');
+    expect(c.reply).toHaveBeenCalledWith({ ok: false });
+    expect(timers.filter((t) => !t.cleared)).toHaveLength(1); // only the settle window
+    advance(FILL_SETTLE_MS);        // window ends with nothing to resurrect
+    expect(b.reply).toHaveBeenCalledTimes(1);
+    expect(c.reply).toHaveBeenCalledTimes(1);
+
+    const d = request(43);
+    broker.answer('req-4', SECRET, true);
+    request(44);                    // queued behind the settle window
+    broker.cancelAll();
+    expect(d.reply).toHaveBeenCalledTimes(1);
+    expect(timers.every((t) => t.cleared)).toBe(true);
   });
 });
 

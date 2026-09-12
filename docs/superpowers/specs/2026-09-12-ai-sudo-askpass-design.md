@@ -261,7 +261,7 @@ Duplicate claim:
 | User cancels | Helper exits 1; sudo reports no password. Claim released. |
 | No answer in 5 min | Cancel as above. |
 | AI turn aborted / tab closed | Cancel all pending for that key. |
-| Parallel prompts | Queue per key; if the first answer sets Remember, the rest auto-fill. |
+| Parallel prompts | Queue per key. After any fill of sudo process P (auto-fill or answer), no *different* sudo process is auto-filled (any key) until P has gone `FILL_SETTLE_MS = 3000` without asking again; those requests stay queued (not prompted, not refused) and are re-evaluated when the window ends, one settle window per fill. If P re-asks inside the window, the reject path runs (vault cleared, `pty:secret-state false`, prompt) and the queued ones fall to prompt. So a wrong remembered/cached secret costs one faillock attempt, not one per parallel sudo. |
 | TAI quits mid-prompt | Socket closes → helper EOF → exit 1. |
 | Broker failed to start | `askpassEnv` returns `{}`; AI sudo behaves as today. |
 | Any secret handling | Never logged, never in env, never in transcripts, never in any renderer message; leaves the main process only as the socket reply to a verified, first claim on a helper pid. Renderer holds a typed secret only until Enter. |

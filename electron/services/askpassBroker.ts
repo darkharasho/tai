@@ -8,6 +8,14 @@ import { decideAskpass } from './askpassDecision';
  */
 export const AUTOFILL_HOLD_MS = 150;
 
+/**
+ * After any fill of sudo process P, no *different* sudo process is auto-filled
+ * until P has gone this long without asking again. A wrong secret makes P
+ * re-ask after pam_faildelay (~2 s); without this, parallel sudos would each
+ * burn a pam_faillock attempt on the same wrong secret before P's re-ask lands.
+ */
+export const FILL_SETTLE_MS = 3000;
+
 /** Claims kept for single-use checks; the oldest settled ones are dropped beyond this. */
 const MAX_CLAIMS = 1024;
 
@@ -85,6 +93,8 @@ export class AskpassBroker {
   private lastFilled = new Map<string, number[]>();
   /** Helper pid → the request that claimed it: pending, answered, or burned by a duplicate. */
   private claims = new Map<number, Claim>();
+  /** Sudo pids filled recently and not yet settled → their settle timer. Global across keys (the vault is). */
+  private settling = new Map<number, unknown>();
 
   constructor(private readonly deps: BrokerDeps) {}
 
@@ -127,6 +137,7 @@ export class AskpassBroker {
       this.markFilled(p.key, p.sudoPid);
       this.deps.send('pty:secret-state', true);
     }
+    this.startSettle(p.sudoPid);
     this.remove(p);
     p.reply({ ok: true, secret });
     this.deps.send('ai:message', p.key, { type: 'sudo_resolved', requestId: p.id, outcome: 'answered' satisfies SudoOutcome });
@@ -147,6 +158,33 @@ export class AskpassBroker {
 
   cancelAll(): void {
     for (const p of [...this.pending]) this.dismiss(p);
+    for (const t of this.settling.values()) this.deps.clearTimer(t);
+    this.settling.clear();
+  }
+
+  /** (Re)starts the settle window for `sudoPid`, which was just given a secret. */
+  private startSettle(sudoPid: number): void {
+    const prior = this.settling.get(sudoPid);
+    if (prior !== undefined) this.deps.clearTimer(prior);
+    this.settling.set(sudoPid, this.deps.setTimer(() => this.endSettle(sudoPid), FILL_SETTLE_MS));
+  }
+
+  private endSettle(sudoPid: number): void {
+    const t = this.settling.get(sudoPid);
+    if (t === undefined) return;
+    this.deps.clearTimer(t);
+    this.settling.delete(sudoPid);
+    this.pumpAll();
+  }
+
+  /** True while some other sudo process's fill is unconfirmed. */
+  private settleBlocks(sudoPid: number): boolean {
+    for (const s of this.settling.keys()) if (s !== sudoPid) return true;
+    return false;
+  }
+
+  private pumpAll(): void {
+    for (const key of new Set(this.pending.map((x) => x.key))) this.pump(key);
   }
 
   /** Records that `sudoPid` has now had a (possibly wrong) secret replayed to it once, for `key`. */
@@ -225,13 +263,15 @@ export class AskpassBroker {
     if (!p) return;
     p.holdTimer = null;
     const secret = this.deps.vault.get();
-    if (!secret) {
+    if (!secret || this.settleBlocks(p.sudoPid)) {
       // Cache cleared during the hold (forgotten, or a reject): ask instead.
+      // Or another sudo was filled meanwhile (another key): wait for it to settle.
       p.state = 'queued';
       this.pump(p.key);
       return;
     }
     this.markFilled(p.key, p.sudoPid);
+    this.startSettle(p.sudoPid);
     this.remove(p);
     p.reply({ ok: true, secret: secret.toString('utf8') });
     this.deps.send('ai:message', p.key, { type: 'sudo_auth' });
@@ -239,31 +279,46 @@ export class AskpassBroker {
   }
 
   private pump(key: string): void {
-    const head = this.pending.find((x) => x.key === key);
-    if (!head || head.state !== 'queued') return;
+    const inKey = this.pending.filter((x) => x.key === key);
+    // One prompt visible (or one auto-fill holding) per key at a time.
+    if (inKey.some((x) => x.state !== 'queued')) return;
 
-    const decision = decideAskpass({
-      sudoPid: head.sudoPid,
-      vaultSet: this.deps.vault.isSet(),
-      lastFilledSudoPid: this.hasFilled(key, head.sudoPid) ? head.sudoPid : null,
-    });
+    for (const head of inKey) {
+      const decision = decideAskpass({
+        sudoPid: head.sudoPid,
+        vaultSet: this.deps.vault.isSet(),
+        lastFilledSudoPid: this.hasFilled(key, head.sudoPid) ? head.sudoPid : null,
+      });
 
-    if (decision === 'auto-fill') {
-      head.state = 'holding';
-      head.holdTimer = this.deps.setTimer(
-        () => this.finishAutofill(head.id),
-        this.deps.autofillHoldMs ?? AUTOFILL_HOLD_MS,
-      );
+      if (decision === 'auto-fill') {
+        // Another sudo's fill is unconfirmed: stay queued (no prompt, no refusal)
+        // and look further down the queue, where that sudo's re-ask may be waiting.
+        if (this.settleBlocks(head.sudoPid)) continue;
+        head.state = 'holding';
+        head.holdTimer = this.deps.setTimer(
+          () => this.finishAutofill(head.id),
+          this.deps.autofillHoldMs ?? AUTOFILL_HOLD_MS,
+        );
+        return;
+      }
+
+      if (decision === 'reject') {
+        this.deps.vault.clear();
+        this.lastFilled.delete(key);
+        this.deps.send('pty:secret-state', false);
+        // The re-ask confirms the fill failed; nothing is cached to replay now.
+        const t = this.settling.get(head.sudoPid);
+        if (t !== undefined) {
+          this.deps.clearTimer(t);
+          this.settling.delete(head.sudoPid);
+        }
+      }
+
+      head.state = 'shown';
+      this.deps.send('ai:message', key, { type: 'sudo_prompt', requestId: head.id, prompt: head.prompt });
+      // Requests waiting on the settle window in other keys now fall to prompt.
+      if (decision === 'reject') this.pumpAll();
       return;
     }
-
-    if (decision === 'reject') {
-      this.deps.vault.clear();
-      this.lastFilled.delete(key);
-      this.deps.send('pty:secret-state', false);
-    }
-
-    head.state = 'shown';
-    this.deps.send('ai:message', key, { type: 'sudo_prompt', requestId: head.id, prompt: head.prompt });
   }
 }
