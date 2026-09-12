@@ -3,7 +3,7 @@
 // live. Written against the pre-extraction component so the PasswordField
 // refactor cannot change terminal behaviour.
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { render, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { PasswordPrompt } from '../../src/components/PasswordPrompt';
 
 const write = vi.fn();
@@ -37,7 +37,7 @@ describe('PasswordPrompt (terminal)', () => {
 
   it('remembers the secret when toggled', () => {
     const { el } = setup();
-    fireEvent.click(document.body.querySelector('span[style*="cursor: pointer"]')!);
+    fireEvent.click(screen.getByText('Remember for this session'));
     fireEvent.keyDown(el, { key: 'x' });
     fireEvent.keyDown(el, { key: 'Enter' });
     expect(rememberSecret).toHaveBeenCalledWith('x');

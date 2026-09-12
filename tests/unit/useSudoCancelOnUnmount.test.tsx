@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render } from '@testing-library/react';
 import { useRef } from 'react';
 import type { DisplayItem } from '@/components/BlockList';
-import { useSudoCancelOnUnmount } from '@/hooks/useSudoCancelOnUnmount';
+import { useSudoCancelOnUnmount, cancelPendingSudoRequests } from '@/hooks/useSudoCancelOnUnmount';
+import { cancelPendingSudo, hasPendingSudo } from '@/utils/sudoDisplay';
 
 type SudoStatus = 'pending' | 'answered' | 'cancelled' | 'auto' | 'refused';
 const sudo = (status: SudoStatus, requestId: string): DisplayItem =>
@@ -50,5 +51,20 @@ describe('useSudoCancelOnUnmount', () => {
     (window as any).tai = undefined;
     const { unmount } = render(<Harness items={[sudo('pending', 'req-1')]} />);
     expect(() => unmount()).not.toThrow();
+  });
+});
+
+describe('cancelPendingSudoRequests (Stop)', () => {
+  const sudoCancel = vi.fn();
+  beforeEach(() => {
+    sudoCancel.mockReset();
+    (window as any).tai = { ai: { sudoCancel } };
+  });
+
+  it('cancels pending requests and, with cancelPendingSudo, clears the fields', () => {
+    const items = [sudo('pending', 'req-1'), sudo('answered', 'req-2')];
+    cancelPendingSudoRequests(items);
+    expect(sudoCancel.mock.calls).toEqual([['req-1']]);
+    expect(hasPendingSudo(cancelPendingSudo(items))).toBe(false);
   });
 });

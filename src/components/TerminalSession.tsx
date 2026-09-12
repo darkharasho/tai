@@ -7,7 +7,7 @@ import { TerminalInput, RemoteAiPill } from './TerminalInput';
 import type { TerminalInputHandle } from './TerminalInput';
 import { CommandBlock } from './CommandBlock';
 import {
-  deriveInputSurface, focusTargetFor, composerVisible, pinnedActiveBlock, shouldShowXterm,
+  deriveInputSurface, composerVisible, pinnedActiveBlock, shouldShowXterm,
 } from '@/utils/inputSurface';
 import {
   shouldOfferRemoteIntegration,
@@ -66,7 +66,8 @@ import {
   joinQueuedPrompts,
 } from '@/utils/queuedPrompts';
 import { useAiCleanupOnUnmount } from '@/hooks/useAiCleanupOnUnmount';
-import { useSudoCancelOnUnmount } from '@/hooks/useSudoCancelOnUnmount';
+import { useSudoCancelOnUnmount, cancelPendingSudoRequests } from '@/hooks/useSudoCancelOnUnmount';
+import { useSessionFocus, focusPendingSudoField } from '@/hooks/useSessionFocus';
 import { useSingleShotAi } from '@/hooks/useSingleShotAi';
 import { CommandPalette } from './CommandPalette';
 import { WorkflowRunDialog } from './WorkflowRunDialog';
@@ -254,6 +255,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const recorderRef = useRef<PtyRecorder>(new PtyRecorder());
   const hiddenXtermRef = useRef<HiddenXtermHandle>(null);
   const inputRef = useRef<TerminalInputHandle>(null);
+  const sessionRootRef = useRef<HTMLDivElement>(null);
   const providerRef = useRef(createProvider(aiProvider, tabId));
   const aiCleanupRef = useRef<(() => void) | null>(null);
   // Declared before useAiCleanupOnUnmount so pending sudo requests are
@@ -443,14 +445,6 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   useEffect(() => {
     onAiNeedsInputChange?.(aiNeedsInput);
   }, [aiNeedsInput, onAiNeedsInputChange]);
-
-  // Never pull focus to the composer while an AI sudo field is pending — a
-  // password typed there would be sent to the AI.
-  useEffect(() => {
-    if (visible && !aiNeedsInput) {
-      requestAnimationFrame(() => inputRef.current?.focus());
-    }
-  }, [visible, aiNeedsInput]);
 
   const refreshCwd = useCallback(async (id: number) => {
     try {
@@ -1345,12 +1339,15 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   useEffect(() => { rerunRef.current = handleRerun; }, [handleRerun]);
 
   const handleStopAI = useCallback(() => {
+    // Always, even with no live turn (a prompt can arrive outside one): cancel
+    // pending sudo requests in the main process (a no-op for any the provider
+    // stop already dismissed) and clear the fields locally so a dead one never
+    // lingers if the broker's notice is late.
+    cancelPendingSudoRequests(displayItemsRef.current);
+    setDisplayItems(prev => cancelPendingSudo(prev));
     if (aiCleanupRef.current) {
       const blockId = aiBlockIdRef.current;
       providerRef.current.stop();
-      // Belt and braces: the broker's cancel notice follows, but a dead field
-      // must not linger even if it is late.
-      setDisplayItems(prev => cancelPendingSudo(prev));
       if (blockId) {
         setDisplayItems(prev => prev.map(item =>
           item.type === 'ai' && item.id === blockId
@@ -1542,7 +1539,13 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   useEffect(() => {
     if (!visible) return;
     const handleFocus = () => {
-      if (!modeSignals.altScreenVisible && !awaitingInput && !passwordPrompt && !aiNeedsInput) inputRef.current?.focus();
+      if (aiNeedsInput) {
+        // HiddenXterm also grabs focus on window focus; hand it back to the
+        // pending sudo field on the next frame so the password stays there.
+        requestAnimationFrame(() => focusPendingSudoField(sessionRootRef.current));
+        return;
+      }
+      if (!modeSignals.altScreenVisible && !awaitingInput && !passwordPrompt) inputRef.current?.focus();
     };
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
@@ -1619,18 +1622,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     }
   }, [handleSubmit]);
 
-  useEffect(() => {
-    const target = focusTargetFor(surface);
-    if (target === 'composer') {
-      if (!aiNeedsInput) requestAnimationFrame(() => inputRef.current?.focus());
-    } else if (target === 'xterm') {
-      inputRef.current?.blur();
-      requestAnimationFrame(() => hiddenXtermRef.current?.focus());
-    } else {
-      // tier1: the card's own line/password input self-focuses (CommandBlock effect).
-      inputRef.current?.blur();
-    }
-  }, [surface, aiNeedsInput]);
+  // Visibility and surface focus restore; both yield to a pending AI sudo field.
+  useSessionFocus({ visible, surface, aiNeedsInput, rootRef: sessionRootRef, composerRef: inputRef, xtermRef: hiddenXtermRef });
 
   // Welcome-card actions. Each one does exactly what its keybinding does —
   // the card is a second door onto the same room, not a separate feature.
@@ -1667,8 +1660,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const handlePasswordDone = useCallback(() => setPasswordPrompt(false), []);
 
   // Find-in-blocks (Ctrl/Cmd+F) and block navigation (Ctrl/Cmd+Up/Down),
-  // visible tab only.
-  const sessionRootRef = useRef<HTMLDivElement>(null);
+  // visible tab only. (sessionRootRef is declared with the other element refs.)
   const findFlashTimerRef = useRef<number | null>(null);
   const navItemIdRef = useRef<string | null>(null);
   const handleFindNavigate = useCallback((itemId: string) => {

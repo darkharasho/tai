@@ -11,7 +11,7 @@ interface SudoPromptProps {
  */
 export function SudoPrompt({ requestId, prompt }: SudoPromptProps) {
   return (
-    <div>
+    <div data-testid="sudo-prompt">
       {prompt && (
         <div style={{ margin: '0 14px 4px', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
           {prompt}
