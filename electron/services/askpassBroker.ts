@@ -153,7 +153,9 @@ export class AskpassBroker {
 
   cancelKey(key: string): void {
     for (const p of this.pending.filter((x) => x.key === key)) this.dismiss(p);
-    this.lastFilled.delete(key);
+    // Keep lastFilled: a sudo that survives Stop and asks again must still be
+    // rejected, not handed the (possibly wrong) cached secret a second time.
+    // MAX_FILLED_PER_KEY bounds it.
   }
 
   cancelAll(): void {

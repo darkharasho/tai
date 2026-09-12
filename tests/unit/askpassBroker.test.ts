@@ -279,6 +279,21 @@ describe('AskpassBroker', () => {
     expect(messages(send)).toEqual([]);
   });
 
+  it('cancelKey keeps the filled-sudo record: a sudo surviving Stop that re-asks is rejected, not refilled', () => {
+    const vault = makeVault(SECRET);
+    const { broker, request, send, advance } = setup({ vault, sudoPid: () => 900 });
+    const a = request(42);
+    advance(AUTOFILL_HOLD_MS);
+    expect(a.reply).toHaveBeenCalledWith({ ok: true, secret: SECRET });
+    broker.cancelKey('tab_1');       // Stop; sudo 900 keeps running
+    const again = request(43);       // and asks again: the secret was wrong
+    advance(10 * AUTOFILL_HOLD_MS);
+    expect(again.reply).not.toHaveBeenCalled();
+    expect(vault.isSet()).toBe(false);
+    expect(send).toHaveBeenCalledWith('pty:secret-state', false);
+    expect(messages(send).at(-1)).toEqual({ type: 'sudo_prompt', requestId: 'req-2', prompt: '[sudo] password for me:' });
+  });
+
   it('cancelKey during the auto-fill hold clears the hold timer and never replies again', () => {
     const { broker, request, send, advance } = setup({ vault: makeVault(SECRET) });
     const { reply } = request(42);
