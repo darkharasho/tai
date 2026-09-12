@@ -35,3 +35,22 @@ jobs:
       - name: Rebuild node-pty for Node (vitest runs outside Electron)
         run: npm rebuild node-pty --build-from-source
       - run: npm test
+  # The askpass parent check and socket refusal run against real processes;
+  # macOS takes the ps path instead of /proc, so exercise it on a mac runner.
+  askpass-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      # Skip postinstall: it rebuilds node-pty for Electron, which these tests never load.
+      - run: npm ci --ignore-scripts
+      - run: >-
+          npx vitest run --config tests/vitest.config.ts
+          tests/unit/sudoParent.test.ts
+          tests/unit/askpassDecision.test.ts
+          tests/unit/askpassHelper.test.ts
+          tests/unit/askpassBroker.test.ts
+          tests/unit/askpassServer.test.ts
