@@ -118,14 +118,29 @@ jobs:
           p12-file-base64: ${{ secrets.CSC_LINK }}
           p12-password: ${{ secrets.CSC_KEY_PASSWORD }}
           keychain: signing_temp
+      - name: Verify signing identity is visible
+        # electron-builder silently falls back to an ad-hoc signature when it
+        # cannot see an identity, and that only surfaces minutes later as an
+        # opaque notarization rejection. Fail here instead, with the reason.
+        run: |
+          if ! security find-identity -v -p codesigning signing_temp.keychain | grep -q "Developer ID Application"; then
+            echo "::error::No Developer ID Application identity in signing_temp.keychain"
+            security find-identity -v signing_temp.keychain
+            exit 1
+          fi
       - name: Build macOS
         # Do not set CSC_LINK here. electron-builder would then build its own
         # keychain and call `security set-key-partition-list -k` with the p12
         # password instead of the keychain password, which macOS 25.6 rejects.
         # Pointing at a keychain we imported ourselves skips that path.
+        #
+        # CSC_KEYCHAIN must carry the .keychain suffix: it is handed straight to
+        # `security find-identity`, which does not resolve a bare "signing_temp".
+        # Without the suffix the lookup finds nothing and electron-builder
+        # ad-hoc signs, which notarization then rejects.
         run: npx electron-builder --mac dmg zip --publish never
         env:
-          CSC_KEYCHAIN: signing_temp
+          CSC_KEYCHAIN: signing_temp.keychain
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
