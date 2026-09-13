@@ -5,11 +5,14 @@ interface SudoCacheBadgeProps {
   cached: boolean;
   flash: boolean;        // briefly true right after an auto-fill
   onForget: () => void;
+  /** The terminal owns the pane (no composer): the bottom corner is live
+   *  terminal text, so only the brief flash shows, up in the top corner. */
+  overTerminal?: boolean;
 }
 
-export function SudoCacheBadge({ cached, flash, onForget }: SudoCacheBadgeProps) {
+export function SudoCacheBadge({ cached, flash, onForget, overTerminal = false }: SudoCacheBadgeProps) {
   const [hover, setHover] = useState(false);
-  if (!cached) return null;
+  if (!cached || (overTerminal && !flash)) return null;
   const label = flash ? '\u{1F513} sudo authenticated' : (hover ? '\u{1F513} forget sudo' : '\u{1F512} sudo cached');
   return (
     <button
@@ -19,7 +22,7 @@ export function SudoCacheBadge({ cached, flash, onForget }: SudoCacheBadgeProps)
       title="Forget cached sudo password"
       style={{
         position: 'absolute',
-        bottom: 10,
+        ...(overTerminal ? { top: 8 } : { bottom: 10 }),
         right: 28,
         zIndex: 20,
         padding: '3px 9px',
