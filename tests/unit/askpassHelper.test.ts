@@ -11,9 +11,9 @@ import {
 
 describe('buildAskpassEnv', () => {
   it('sets both vars on linux and darwin when the helper exists', () => {
-    expect(buildAskpassEnv('tab_1', '/tmp/x/askpass', 'linux', undefined))
+    expect(buildAskpassEnv('tab_1', '/tmp/x/askpass', 'linux', '0'))
       .toEqual({ SUDO_ASKPASS: '/tmp/x/askpass', TAI_ASKPASS_KEY: 'tab_1', SHLVL: '1' });
-    expect(buildAskpassEnv('tab_1', '/tmp/x/askpass', 'darwin', undefined))
+    expect(buildAskpassEnv('tab_1', '/tmp/x/askpass', 'darwin', '0'))
       .toEqual({ SUDO_ASKPASS: '/tmp/x/askpass', TAI_ASKPASS_KEY: 'tab_1', SHLVL: '1' });
   });
 
