@@ -683,7 +683,8 @@ export const TerminalInput = forwardRef<TerminalInputHandle, TerminalInputProps>
               value={value}
               onChange={handleChange}
               onKeyDown={handleKeyDown}
-              placeholder={disabled
+              // The zero-state ghost sits exactly where the placeholder draws.
+              placeholder={prediction ? '' : disabled
                 ? 'Command running… (input queues)'
                 : isAI
                   ? 'Ask AI anything, e.g. why did the last build fail and how do I fix it?'
