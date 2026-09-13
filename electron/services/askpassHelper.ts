@@ -55,13 +55,25 @@ sock.on('close', () => exit(1));
 `;
 }
 
+/**
+ * SHLVL is raised to at least 1 because a desktop-launched TAI has SHLVL=0, and
+ * bash treats `bash -c` with a socket on stdin at that level as an ssh session:
+ * it sources ~/.bashrc, where distro profile scripts (Bazzite's askpass.sh)
+ * overwrite SUDO_ASKPASS with ksshaskpass before the AI's sudo ever runs.
+ */
 export function buildAskpassEnv(
   key: string,
   askpassPath: string | null,
   platform: NodeJS.Platform,
+  shlvl: string | undefined = process.env.SHLVL,
 ): Record<string, string> {
   if (!askpassPath || (platform !== 'linux' && platform !== 'darwin')) return {};
-  return { SUDO_ASKPASS: askpassPath, TAI_ASKPASS_KEY: key };
+  const level = Number.parseInt(shlvl ?? '', 10);
+  return {
+    SUDO_ASKPASS: askpassPath,
+    TAI_ASKPASS_KEY: key,
+    SHLVL: String(Number.isInteger(level) && level > 1 ? level : 1),
+  };
 }
 
 function pidAlive(pid: number): boolean {

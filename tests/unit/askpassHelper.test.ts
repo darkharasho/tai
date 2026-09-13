@@ -11,11 +11,48 @@ import {
 
 describe('buildAskpassEnv', () => {
   it('sets both vars on linux and darwin when the helper exists', () => {
-    expect(buildAskpassEnv('tab_1', '/tmp/x/askpass', 'linux'))
-      .toEqual({ SUDO_ASKPASS: '/tmp/x/askpass', TAI_ASKPASS_KEY: 'tab_1' });
-    expect(buildAskpassEnv('tab_1', '/tmp/x/askpass', 'darwin'))
-      .toEqual({ SUDO_ASKPASS: '/tmp/x/askpass', TAI_ASKPASS_KEY: 'tab_1' });
+    expect(buildAskpassEnv('tab_1', '/tmp/x/askpass', 'linux', undefined))
+      .toEqual({ SUDO_ASKPASS: '/tmp/x/askpass', TAI_ASKPASS_KEY: 'tab_1', SHLVL: '1' });
+    expect(buildAskpassEnv('tab_1', '/tmp/x/askpass', 'darwin', undefined))
+      .toEqual({ SUDO_ASKPASS: '/tmp/x/askpass', TAI_ASKPASS_KEY: 'tab_1', SHLVL: '1' });
   });
+
+  it('raises SHLVL to at least 1 but keeps a higher level', () => {
+    expect(buildAskpassEnv('k', '/a', 'linux', '0').SHLVL).toBe('1');
+    expect(buildAskpassEnv('k', '/a', 'linux', 'junk').SHLVL).toBe('1');
+    expect(buildAskpassEnv('k', '/a', 'linux', '3').SHLVL).toBe('3');
+  });
+
+  // A desktop-launched TAI has SHLVL=0. Bash then treats `bash -c` with a
+  // socket on stdin as an rsh/ssh session and sources ~/.bashrc, where distro
+  // profile scripts (Bazzite's askpass.sh) reset SUDO_ASKPASS.
+  it.runIf(process.platform === 'linux' && fs.existsSync('/bin/bash'))(
+    'survives bash sourcing a bashrc that overwrites SUDO_ASKPASS',
+    async () => {
+      const home = fs.mkdtempSync(path.join(os.tmpdir(), 'askpass-home-'));
+      fs.writeFileSync(path.join(home, '.bashrc'), 'export SUDO_ASKPASS=/clobbered\n');
+      // Node pipes stdio over socketpairs, which is what trips bash's check.
+      const run = (extra: Record<string, string>) => new Promise<string>((resolve, reject) => {
+        const child = spawn('/bin/bash', ['-c', 'printf %s "$SUDO_ASKPASS"'], {
+          env: { HOME: home, PATH: '/usr/bin:/bin', SHLVL: '0', ...extra },
+          stdio: ['pipe', 'pipe', 'ignore'],
+        });
+        let out = '';
+        child.stdout!.on('data', (d) => { out += d; });
+        child.on('error', reject);
+        child.on('close', () => resolve(out));
+        child.stdin!.end();
+      });
+      try {
+        const bare = await run({ SUDO_ASKPASS: '/tai' });
+        // Only meaningful where bash was built with SSH_SOURCE_BASHRC.
+        if (bare !== '/clobbered') return;
+        expect(await run(buildAskpassEnv('k', '/tai', 'linux', '0'))).toBe('/tai');
+      } finally {
+        fs.rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
 
   it('sets nothing on win32 or when the broker is not running', () => {
     expect(buildAskpassEnv('tab_1', '/tmp/x/askpass', 'win32')).toEqual({});
