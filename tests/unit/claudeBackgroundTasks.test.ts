@@ -21,6 +21,18 @@ describe('BackgroundTaskTracker', () => {
     expect(t.waiting).toBe(false);
   });
 
+  it('counts running tasks, including transcript-skipped ones, until they settle', () => {
+    // A long foreground Bash also emits task_started, then nothing until it exits.
+    const t = new BackgroundTaskTracker();
+    feed(t, started('f1', 'sha256sum /dev/sda'));
+    feed(t, started('s1', 'hidden', { skip_transcript: true }));
+    expect(t.runningCount).toBe(2);
+    feed(t, notified('f1'));
+    expect(t.runningCount).toBe(1);
+    feed(t, updated('s1', 'killed'));
+    expect(t.runningCount).toBe(0);
+  });
+
   it('holds done and reports waiting while a background task runs', () => {
     const t = new BackgroundTaskTracker();
     feed(t, started('b1', 'Write ISO to /dev/sda'));

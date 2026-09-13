@@ -19,6 +19,8 @@ const TERMINAL = new Set(['completed', 'failed', 'killed', 'stopped']);
  */
 export class BackgroundTaskTracker {
   private tasks = new Map<string, BackgroundTask>();
+  /** Every started task, transcript-skipped or not: the CLI is silent while any run. */
+  private running = new Set<string>();
   /** A result arrived while tasks were pending; `done` is owed to the renderer. */
   waiting = false;
   /** The wake-up turn is streaming; task updates would split its text. */
@@ -26,6 +28,10 @@ export class BackgroundTaskTracker {
 
   get pendingCount(): number {
     return this.tasks.size;
+  }
+
+  get runningCount(): number {
+    return this.running.size;
   }
 
   /** Everything settled and still no wake-up turn: the CLI may never start one. */
@@ -63,14 +69,19 @@ export class BackgroundTaskTracker {
     if (!id) return false;
     switch (msg.subtype) {
       case 'task_started': {
+        this.running.add(id);
+        while (this.running.size > MAX_TASKS) this.running.delete(this.running.values().next().value!);
         if (msg.skip_transcript) return false;
         this.tasks.set(id, { id, description: typeof msg.description === 'string' ? msg.description : '' });
         while (this.tasks.size > MAX_TASKS) this.tasks.delete(this.tasks.keys().next().value!);
         return true;
       }
       case 'task_updated':
-        return TERMINAL.has(msg.patch?.status) && this.tasks.delete(id);
+        if (!TERMINAL.has(msg.patch?.status)) return false;
+        this.running.delete(id);
+        return this.tasks.delete(id);
       case 'task_notification':
+        this.running.delete(id);
         return this.tasks.delete(id);
       default:
         return false;

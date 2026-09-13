@@ -189,6 +189,16 @@ function startQuery(win: BrowserWindow | null, key: string, firstMessage: string
   const park = () => { if (!parked) { parked = true; watchdog.pause(); } };
   const unpark = () => { if (parked) { parked = false; watchdog.resume(); } };
 
+  // A foreground command that outlives a few seconds becomes a task too, and the
+  // CLI sends nothing until it exits — hashing a disk is not a hang. The Bash
+  // tool's own timeout bounds it, so hold the idle clock while any task runs.
+  let taskHold = false;
+  const syncTaskHold = (running: boolean) => {
+    if (running === taskHold) return;
+    taskHold = running;
+    if (running) watchdog.pause(); else watchdog.resume();
+  };
+
   const tasks = new BackgroundTaskTracker();
   // Every task settled but no wake-up turn started: close the block anyway.
   let stallTimer: ReturnType<typeof setTimeout> | null = null;
@@ -261,6 +271,7 @@ function startQuery(win: BrowserWindow | null, key: string, firstMessage: string
         watchdog.kick();
         if ((msg as any).session_id) state.sessionId = (msg as any).session_id;
         for (const env of tasks.process(msg, translateSdkMessage(msg))) safeSend(win, 'ai:message', key, env);
+        syncTaskHold(tasks.runningCount > 0);
         if (type === 'result') park();
         if (tasks.awaitingWake && !stallTimer) {
           stallTimer = setTimeout(() => {
