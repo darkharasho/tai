@@ -273,7 +273,11 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const isAiActive = () => aiCleanupRef.current !== null;
   const aiBlockIdRef = useRef<string | null>(null);
   const aiSuggestedCommands = useRef<Set<string>>(new Set());
-  const pendingCommandRef = useRef<{ command: string; startTime: number } | null>(null);
+  // fromShell: the card was opened when the shell started one command of a
+  // multi-line submit, so the finalized block's own command text is the truth.
+  const pendingCommandRef = useRef<{ command: string; startTime: number; fromShell?: boolean } | null>(null);
+  // The text of the last multi-line submit, while its commands may still run.
+  const multilineSubmitRef = useRef<string | null>(null);
   const preambleSentRef = useRef(false);
   const lastContextBlockIdRef = useRef<string | null>(null);
   const gitBranchRef = useRef<string | null>(null);
@@ -495,7 +499,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       const captured = capturedOutputRef.current;
       capturedOutputRef.current = null;
       let fixedBlock = pending
-        ? { ...block, command: pending.command, duration: Date.now() - pending.startTime }
+        ? { ...block, command: pending.fromShell ? block.command : pending.command, duration: Date.now() - pending.startTime }
         : block;
       if (captured && captured.trim()) {
         fixedBlock = { ...fixedBlock, output: captured, rawOutput: captured };
@@ -719,6 +723,24 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       if (ptyId === null) return;
       if (active) {
         window.tai?.pty?.startEchoPoll?.(ptyId);
+        // A multi-line submit opens no card up front. Without one, a command in
+        // it that asks for a password or goes interactive leaves the pinned
+        // region empty and the composer hidden, so open the card as each starts.
+        const submitted = multilineSubmitRef.current;
+        if (submitted !== null && !pendingCommandRef.current) {
+          const command = segmenter.pendingCommand || submitted;
+          const startTime = Date.now();
+          pendingCommandRef.current = { command, startTime, fromShell: true };
+          setDisplayItems(prev => capDisplayItems([...prev, {
+            type: 'command' as const,
+            block: {
+              id: 'pending', command, output: '', rawOutput: '',
+              promptText: segmenter.currentPrompt, startTime, duration: 0,
+              isRemote: segmenter.sshSessionActive,
+            },
+            active: true,
+          }]));
+        }
       } else {
         window.tai?.pty?.stopEchoPoll?.(ptyId);
         setPasswordPrompt(false);
@@ -1298,6 +1320,8 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       };
       // Only show a pending placeholder for single-line commands; multi-line
       // would otherwise show one big pending card while N real blocks arrive.
+      // Those get a card per command as the shell starts each (onBlockActive).
+      multilineSubmitRef.current = isMultiline ? value : null;
       if (!isMultiline) {
         pendingCommandRef.current = { command: display, startTime: Date.now() };
         beginSession(display);
@@ -1347,6 +1371,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       duration: 0,
       isRemote: promptInfo?.isRemote ?? false,
     };
+    multilineSubmitRef.current = null;
     pendingCommandRef.current = { command: display, startTime: Date.now() };
     beginSession(display);
     setDisplayItems(prev => capDisplayItems([...prev, { type: 'command' as const, block: pendingBlock, active: true }]));
