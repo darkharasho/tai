@@ -13,6 +13,7 @@ import { parseHistoryFile, unmetafyZsh } from './parseShellHistory';
 import { credentialVault } from './credentialVault';
 import { resolveForegroundDetail } from './foregroundProcess';
 import { decideAutoFill } from './sudoAutoFill';
+import { BootstrapEchoFilter } from './bootstrapEchoFilter';
 
 /** Commands whose argument can only ever be a directory. */
 const DIR_ONLY_COMMANDS = new Set(['cd', 'pushd', 'rmdir']);
@@ -130,6 +131,9 @@ export function completePathInsensitive(
   return out.slice(0, opts.limit ?? 50);
 }
 
+// How long PTY output may be held while waiting for bash to echo the injected
+// integration line before it is released unfiltered.
+const ECHO_FILTER_TIMEOUT_MS = 1500;
 const BACKPRESSURE_HIGH = 512 * 1024;
 const BACKPRESSURE_LOW = 128 * 1024;
 
@@ -442,9 +446,11 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
 
     const script = shellName ? integrationScriptFor(shellName) : null;
 
+    const echoFilter = new BootstrapEchoFilter();
     term.onData((data) => {
       lastDataAt = Date.now();
-      buffer.push(data);
+      const out = echoFilter.process(data);
+      if (out) buffer.push(out);
     });
 
     if (!isWindows && script && !(shellName === 'zsh' && zshShimActive)) {
@@ -463,7 +469,17 @@ export function setupPtyService(getWindow: () => BrowserWindow | null) {
         const elapsed = Date.now() - startedAt;
         if (idle >= 600 || elapsed >= 8000) {
           integrationInjected = true;
+          // fish syntax-highlights its echo, so only bash's is matched verbatim.
+          if (shellName === 'bash') {
+            echoFilter.arm(cmd.replace(/\n$/, ''));
+            setTimeout(() => {
+              if (!echoFilter.armed) return;
+              const held = echoFilter.flush();
+              if (held && allTerminals.has(id)) buffer.push(held);
+            }, ECHO_FILTER_TIMEOUT_MS);
+          }
           try { term.write(cmd); } catch (e) {
+            echoFilter.flush();
             console.warn('[tai] shell-integration injection failed', e);
           }
           return;
