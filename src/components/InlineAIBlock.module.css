@@ -638,6 +638,16 @@
   animation-delay: 0.4s;
 }
 
+.waitingLabel {
+  margin-left: 6px;
+  max-width: 60ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 @keyframes thinkingPulse {
   0%, 100% { opacity: 0.2; transform: scale(0.8); }
   50% { opacity: 1; transform: scale(1); }

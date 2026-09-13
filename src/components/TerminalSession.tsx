@@ -927,6 +927,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     let lastThinkingEntry = '';
     let currentAiId = aiId;
     let needsNewBlock = false;
+    // Entries before this index belong to an earlier turn of the same block
+    // (the one that ended to wait on a background task) and are never merged into.
+    let turnStart = 0;
 
     const updateItem = () => {
       const contentParts = entries.filter(e => e.kind === 'text').map(e => e.text);
@@ -934,7 +937,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       const entriesSnapshot = [...entries];
       setDisplayItems(prev => prev.map(item =>
         item.type === 'ai' && item.id === currentAiId
-          ? { ...item, content, entries: entriesSnapshot }
+          ? { ...item, content, entries: entriesSnapshot, waitingOn: undefined }
           : item
       ));
     };
@@ -1033,6 +1036,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           needsNewBlock = false;
           currentAiId = nextBlockId();
           entries = [];
+          turnStart = 0;
           knownToolIds = new Set<string>();
           lastTextEntry = '';
           lastThinkingEntry = '';
@@ -1071,9 +1075,9 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           // current turn, which the answer text may already sit after.
           let lastIdx = entries.length - 1;
           if (!thinkingIsDelta) {
-            while (lastIdx >= 0 && entries[lastIdx].kind === 'text') lastIdx--;
+            while (lastIdx >= turnStart && entries[lastIdx].kind === 'text') lastIdx--;
           }
-          const lastEntry = lastIdx >= 0 ? entries[lastIdx] : null;
+          const lastEntry = lastIdx >= turnStart ? entries[lastIdx] : null;
           if (lastEntry && lastEntry.kind === 'thinking') {
             const updated = thinkingIsDelta ? (lastEntry.text || '') + thinking : thinking;
             lastEntry.text = updated;
@@ -1098,7 +1102,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         if (text && (isDelta || text !== lastTextEntry)) {
           gotContent = true;
           const lastIdx = entries.length - 1;
-          const lastEntry = lastIdx >= 0 ? entries[lastIdx] : null;
+          const lastEntry = lastIdx >= turnStart ? entries[lastIdx] : null;
           if (lastEntry && lastEntry.kind === 'text') {
             const updated = isDelta ? (lastEntry.text || '') + text : text;
             lastEntry.text = updated;
@@ -1133,6 +1137,18 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
         return;
       }
       if (msg.type === 'sudo_resolved') return;
+      if (msg.type === 'waiting') {
+        // The model's turn ended but a background task will wake it; the block
+        // stays open and the wake-up turn continues below what is already there.
+        turnStart = entries.length;
+        lastTextEntry = '';
+        lastThinkingEntry = '';
+        const waitingOn = Array.isArray(msg.tasks) ? msg.tasks : [];
+        setDisplayItems(prev => prev.map(item =>
+          item.type === 'ai' && item.id === currentAiId ? { ...item, waitingOn } : item
+        ));
+        return;
+      }
       if (msg.type === 'approval_needed') {
         setDisplayItems(prev => {
           const updated = prev.map(item =>
@@ -1190,7 +1206,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
           if (text && text !== lastTextEntry) {
             gotContent = true;
             const lastIdx = entries.length - 1;
-            const lastEntry = lastIdx >= 0 ? entries[lastIdx] : null;
+            const lastEntry = lastIdx >= turnStart ? entries[lastIdx] : null;
             if (lastEntry && lastEntry.kind === 'text') {
               lastEntry.text = text;
             } else {
@@ -1836,6 +1852,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
       <SudoCacheBadge
         cached={sudoCache.cached}
         flash={sudoCache.flash}
+        overTerminal={!showComposer}
         onForget={() => window.tai?.pty?.forgetSecret?.()}
       />
       {findOpen && (

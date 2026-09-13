@@ -18,8 +18,12 @@ import { createIdleWatchdog } from './idleWatchdog';
 import { resolveClaudeExecutable } from './claudeExecutable';
 import { classifyProviderError } from '../../src/utils/classifyProviderError';
 import { askpassEnvFor, cancelAskpassForKey } from './askpassService';
+import { BackgroundTaskTracker } from './claudeBackgroundTasks';
 
 const sshManager = new RemoteSshManager();
+
+/** How long to wait for the CLI's wake-up turn after the last background task settles. */
+const WAKE_GRACE_MS = 30_000;
 
 // Resolved once: the CLI binary the SDK should spawn. Left null when we can't
 // find it, so the SDK falls back to its own lookup.
@@ -142,7 +146,6 @@ function startQuery(win: BrowserWindow | null, key: string, firstMessage: string
   const pending: SDKUserMessage[] = [firstMsg];
   let notify: (() => void) | null = null;
   let ended = false;
-  state.pushInput = (m) => { pending.push(m); notify?.(); };
   state.endInput = () => { ended = true; notify?.(); };
 
   async function* inputStream(): AsyncGenerator<SDKUserMessage> {
@@ -178,6 +181,21 @@ function startQuery(win: BrowserWindow | null, key: string, firstMessage: string
   // Arm before the query exists: a provider that hangs before its first message
   // would otherwise never start the clock, since only the read loop kicks it.
   watchdog.kick();
+
+  // Between turns the CLI is legitimately silent — waiting on the user, or on a
+  // background task to wake it — so the idle clock is parked, not left to abort
+  // the process (and every background command it owns).
+  let parked = false;
+  const park = () => { if (!parked) { parked = true; watchdog.pause(); } };
+  const unpark = () => { if (parked) { parked = false; watchdog.resume(); } };
+
+  const tasks = new BackgroundTaskTracker();
+  // Every task settled but no wake-up turn started: close the block anyway.
+  let stallTimer: ReturnType<typeof setTimeout> | null = null;
+  const clearStall = () => { if (stallTimer) { clearTimeout(stallTimer); stallTimer = null; } };
+
+  const pushInput = (m: SDKUserMessage) => { pending.push(m); notify?.(); };
+  state.pushInput = (m) => { clearStall(); unpark(); pushInput(m); };
 
   let q: ReturnType<typeof query>;
   try {
@@ -233,19 +251,40 @@ function startQuery(win: BrowserWindow | null, key: string, firstMessage: string
   (async () => {
     try {
       for await (const msg of q) {
+        const type = (msg as any).type;
+        // Only turn activity ends a park; task bookkeeping for a still-running
+        // task must not restart the clock with no turn to follow it.
+        if (type === 'assistant' || type === 'user' || type === 'stream_event') {
+          clearStall();
+          unpark();
+        }
         watchdog.kick();
         if ((msg as any).session_id) state.sessionId = (msg as any).session_id;
-        for (const env of translateSdkMessage(msg)) safeSend(win, 'ai:message', key, env);
+        for (const env of tasks.process(msg, translateSdkMessage(msg))) safeSend(win, 'ai:message', key, env);
+        if (type === 'result') park();
+        if (tasks.awaitingWake && !stallTimer) {
+          stallTimer = setTimeout(() => {
+            stallTimer = null;
+            for (const env of tasks.finish()) safeSend(win, 'ai:message', key, env);
+          }, WAKE_GRACE_MS);
+        }
       }
     } catch (err: any) {
       if (!(err instanceof AbortError) && err?.name !== 'AbortError') {
         const text = err?.message || String(err);
         const { category } = classifyProviderError(text);
         safeSend(win, 'ai:error', key, text, category);
+        tasks.finish();
         safeSend(win, 'ai:message', key, { type: 'done' });
       }
     } finally {
       watchdog.cancel();
+      clearStall();
+      // The CLI exited mid-wait on its own: the renderer is still owed a done.
+      // ai:stop already sent one and cleared busy, and a newer query on this key
+      // must not receive a stray done.
+      const owed = tasks.finish();
+      if (state.abort === abort && state.busy) for (const env of owed) safeSend(win, 'ai:message', key, env);
       if (state.abort === abort) {   // only the active query clears shared state
         state.busy = false;
         state.pushInput = null;

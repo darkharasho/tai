@@ -21,7 +21,7 @@ const PALETTE_KEY =
 
 export type DisplayItem =
   | { type: 'command'; block: SegmentedBlock; aiSuggested?: boolean; active?: boolean; awaitingInput?: boolean; restored?: boolean }
-  | { type: 'ai'; id: string; question: string; content: string; suggestedCommands: string[]; streaming: boolean; duration?: number; entries?: AIEntry[]; remote?: boolean }
+  | { type: 'ai'; id: string; question: string; content: string; suggestedCommands: string[]; streaming: boolean; duration?: number; entries?: AIEntry[]; remote?: boolean; waitingOn?: { id: string; description: string }[] }
   | { type: 'approval'; id: string; command: string; toolUseId: string; toolName: string; status: 'pending' | 'approved' | 'rejected'; input?: unknown; answers?: Record<string, string> }
   | { type: 'sudo'; id: string; requestId: string; prompt: string; status: 'pending' | 'answered' | 'cancelled' | 'auto' | 'refused' };
 
@@ -251,6 +251,7 @@ export function BlockList({
             content={item.content}
             suggestedCommands={item.suggestedCommands}
             streaming={item.streaming}
+            waitingOn={item.streaming ? item.waitingOn : undefined}
             duration={item.duration}
             entries={item.entries}
             onRunCommand={onRunSuggested}

@@ -34,6 +34,8 @@ interface InlineAIBlockProps {
   content: string;
   suggestedCommands?: string[];
   streaming?: boolean;
+  /** Set while the turn has ended but background tasks will wake the model. */
+  waitingOn?: { id: string; description: string }[];
   duration?: number;
   entries?: AIEntry[];
   onRunCommand: (cmd: string) => void;
@@ -104,6 +106,7 @@ export function InlineAIBlock({
   content,
   suggestedCommands,
   streaming,
+  waitingOn,
   duration,
   entries,
   onRunCommand,
@@ -356,6 +359,13 @@ export function InlineAIBlock({
                   <span className={styles.thinkingDot} />
                   <span className={styles.thinkingDot} />
                   <span className={styles.thinkingDot} />
+                  {waitingOn && (
+                    <span className={styles.waitingLabel}>
+                      {waitingOn.length === 0
+                        ? 'Background task finished, resuming'
+                        : `Waiting on ${waitingOn.length === 1 ? (waitingOn[0].description || 'background task') : `${waitingOn.length} background tasks`}`}
+                    </span>
+                  )}
                 </div>
               )}
             </div>
