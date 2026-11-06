@@ -42,7 +42,13 @@
     "win": {
       "target": "nsis",
       "icon": "build/icon.ico",
-      "artifactName": "tai-Setup-${version}.${ext}"
+      "artifactName": "tai-Setup-${version}.${ext}",
+      "azureSignOptions": {
+        "publisherName": "Michael Stephens",
+        "endpoint": "https://eus.codesigning.azure.net/",
+        "codeSigningAccountName": "darkharasho-signing",
+        "certificateProfileName": "public-trust"
+      }
     },
     "mac": {
       "target": [

@@ -144,10 +144,18 @@ Build artifacts locally:
 
 ```bash
 npm run build
-npx electron-builder --linux AppImage --win nsis --publish never
+npx electron-builder --linux AppImage --win nsis --publish never -c.win.azureSignOptions=
 ```
 
 This produces files in the `release/` directory including the AppImage, exe installer, and update manifest yml files.
+
+The empty `-c.win.azureSignOptions=` turns off Windows signing, so the local
+installer is **unsigned** (SmartScreen will warn). Windows builds are signed with
+Azure Artifact Signing (`win.azureSignOptions` in package.json), which needs a
+Windows machine and the `AZURE_TENANT_ID` / `AZURE_CLIENT_ID` /
+`AZURE_CLIENT_SECRET` credentials, so only the CI release signs them. Don't
+write `=null`: electron-builder keeps it as the string "null" and fails schema
+validation.
 
 Then create a published release with artifacts attached:
 
@@ -182,6 +190,7 @@ Tell the user: "Draft release created. GitHub Actions is now building artifacts 
 
 Explain that the CI workflow will automatically:
 - Build artifacts for all platforms (`.dmg`, `.exe`, `.AppImage`, auto-update manifests)
+- Sign the Windows installer with Azure Artifact Signing (the job fails if the `AZURE_*` secrets are missing or the signature isn't valid)
 - Attach them to the draft release
 - Publish the release (mark as non-draft) once all builds succeed
 
