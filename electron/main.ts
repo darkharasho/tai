@@ -20,6 +20,9 @@ import { registerWorkflowIpc } from './services/workflowStore';
 import { registerRecordingSave } from './services/recordingSave';
 import { setupTray, destroyTray, isQuitting, quitApp, revealWindow, registerQuitTracking, closeAction } from './services/tray';
 import type { ClosePreference } from './services/tray';
+import { guardStdio } from './services/stdioGuard';
+
+guardStdio();
 
 // A dev run and the installed build share app.getPath('userData'), and the
 // single-instance lock keys on that path. Once close-to-tray landed, the
