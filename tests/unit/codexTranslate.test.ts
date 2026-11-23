@@ -11,7 +11,7 @@ vi.mock('node:fs', () => ({
   default: { existsSync: () => false, readdirSync: () => [] },
 }));
 
-import { translateCodexEvent } from '../../electron/services/codex';
+import { translateCodexEvent, buildCodexArgs, unwrapShellCommand } from '../../electron/services/codex';
 
 describe('translateCodexEvent', () => {
   const projectPath = '/tmp/test-project';
@@ -101,7 +101,7 @@ describe('translateCodexEvent', () => {
 
   it('translates turn.failed to error + done', () => {
     const events = translateCodexEvent(
-      { type: 'turn.failed', message: 'Rate limited' },
+      { type: 'turn.failed', error: { message: 'Rate limited' } },
       projectPath,
     );
     expect(events).toHaveLength(2);
@@ -113,4 +113,54 @@ describe('translateCodexEvent', () => {
   it('returns empty array for unknown event types', () => {
     expect(translateCodexEvent({ type: 'unknown_thing' }, projectPath)).toEqual([]);
   });
+
+  // Shapes below are captured from codex-cli 0.147 `exec --json`.
+  it('reads file_change paths from changes[] and settles the tool on completion', () => {
+    const item = { id: 'item_2', type: 'file_change', changes: [{ path: '/tmp/p/hello.txt', kind: 'add' }] };
+    const started = translateCodexEvent({ type: 'item.started', item: { ...item, status: 'in_progress' } }, projectPath);
+    expect(started[0].message.content[0]).toMatchObject({ id: 'item_2', name: 'Edit', input: { file_path: '/tmp/p/hello.txt' } });
+    const done = translateCodexEvent({ type: 'item.completed', item: { ...item, status: 'completed' } }, projectPath);
+    expect(done[0].message.content[0]).toMatchObject({ type: 'tool_result', tool_use_id: 'item_2', is_error: false });
+  });
+
+  it('shows the command without the bash -lc wrapper', () => {
+    const events = translateCodexEvent(
+      { type: 'item.started', item: { id: 'item_1', type: 'command_execution', command: "/bin/bash -lc 'ls -la'" } },
+      projectPath,
+    );
+    expect(events[0].message.content[0].input.command).toBe('ls -la');
+    expect(unwrapShellCommand(String.raw`/bin/bash -lc 'echo '\''hi'\'''`)).toBe("echo 'hi'");
+    expect(unwrapShellCommand('git status')).toBe('git status');
+  });
+
+  it('extracts the API message from a nested turn.failed error', () => {
+    const raw = JSON.stringify({ type: 'error', status: 400, error: { message: "The 'sonnet' model is not supported." } });
+    const events = translateCodexEvent({ type: 'turn.failed', error: { message: raw } }, projectPath);
+    expect(events[0]).toMatchObject({ type: 'error', text: "The 'sonnet' model is not supported." });
+    expect(events[1].type).toBe('done');
+  });
+
+  it('does not end the turn on a stream error event', () => {
+    const events = translateCodexEvent({ type: 'error', message: 'Reconnecting... 1/5' }, projectPath);
+    expect(events).toEqual([{ type: 'error', projectPath, text: 'Reconnecting... 1/5' }]);
+  });
 });
+
+describe('buildCodexArgs', () => {
+  it('uses a sandbox config override, not the removed --full-auto', () => {
+    expect(buildCodexArgs({ sessionId: null, model: '', permMode: 'auto', message: 'hi' }))
+      .toEqual(['exec', '--json', '--skip-git-repo-check', '-c', 'sandbox_mode="workspace-write"', '--', 'hi']);
+  });
+
+  it('keeps the sandbox on resume, where --sandbox is not accepted', () => {
+    expect(buildCodexArgs({ sessionId: 'abc', model: 'gpt-5', permMode: 'read-only', message: '-v x' }))
+      .toEqual(['exec', 'resume', '--json', '--skip-git-repo-check', '-m', 'gpt-5', '-c', 'sandbox_mode="read-only"', '--', 'abc', '-v x']);
+  });
+
+  it('bypasses the sandbox for full access', () => {
+    const args = buildCodexArgs({ sessionId: null, model: '', permMode: 'full-access', message: 'hi' });
+    expect(args).toContain('--dangerously-bypass-approvals-and-sandbox');
+    expect(args).not.toContain('-c');
+  });
+});
+

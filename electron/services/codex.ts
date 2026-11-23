@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import { enrichEnv, resolveBinary } from './platform';
 import { createIdleWatchdog } from './idleWatchdog';
 import { askpassEnvFor, cancelAskpassForKey } from './askpassService';
+import { getCodexModels } from './codexModels';
 
 function enrichedEnv(): Record<string, string> {
   return enrichEnv();
@@ -15,6 +16,55 @@ function safeSend(win: BrowserWindow | null, channel: string, ...args: unknown[]
   try {
     if (win && !win.isDestroyed()) win.webContents.send(channel, ...args);
   } catch { /* window destroyed */ }
+}
+
+/** Codex wraps every command as `/bin/bash -lc '<cmd>'`; show the user's command. */
+export function unwrapShellCommand(command: string): string {
+  const m = /^\S*\/(?:ba|z)?sh -lc '([\s\S]*)'$/.exec(command);
+  return m ? m[1].replace(/'\\''/g, "'") : command;
+}
+
+/** Codex nests the API error as a JSON string; surface its human message. */
+function codexErrorText(raw: unknown): string {
+  const text = typeof raw === 'string' ? raw
+    : raw && typeof raw === 'object' && typeof (raw as any).message === 'string' ? (raw as any).message
+    : '';
+  if (!text) return 'Codex error';
+  try {
+    const parsed = JSON.parse(text);
+    const inner = parsed?.error?.message ?? parsed?.message;
+    if (typeof inner === 'string' && inner) return inner;
+  } catch { /* not JSON */ }
+  return text;
+}
+
+function fileChangePaths(item: any): string {
+  if (Array.isArray(item?.changes)) {
+    return item.changes.map((c: any) => c?.path).filter(Boolean).join(', ');
+  }
+  return item?.file_path || item?.path || '';
+}
+
+/** Argument list for one `codex exec` turn (new thread, or resume of `sessionId`). */
+export function buildCodexArgs(opts: { sessionId: string | null; model: string; permMode: string; message: string; effort?: string }): string[] {
+  const args: string[] = ['exec'];
+  if (opts.sessionId) args.push('resume');
+  args.push('--json', '--skip-git-repo-check');
+  if (opts.model) args.push('-m', opts.model);
+  if (opts.effort && /^[a-z]+$/.test(opts.effort)) args.push('-c', `model_reasoning_effort="${opts.effort}"`);
+  // `exec resume` has no --sandbox flag (and --full-auto is gone), so the
+  // sandbox goes through a config override, which both subcommands accept.
+  if (opts.permMode === 'full-access') {
+    args.push('--dangerously-bypass-approvals-and-sandbox');
+  } else {
+    const mode = opts.permMode === 'read-only' ? 'read-only' : 'workspace-write';
+    args.push('-c', `sandbox_mode="${mode}"`);
+  }
+  // `--` so a prompt starting with "-" isn't parsed as a flag.
+  args.push('--');
+  if (opts.sessionId) args.push(opts.sessionId);
+  args.push(opts.message);
+  return args;
 }
 
 export function translateCodexEvent(msg: any, projectPath: string): any[] {
@@ -41,7 +91,7 @@ export function translateCodexEvent(msg: any, projectPath: string): any[] {
               id: item.id,
               type: 'tool_use',
               name: 'Bash',
-              input: { command: item.command || '' },
+              input: { command: unwrapShellCommand(item.command || '') },
             }],
           },
         });
@@ -54,7 +104,7 @@ export function translateCodexEvent(msg: any, projectPath: string): any[] {
               id: item.id,
               type: 'tool_use',
               name: 'Edit',
-              input: { file_path: item.file_path || item.path || '' },
+              input: { file_path: fileChangePaths(item) },
             }],
           },
         });
@@ -82,6 +132,20 @@ export function translateCodexEvent(msg: any, projectPath: string): any[] {
               tool_use_id: item.id,
               content: item.aggregated_output || '',
               is_error: (item.exit_code || 0) !== 0,
+            }],
+          },
+        });
+      } else if (item?.type === 'file_change' && item?.id) {
+        const failed = item.status === 'failed';
+        events.push({
+          type: 'user',
+          projectPath,
+          message: {
+            content: [{
+              type: 'tool_result',
+              tool_use_id: item.id,
+              content: failed ? 'File change failed' : fileChangePaths(item),
+              is_error: failed,
             }],
           },
         });
@@ -116,13 +180,14 @@ export function translateCodexEvent(msg: any, projectPath: string): any[] {
     }
 
     case 'turn.failed':
-    case 'error':
-      events.push({
-        type: 'error',
-        projectPath,
-        text: msg.message || msg.error || 'Codex error',
-      });
+      events.push({ type: 'error', projectPath, text: codexErrorText(msg.error ?? msg.message) });
       events.push({ type: 'done', projectPath });
+      break;
+
+    // A stream error. It may be retried, and a fatal one is followed by
+    // turn.failed (or process exit), which settles the turn.
+    case 'error':
+      events.push({ type: 'error', projectPath, text: codexErrorText(msg.message ?? msg.error) });
       break;
 
     default:
@@ -151,7 +216,13 @@ function getState(key: string): CodexState {
 }
 
 export function setupCodexService(getWindow: () => BrowserWindow | null) {
-  ipcMain.handle('codex:send', (_event, key: string, cwd: string, message: string, permMode: string, model: string) => {
+  // codex:models — the account's model catalog, from the CLI itself.
+  ipcMain.handle('codex:models', () => {
+    const env = enrichedEnv();
+    return getCodexModels(resolveBinary('codex', env), env);
+  });
+
+  ipcMain.handle('codex:send', (_event, key: string, cwd: string, message: string, permMode: string, model: string, effort?: string) => {
     const win = getWindow();
     const state = getState(key);
 
@@ -160,26 +231,8 @@ export function setupCodexService(getWindow: () => BrowserWindow | null) {
       state.process = null;
     }
 
-    const args: string[] = [];
-    if (state.sessionId) {
-      args.push('exec', 'resume', '--json', '--skip-git-repo-check', state.sessionId);
-    } else {
-      args.push('exec', '--json', '--skip-git-repo-check');
-    }
-
-    if (model) {
-      args.push('-m', model);
-    }
-
-    if (permMode === 'full-access') {
-      args.push('--dangerously-bypass-approvals-and-sandbox');
-    } else if (permMode === 'read-only') {
-      args.push('--sandbox', 'read-only');
-    } else {
-      args.push('--full-auto');
-    }
-
-    args.push(message);
+    const args = buildCodexArgs({ sessionId: state.sessionId, model, permMode, message, effort });
+    let lastErrorText: string | null = null;
 
     const env = { ...enrichedEnv(), ...askpassEnvFor(key) };
     const proc = spawn(resolveBinary('codex', env), args, {
@@ -223,6 +276,11 @@ export function setupCodexService(getWindow: () => BrowserWindow | null) {
           }
           const events = translateCodexEvent(msg, cwd);
           for (const ev of events) {
+            // A fatal error arrives as `error` then `turn.failed` with the same text.
+            if (ev.type === 'error') {
+              if (ev.text === lastErrorText) continue;
+              lastErrorText = ev.text;
+            }
             safeSend(win, 'ai:message', key, ev);
           }
           if (msg.type === 'turn.completed' || msg.type === 'turn.failed') {

@@ -59,7 +59,8 @@ declare global {
         installRemote: (target: string) => Promise<{ ok: boolean; error?: string }>;
       };
       codex: {
-        send: (key: string, cwd: string, message: string, permMode: string, model: string) => Promise<boolean>;
+        send: (key: string, cwd: string, message: string, permMode: string, model: string, effort?: string) => Promise<boolean>;
+        models: () => Promise<{ models: import('../types').CodexModelOption[]; configModel: string | null; detected: boolean }>;
         stop: (key: string) => void;
         setSessionId: (key: string, sessionId: string | undefined) => void;
       };

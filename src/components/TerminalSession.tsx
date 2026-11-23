@@ -24,6 +24,7 @@ import { createClaudeProvider } from '@/providers/claude';
 import { createCodexProvider } from '@/providers/codex';
 import { createGeminiProvider } from '@/providers/gemini';
 import { useSettings } from '@/hooks/useSettings';
+import { useCodexModels, codexModelLabel } from '@/hooks/useCodexModels';
 import type { AIProvider, ContextMode, TrustLevel, AIEntry } from '@/types';
 import { hasActiveAi } from '@/utils/hasActiveAi';
 import { hasPendingSudo, applySudoResolved, cancelPendingSudo } from '@/utils/sudoDisplay';
@@ -112,6 +113,18 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
   const claudeEffort = config['claude.effort'] || 'auto';
   const claudeShowReasoning = config['claude.showReasoning'] !== false;
   const aiNextCommandRefine = !!config['aiNextCommandRefine'];
+  // Codex: '' means "use ~/.codex/config.toml". A saved model or effort the
+  // catalog no longer offers falls back to that default rather than failing.
+  const codexCatalog = useCodexModels(aiProvider === 'codex');
+  const codexSaved = config['codex.model'] || '';
+  const codexModelOpt = codexCatalog.models.find((m) => m.value === codexSaved);
+  const codexModel = codexModelOpt ? codexSaved : '';
+  const codexEffortSaved = config['codex.effort'] || '';
+  const codexEffort = codexEffortSaved && (!codexModelOpt?.efforts || codexModelOpt.efforts.includes(codexEffortSaved))
+    ? codexEffortSaved : '';
+  const chipModel = aiProvider === 'claude' ? claudeModel
+    : aiProvider === 'codex' ? codexModelLabel(codexCatalog, codexModel || codexCatalog.configModel)
+    : undefined;
   // Seed with the previous session's finished blocks (rendered collapsed
   // under the resume rail); best-effort, so a corrupt payload just yields an
   // empty session. Read once — persisting during this session must not
@@ -1280,8 +1293,15 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
     aiCleanupRef.current = cleanup;
     aiBlockIdRef.current = aiId;
 
-    providerRef.current.send(fullPrompt, cwd, trustLevel, claudeModel, claudeEffort, claudeShowReasoning);
-  }, [cwd, trustLevel, handleInputModeChange, promptInfo, eff, claudeModel, claudeEffort, claudeShowReasoning, displayItems]);
+    // Each provider gets its own model settings; Gemini uses its CLI default.
+    const pid = providerRef.current.id;
+    if (pid === 'codex') {
+      providerRef.current.send(fullPrompt, cwd, trustLevel, codexModel, codexEffort);
+    } else {
+      const model = pid === 'claude' ? claudeModel : undefined;
+      providerRef.current.send(fullPrompt, cwd, trustLevel, model, claudeEffort, claudeShowReasoning);
+    }
+  }, [cwd, trustLevel, handleInputModeChange, promptInfo, eff, claudeModel, claudeEffort, claudeShowReasoning, codexModel, codexEffort, displayItems]);
 
   const handleAIRequestRef = useRef(handleAIRequest);
   useEffect(() => {
@@ -2141,7 +2161,7 @@ export function TerminalSession({ tabId, tabLabel, ptyId, cwd: initialCwd, visib
             lastExitCode={lastFinalizedExit}
             aiNextCommandRefine={aiNextCommandRefine}
             onRequestAiSuggestion={singleShotAi}
-            model={claudeModel}
+            model={chipModel}
           />
         </div>
       )}

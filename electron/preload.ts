@@ -97,8 +97,9 @@ contextBridge.exposeInMainWorld('tai', {
       ipcRenderer.invoke('git:status', cwd),
   },
   codex: {
-    send: (key: string, cwd: string, message: string, permMode: string, model: string) =>
-      ipcRenderer.invoke('codex:send', key, cwd, message, permMode, model),
+    send: (key: string, cwd: string, message: string, permMode: string, model: string, effort?: string) =>
+      ipcRenderer.invoke('codex:send', key, cwd, message, permMode, model, effort),
+    models: () => ipcRenderer.invoke('codex:models'),
     stop: (key: string) => ipcRenderer.send('codex:stop', key),
     setSessionId: (key: string, sessionId: string | undefined) =>
       ipcRenderer.send('codex:setSessionId', key, sessionId),

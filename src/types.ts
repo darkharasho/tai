@@ -67,6 +67,14 @@ export interface TabState {
   aiNeedsInput?: boolean;
 }
 
+export interface CodexModelOption {
+  value: string;
+  label: string;
+  description?: string;
+  efforts?: string[];
+  defaultEffort?: string;
+}
+
 export interface ClaudeModelOption {
   value: string;
   label: string;

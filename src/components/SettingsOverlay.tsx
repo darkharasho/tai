@@ -3,6 +3,7 @@ import { X, Settings, ChevronDown, Check, RefreshCw } from 'lucide-react';
 import type { TrustLevel, AIProvider } from '@/types';
 import { Toggle } from './Toggle';
 import { THEME_OPTIONS } from '@/theme/themes';
+import { useCodexModels, codexModelLabel } from '@/hooks/useCodexModels';
 import styles from './Settings.module.css';
 
 interface SettingsOverlayProps {
@@ -71,6 +72,10 @@ const CLAUDE_EFFORT_OPTIONS = [
   { value: 'max', label: 'Max (Opus only)' },
 ];
 
+function capitalize(s: string): string {
+  return s === 'xhigh' ? 'Extra High' : s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 function CustomDropdown({ value, options, onChange }: {
   value: string;
   options: { value: string; label: string }[];
@@ -128,6 +133,24 @@ export function SettingsOverlay({ visible, onClose, config, onSet, trustLevel, o
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'up-to-date' | 'available' | 'error'>('idle');
 
   const modelOptions = availableModels?.length ? availableModels : CLAUDE_MODEL_OPTIONS;
+
+  // Codex models come from the CLI's own catalog. "Default" leaves the choice
+  // to ~/.codex/config.toml; a saved model that has dropped out of the catalog
+  // reads as Default too (that's what gets sent).
+  const codexCatalog = useCodexModels(visible && aiProvider === 'codex');
+  const codexDefaultLabel = codexModelLabel(codexCatalog, codexCatalog.configModel);
+  const codexModelOptions = [
+    { value: '', label: codexDefaultLabel ? `Default (${codexDefaultLabel})` : 'Default' },
+    ...codexCatalog.models.map(m => ({ value: m.value, label: m.label })),
+  ];
+  const codexModelValue = codexCatalog.models.some(m => m.value === config['codex.model']) ? config['codex.model'] : '';
+  const codexActive = codexCatalog.models.find(m => m.value === (codexModelValue || codexCatalog.configModel));
+  const codexEfforts = codexActive?.efforts ?? ['low', 'medium', 'high'];
+  const codexEffortOptions = [
+    { value: '', label: codexActive?.defaultEffort ? `Default (${capitalize(codexActive.defaultEffort)})` : 'Default' },
+    ...codexEfforts.map(e => ({ value: e, label: capitalize(e) })),
+  ];
+  const codexEffortValue = codexEfforts.includes(config['codex.effort']) ? config['codex.effort'] : '';
 
   useEffect(() => {
     if (visible) {
@@ -236,6 +259,7 @@ export function SettingsOverlay({ visible, onClose, config, onSet, trustLevel, o
                     <Toggle checked={!!config['ai.expandToolCalls']}
                       onChange={v => onSet('ai.expandToolCalls', v)} ariaLabel="Expand tool calls" />
                   } />
+                  {aiProvider === 'claude' && (<>
                   <div className={styles.sectionTitle}>Claude</div>
                   <SettingRow label="Model" value={
                     <CustomDropdown value={config['claude.model'] || 'sonnet'} options={modelOptions}
@@ -249,6 +273,18 @@ export function SettingsOverlay({ visible, onClose, config, onSet, trustLevel, o
                     <Toggle checked={config['claude.showReasoning'] !== false}
                       onChange={v => onSet('claude.showReasoning', v)} ariaLabel="Show reasoning" />
                   } />
+                  </>)}
+                  {aiProvider === 'codex' && (<>
+                  <div className={styles.sectionTitle}>Codex</div>
+                  <SettingRow label="Model" value={
+                    <CustomDropdown value={codexModelValue} options={codexModelOptions}
+                      onChange={v => onSet('codex.model', v)} />
+                  } />
+                  <SettingRow label="Reasoning Effort" value={
+                    <CustomDropdown value={codexEffortValue} options={codexEffortOptions}
+                      onChange={v => onSet('codex.effort', v)} />
+                  } />
+                  </>)}
                 </>
               )}
               {category === 'appearance' && (

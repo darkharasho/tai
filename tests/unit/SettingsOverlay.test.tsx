@@ -71,8 +71,24 @@ describe('SettingsOverlay per-tab AI settings', () => {
     );
     openTab('AI');
     fireEvent.click(screen.getByText('Claude', { selector: 'span' }));
-    fireEvent.click(screen.getByText('Codex'));
+    fireEvent.click(screen.getByText('Codex', { selector: '[class*=dropdownOption]' }));
     expect(picked).toEqual(['codex']);
     expect(set).toEqual([]);
+  });
+});
+
+describe('SettingsOverlay provider sections', () => {
+  it('shows only the Claude section when Claude is selected', () => {
+    render(<SettingsOverlay {...baseProps} config={{}} />);
+    openTab('AI');
+    expect(screen.queryByText('Show Reasoning')).toBeInTheDocument();
+    expect(screen.queryByText('Codex', { selector: '[class*=sectionTitle]' })).toBeNull();
+  });
+
+  it('shows only the Codex section when Codex is selected', () => {
+    render(<SettingsOverlay {...baseProps} aiProvider="codex" config={{}} />);
+    openTab('AI');
+    expect(screen.getByText('Codex', { selector: '[class*=sectionTitle]' })).toBeInTheDocument();
+    expect(screen.queryByText('Show Reasoning')).toBeNull();
   });
 });

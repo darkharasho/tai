@@ -14,9 +14,9 @@ export function createCodexProvider(tabId: string): Provider {
     id: 'codex',
     name: 'Codex',
 
-    send(message: string, cwd: string, trustLevel: string, model?: string) {
+    send(message: string, cwd: string, trustLevel: string, model?: string, effort?: string) {
       const permMode = TRUST_TO_PERM[trustLevel as TrustLevel] || 'auto';
-      window.tai.codex.send(tabId, cwd, message, permMode, model || '');
+      window.tai.codex.send(tabId, cwd, message, permMode, model || '', effort || '');
     },
 
     cancel() {

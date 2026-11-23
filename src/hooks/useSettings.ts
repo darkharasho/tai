@@ -12,6 +12,8 @@ const DEFAULTS = {
   'claude.model': 'sonnet',
   'claude.effort': 'auto',
   'claude.showReasoning': true,
+  'codex.model': '',
+  'codex.effort': '',
   'trust.default': 'ask',
   'ai.expandToolCalls': false,
   'appearance.theme': 'default',
